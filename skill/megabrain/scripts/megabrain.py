@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+import webbrowser
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -422,7 +423,24 @@ def sync_repo(root: Path) -> dict[str, Any]:
         return {"synced": False, "stale": True, "reason": "missing_origin"}
     rebased, reason = rebase_remote(root)
     if not rebased:
+        if reason == "remote_unavailable":
+            validation = command_validate(root)
+            if not validation["ok"]:
+                return {
+                    "synced": False,
+                    "stale": True,
+                    "reason": "validation_failed",
+                    "error_count": len(validation["errors"]),
+                }
         return {"synced": False, "stale": True, "reason": reason}
+    validation = command_validate(root)
+    if not validation["ok"]:
+        return {
+            "synced": False,
+            "stale": True,
+            "reason": "validation_failed",
+            "error_count": len(validation["errors"]),
+        }
     pushed, reason = push_with_retry(root)
     if not pushed:
         return {"synced": False, "stale": True, "reason": reason, "pending_local_commits": True}
@@ -430,7 +448,13 @@ def sync_repo(root: Path) -> dict[str, Any]:
 
 
 def require_clean_or_offline(sync: dict[str, Any]) -> None:
-    if sync.get("reason") in {"dirty_worktree", "rebase_conflict", "not_a_git_repository", "missing_origin"}:
+    if sync.get("reason") in {
+        "dirty_worktree",
+        "rebase_conflict",
+        "not_a_git_repository",
+        "missing_origin",
+        "validation_failed",
+    }:
         raise BrainError("SYNC_BLOCKED", "Cannot write until the managed clone is healthy", sync)
 
 
@@ -619,6 +643,7 @@ def command_validate(root: Path) -> dict[str, Any]:
         root / "brain" / "imports",
         root / "skill" / "megabrain" / "SKILL.md",
         root / "skill" / "megabrain" / "scripts" / "megabrain.py",
+        root / "skill" / "megabrain" / "assets" / "browser.html",
     )
     for path in required_paths:
         if not path.exists():
@@ -704,6 +729,8 @@ def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str
     if not isinstance(task, str) or not task.strip():
         raise BrainError("INVALID_TASK", "task must be a non-empty string")
     sync = sync_repo(root)
+    if sync.get("reason") == "validation_failed":
+        raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
     records = load_memories(root)
     active, conflicts = current_memories(records)
     task_tokens = tokens(task)
@@ -979,6 +1006,8 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
 def command_agents(root: Path) -> dict[str, Any]:
     sync = sync_repo(root)
+    if sync.get("reason") == "validation_failed":
+        raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
     memories = load_memories(root)
     contributions = Counter(str(record.meta.get("created_by")) for record in memories)
     agents = []
@@ -993,6 +1022,129 @@ def command_agents(root: Path) -> dict[str, Any]:
             }
         )
     return {"ok": True, "sync": sync, "agents": agents}
+
+
+def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
+    records = load_memories(root)
+    active, conflicts = current_memories(records)
+    active_ids = {str(record.meta.get("id")) for record in active}
+    conflict_ids = {memory_id for ids in conflicts.values() for memory_id in ids}
+    superseded_by: dict[str, list[str]] = defaultdict(list)
+    for record in records:
+        supersedes = record.meta.get("supersedes", [])
+        for memory_id in supersedes if isinstance(supersedes, list) else []:
+            superseded_by[str(memory_id)].append(str(record.meta.get("id")))
+    memories = []
+    contributions = Counter(str(record.meta.get("created_by")) for record in records)
+    for record in sorted(records, key=lambda item: str(item.meta.get("created_at", "")), reverse=True):
+        memory_id = str(record.meta.get("id"))
+        if record.meta.get("kind") == "tombstone":
+            status = "tombstone"
+        elif memory_id in active_ids:
+            status = "current"
+        else:
+            status = "historical"
+        memories.append(
+            {
+                "id": memory_id,
+                "kind": record.meta.get("kind"),
+                "subject": record.meta.get("subject"),
+                "summary": summary_text(record),
+                "created_at": record.meta.get("created_at"),
+                "created_by": record.meta.get("created_by"),
+                "confidence": record.meta.get("confidence"),
+                "sensitivity": record.meta.get("sensitivity"),
+                "importance": record.meta.get("importance"),
+                "tags": record.meta.get("tags", []),
+                "source": record.meta.get("source", {}),
+                "supersedes": record.meta.get("supersedes", []),
+                "superseded_by": superseded_by.get(memory_id, []),
+                "status": status,
+                "conflict": memory_id in conflict_ids,
+                "path": relative(root, record.path),
+            }
+        )
+    agents = [
+        {
+            "id": str(record.meta.get("id")),
+            "display_name": record.meta.get("display_name"),
+            "harness": record.meta.get("harness"),
+            "created_at": record.meta.get("created_at"),
+            "contributions": contributions[str(record.meta.get("id"))],
+        }
+        for record in load_records(agent_files(root))
+    ]
+    imports = [
+        {
+            "id": str(record.meta.get("id")),
+            "created_at": record.meta.get("created_at"),
+            "created_by": record.meta.get("created_by"),
+            "source": record.meta.get("source", {}),
+            "counts": record.meta.get("counts", {}),
+            "created_memory_ids": record.meta.get("created_memory_ids", []),
+            "duplicate_memory_ids": record.meta.get("duplicate_memory_ids", []),
+            "conflicts": record.meta.get("conflicts", []),
+            "rejected_by_code": record.meta.get("rejected_by_code", {}),
+            "path": relative(root, record.path),
+        }
+        for record in sorted(
+            load_records(import_files(root)),
+            key=lambda item: str(item.meta.get("created_at", "")),
+            reverse=True,
+        )
+    ]
+    return {
+        "generated_at": utc_now(),
+        "sync": sync,
+        "stats": {
+            "current": len(active),
+            "history": len(records) - len(active),
+            "conflicts": len(conflicts),
+            "agents": len(agents),
+            "imports": len(imports),
+        },
+        "memories": memories,
+        "conflicts": [
+            {"subject": subject, "memory_ids": memory_ids}
+            for subject, memory_ids in sorted(conflicts.items())
+        ],
+        "agents": agents,
+        "imports": imports,
+    }
+
+
+def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
+    sync = sync_repo(root)
+    validation = command_validate(root)
+    if not validation["ok"]:
+        raise BrainError(
+            "BRAIN_INVALID",
+            "The local brain must pass validation before it can be browsed",
+            {"error_count": len(validation["errors"])},
+        )
+    template = Path(__file__).resolve().parents[1] / "assets" / "browser.html"
+    if not template.exists():
+        raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
+    serialized = json.dumps(browser_payload(root, sync), ensure_ascii=True, sort_keys=True)
+    serialized = (
+        serialized.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+    html = template.read_text(encoding="utf-8").replace("__MEGABRAIN_DATA__", serialized)
+    output = root / ".megabrain" / "browser" / "index.html"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(html, encoding="utf-8")
+    opened = False if no_open else webbrowser.open(output.resolve().as_uri())
+    return {
+        "ok": True,
+        "generated": True,
+        "opened": opened,
+        "path": str(output),
+        "sync": sync,
+    }
 
 
 def github_repo_from_remote(remote: str) -> str | None:
@@ -1046,6 +1198,8 @@ def build_parser() -> argparse.ArgumentParser:
     ingest = subparsers.add_parser("ingest")
     ingest.add_argument("--stdin", action="store_true")
     subparsers.add_parser("agents")
+    browse = subparsers.add_parser("browse")
+    browse.add_argument("--no-open", action="store_true", help="generate the browser without opening it")
     subparsers.add_parser("validate")
     subparsers.add_parser("doctor")
     return parser
@@ -1057,7 +1211,8 @@ def main() -> int:
     root = repo_root()
     try:
         if args.command == "sync":
-            result = {"ok": True, **sync_repo(root)}
+            sync = sync_repo(root)
+            result = {"ok": sync.get("reason") != "validation_failed", **sync}
         elif args.command == "context":
             if not 1 <= args.limit <= 100:
                 raise BrainError("INVALID_LIMIT", "limit must be between 1 and 100")
@@ -1072,6 +1227,8 @@ def main() -> int:
             result = command_ingest(root, read_input())
         elif args.command == "agents":
             result = command_agents(root)
+        elif args.command == "browse":
+            result = command_browse(root, args.no_open)
         elif args.command == "validate":
             result = command_validate(root)
         elif args.command == "doctor":

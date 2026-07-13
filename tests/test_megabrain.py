@@ -434,6 +434,111 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         skill = (SOURCE_ROOT / "skill" / "megabrain" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Do not capture raw conversation, temporary debugging state", skill)
 
+    def test_browser_projects_all_views_and_escapes_memory_content(self) -> None:
+        clone = self.network.clone("agent-a", "codex")
+        original = self.network.remember(
+            "agent-a",
+            subject="browser.synthetic_preference",
+            summary='Prefer <img src=x onerror="alert(1)"> in the synthetic example.',
+            tags=["browser", "synthetic"],
+            sensitivity="private",
+        )
+        replacement = self.network.command(
+            "agent-a",
+            "correct",
+            {"summary": "Prefer safe text in the synthetic example."},
+            original["memory_id"],
+            "--stdin",
+        )
+        first_conflict = self.network.remember(
+            "agent-a",
+            subject="browser.synthetic_channel",
+            summary="The synthetic channel is stable.",
+            tags=["browser", "channel"],
+        )
+        second_conflict = self.network.remember(
+            "agent-a",
+            subject="browser.synthetic_channel",
+            summary="The synthetic channel is preview.",
+            tags=["browser", "channel"],
+        )
+        imported = self.network.command(
+            "agent-a",
+            "ingest",
+            {
+                "source": {
+                    "type": "file",
+                    "locator": "synthetic/browser-export.json",
+                    "hash": "sha256:" + "b" * 64,
+                },
+                "memories": [
+                    {
+                        "kind": "resource",
+                        "subject": "browser.synthetic_resource",
+                        "summary": "The synthetic resource is stored in docs/example.md.",
+                        "tags": ["browser", "resource"],
+                    }
+                ],
+            },
+            "--stdin",
+        )
+
+        generated = self.network.command("agent-a", "browse", None, "--no-open")
+        self.assertTrue(generated["generated"])
+        self.assertFalse(generated["opened"])
+        output = Path(generated["path"])
+        self.assertEqual(output.resolve(), (clone / ".megabrain" / "browser" / "index.html").resolve())
+        html = output.read_text(encoding="utf-8")
+        self.assertNotIn("__MEGABRAIN_DATA__", html)
+        self.assertNotIn('<img src=x onerror="alert(1)">', html)
+        self.assertIn("\\u003cimg src=x", html)
+        for expected in (
+            'data-view="current"',
+            'data-view="history"',
+            'data-view="conflicts"',
+            'data-view="agents"',
+            'data-view="imports"',
+            'id="filter-kind"',
+            'id="filter-importance"',
+            'id="filter-confidence"',
+            'id="filter-sensitivity"',
+            'id="filter-agent"',
+            'id="filter-date"',
+        ):
+            self.assertIn(expected, html)
+        data_match = re.search(r"const DATA = (?P<data>.*?);\n    const state", html, re.DOTALL)
+        assert data_match is not None
+        data = json.loads(data_match.group("data"))
+        self.assertEqual(
+            data["stats"],
+            {"current": 4, "history": 1, "conflicts": 1, "agents": 1, "imports": 1},
+        )
+        memories = {item["id"]: item for item in data["memories"]}
+        self.assertEqual(memories[original["memory_id"]]["status"], "historical")
+        self.assertEqual(memories[replacement["memory_id"]]["status"], "current")
+        self.assertTrue(memories[first_conflict["memory_id"]]["conflict"])
+        self.assertTrue(memories[second_conflict["memory_id"]]["conflict"])
+        self.assertEqual(data["imports"][0]["id"], imported["import_id"])
+        self.assertEqual(run(["git", "status", "--porcelain"], clone).stdout, "")
+
+    def test_sync_refuses_to_push_a_committed_invalid_record(self) -> None:
+        clone = self.network.clone("agent-a", "codex")
+        remote_before = run(["git", "rev-parse", "refs/heads/main"], self.network.remote).stdout.strip()
+        agent_record = next((clone / "brain" / "agents").glob("*.md"))
+        invalid = clone / "brain" / "memories" / "2026" / "07" / "invalid.md"
+        invalid.parent.mkdir(parents=True)
+        shutil.copy2(agent_record, invalid)
+        run(["git", "add", str(invalid.relative_to(clone))], clone)
+        run(["git", "commit", "-m", "test: committed invalid record"], clone)
+
+        sync = self.network.command("agent-a", "sync", expected=1)
+
+        self.assertFalse(sync["ok"])
+        self.assertEqual(sync["reason"], "validation_failed")
+        self.assertGreater(sync["error_count"], 0)
+        remote_after = run(["git", "rev-parse", "refs/heads/main"], self.network.remote).stdout.strip()
+        self.assertEqual(remote_after, remote_before)
+
 
 if __name__ == "__main__":
     unittest.main()

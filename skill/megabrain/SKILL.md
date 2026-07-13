@@ -47,6 +47,7 @@ Supported source types include files, directories, Git repositories, exports, UR
 
 - `sync`: synchronize pending commits and update the local clone.
 - `agents`: list registered provenance identities and contribution counts.
+- `browse`: synchronize, generate the ignored local HTML catalog, and open it in the default browser. Use `--no-open` for automation.
 - `validate`: validate structure, schemas, references, duplicate IDs, and memory secret rules.
 - `doctor`: check Python, Git, origin, identity, privacy verification, worktree, and validation health.
 

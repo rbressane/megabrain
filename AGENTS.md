@@ -6,6 +6,7 @@ This is a private, local-first Markdown brain. Read [MEGABRAIN.md](MEGABRAIN.md)
 
 - Tests: `python3 -m unittest discover -s tests -v`
 - Validate brain: `python3 skill/megabrain/scripts/megabrain.py validate`
+- Generate browser without opening: `python3 skill/megabrain/scripts/megabrain.py browse --no-open`
 - Validate skill with the `skill-creator` quick validator when it is available.
 
 ## Boundaries

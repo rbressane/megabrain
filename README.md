@@ -65,10 +65,21 @@ python3 skill/megabrain/scripts/megabrain.py sync
 printf '%s' '{"task":"prepare my weekly report"}' \
   | python3 skill/megabrain/scripts/megabrain.py context --stdin
 python3 skill/megabrain/scripts/megabrain.py agents
+python3 skill/megabrain/scripts/megabrain.py browse
 python3 skill/megabrain/scripts/megabrain.py validate
 ```
 
 Private memory content is accepted through stdin so it does not enter shell history or process arguments. See [MEGABRAIN.md](MEGABRAIN.md) for the memory protocol and [docs/memory-format.md](docs/memory-format.md) for schemas.
+
+## Browse Your Brain
+
+Run `browse` from any managed clone to synchronize and open a private local catalog in the default browser:
+
+```bash
+python3 skill/megabrain/scripts/megabrain.py browse
+```
+
+The catalog separates current memory, history, conflicts, agents, and imports. It supports search and filters for kind, importance, confidence, sensitivity, agent, and month, and links corrections to the immutable records they supersede. The generated `.megabrain/browser/index.html` file is local and ignored by Git; Markdown remains authoritative. See [docs/navigation.md](docs/navigation.md).
 
 ## Import Knowledge
 
