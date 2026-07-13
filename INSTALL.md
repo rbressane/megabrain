@@ -2,6 +2,10 @@
 
 This document is written for the agent performing installation. Keep repository paths, harness flags, and Git operations out of the normal user experience.
 
+## Agent Entry Point
+
+If a user gives you this repository and asks to install it, including with a short request such as `Install this: https://github.com/rbressane/megabrain`, that is the complete setup request. Follow this document end to end. Do not ask the user to identify their agent environment, choose a repository, select a clone path, or translate these instructions into commands.
+
 ## Safety
 
 1. Use only the official `https://github.com/rbressane/megabrain` repository.

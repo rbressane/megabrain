@@ -2,7 +2,7 @@
 
 ## First Contact
 
-An unfamiliar agent does not understand `Set up my MegaBrain` until the skill exists. The product repository README therefore provides one setup message for the user to copy into Codex, Claude Code, or Hermes. The message directs the agent to the official repository and [INSTALL.md](../INSTALL.md).
+An unfamiliar agent does not understand `Set up my MegaBrain` until the skill exists. The product repository is therefore the first-contact instruction surface. The user only needs to say `Install this: https://github.com/rbressane/megabrain`. The root README tells the agent to treat that as the complete setup request and follow [INSTALL.md](../INSTALL.md) end to end.
 
 The installing agent selects the latest stable tag, inspects it, runs the repository installer, and requests approval only when GitHub authorization is needed.
 
