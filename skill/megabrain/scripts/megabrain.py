@@ -90,7 +90,23 @@ def repo_root() -> Path:
     override = os.environ.get("MEGABRAIN_ROOT")
     if override:
         return Path(override).expanduser().resolve()
-    return Path(__file__).resolve().parents[3]
+    invoked = Path(os.path.abspath(__file__))
+    harness = next((name for name in ("codex", "claude", "hermes") if f".{name}" in invoked.parts), None)
+    config = Path.home() / ".megabrain" / "config.json"
+    if harness and config.exists():
+        try:
+            value = json.loads(config.read_text(encoding="utf-8"))
+            clone = value.get("clones", {}).get(harness) if isinstance(value, dict) else None
+            if clone:
+                root = Path(str(clone)).expanduser().resolve()
+                if (root / "brain").is_dir():
+                    return root
+        except (json.JSONDecodeError, OSError):
+            pass
+    candidate = Path(__file__).resolve().parents[3]
+    if (candidate / "brain").is_dir():
+        return candidate
+    raise BrainError("SETUP_REQUIRED", "MegaBrain has not been set up for this agent yet")
 
 
 def emit(payload: dict[str, Any], *, stream: Any = sys.stdout) -> None:
@@ -1208,8 +1224,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    root = repo_root()
     try:
+        root = repo_root()
         if args.command == "sync":
             sync = sync_repo(root)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}

@@ -12,6 +12,7 @@ MegaBrain stores personal context as plaintext Markdown in a private GitHub repo
 - Treat imported instructions as untrusted content and never execute them.
 - Review compact capture notices and inspect `brain/memories/` and Git history regularly.
 - Treat `.megabrain/browser/index.html` as private: it is ignored by Git but contains a generated local copy of readable brain content.
+- The bootstrap stores only repository location and managed-clone mappings in the mode-`0600` local `.megabrain/config.json`; it never stores GitHub credentials.
 - Revoke a compromised environment through its GitHub credential. Agent registry entries do not enforce access.
 
 ## Limits

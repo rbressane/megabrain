@@ -6,16 +6,29 @@ There is no server, database, daemon, web application, or package installation. 
 
 **Status:** experimental V1. The repository intentionally starts with zero personal memories.
 
-## Requirements
+## User Experience
 
-- macOS or Linux
-- Python 3.10+
-- Git
-- Access to a private GitHub repository over SSH or HTTPS
+Once the MegaBrain skill is available in an agent, say:
 
-## Connect An Agent
+```text
+Set up my MegaBrain.
+```
 
-Create one clone per agent environment. Do not share a working tree between concurrently running agents.
+After approving GitHub access, MegaBrain creates or finds the user's private repository, prepares a hidden managed clone for the active agent, registers its identity, validates synchronization, and opens the local brain browser. The user does not choose folders, run Git, or configure a harness.
+
+To add another agent, install the skill there and say:
+
+```text
+Connect this agent to my MegaBrain.
+```
+
+The other normal actions are `Open my MegaBrain`, `Check MegaBrain`, and `Disconnect this agent`.
+
+Git, Python 3.10+, private-repository verification, clone isolation, and synchronization remain implementation requirements checked by the bootstrap process rather than setup decisions exposed to the user. See [docs/onboarding.md](docs/onboarding.md).
+
+## Operator Recovery
+
+Manual setup remains available for development and recovery. Create one clone per agent environment and do not share a working tree between concurrently running agents.
 
 ```bash
 git clone git@github.com:rbressane/megabrain.git "$HOME/.megabrain/clones/codex"
@@ -23,7 +36,7 @@ cd "$HOME/.megabrain/clones/codex"
 python3 install.py --harness codex --display-name "Codex on my Mac"
 ```
 
-Use `--harness claude` or `--harness hermes` for the other adapters. Installation:
+Use `--harness claude` or `--harness hermes` for the other adapters. This lower-level installation:
 
 - creates a stable local agent identity;
 - registers that identity in `brain/agents/`;

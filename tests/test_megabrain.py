@@ -14,7 +14,14 @@ from pathlib import Path
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(command: list[str], cwd: Path, *, stdin: dict | None = None, expected: int = 0) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str],
+    cwd: Path,
+    *,
+    stdin: dict | None = None,
+    expected: int = 0,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -22,7 +29,7 @@ def run(command: list[str], cwd: Path, *, stdin: dict | None = None, expected: i
         text=True,
         capture_output=True,
         check=False,
-        env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"},
+        env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1", **(env or {})},
     )
     if completed.returncode != expected:
         raise AssertionError(
@@ -538,6 +545,204 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertGreater(sync["error_count"], 0)
         remote_after = run(["git", "rev-parse", "refs/heads/main"], self.network.remote).stdout.strip()
         self.assertEqual(remote_after, remote_before)
+
+    def test_consumer_bootstrap_sets_up_and_connects_agents_without_clone_paths(self) -> None:
+        home = self.network.root / "consumer-home"
+        home.mkdir()
+        remote = self.network.root / "consumer-brain.git"
+        run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
+
+        codex_skill = home / ".codex" / "skills" / "megabrain"
+        claude_skill = home / ".claude" / "skills" / "megabrain"
+        for destination in (codex_skill, claude_skill):
+            destination.parent.mkdir(parents=True)
+            shutil.copytree(
+                SOURCE_ROOT / "skill" / "megabrain",
+                destination,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+
+        def bootstrap(skill: Path, command: str, *extra: str) -> dict:
+            completed = run(
+                [
+                    "python3",
+                    str(skill / "scripts" / "bootstrap.py"),
+                    command,
+                    "--home",
+                    str(home),
+                    *extra,
+                ],
+                home,
+            )
+            return json.loads(completed.stdout)
+
+        first = bootstrap(
+            codex_skill,
+            "setup",
+            "--repository",
+            str(remote),
+            "--allow-local-remote",
+            "--no-open",
+        )
+        second = bootstrap(
+            codex_skill,
+            "setup",
+            "--repository",
+            str(remote),
+            "--allow-local-remote",
+            "--no-open",
+        )
+
+        self.assertEqual(first["message"], "MegaBrain is ready.")
+        self.assertEqual(first["harness"], "codex")
+        self.assertTrue(first["clone_created"])
+        self.assertTrue(first["identity_created"])
+        self.assertFalse(first["skill_linked"])
+        self.assertFalse(second["clone_created"])
+        self.assertFalse(second["identity_created"])
+        self.assertFalse(second["registered"])
+        codex_clone = home / ".megabrain" / "clones" / "codex"
+        self.assertTrue((codex_clone / "brain" / "memories" / ".gitkeep").exists())
+        self.assertEqual(list((codex_clone / "brain" / "memories").rglob("*.md")), [])
+        self.assertFalse((codex_clone / "skill" / "megabrain" / "seed").exists())
+        self.assertEqual((home / ".megabrain" / "config.json").stat().st_mode & 0o777, 0o600)
+        self.assertTrue(codex_skill.is_dir())
+        self.assertFalse(codex_skill.is_symlink())
+        codex_instructions = home / ".codex" / "AGENTS.md"
+        self.assertEqual(codex_instructions.read_text(encoding="utf-8").count("<!-- MEGABRAIN:START -->"), 1)
+
+        status = bootstrap(codex_skill, "status")
+        self.assertTrue(status["ready"])
+        self.assertTrue(status["sync"]["synced"])
+        opened = bootstrap(codex_skill, "open", "--no-open")
+        self.assertTrue(opened["generated"])
+        self.assertTrue(Path(opened["path"]).exists())
+
+        remembered = run(
+            ["python3", str(codex_skill / "scripts" / "megabrain.py"), "remember", "--stdin"],
+            home,
+            stdin={
+                "kind": "preference",
+                "subject": "consumer.synthetic_format",
+                "summary": "Use decisions first in the synthetic report.",
+                "confidence": "confirmed",
+                "sensitivity": "general",
+                "importance": "normal",
+                "tags": ["consumer", "report"],
+                "source": {"type": "user-statement"},
+            },
+            env={"HOME": str(home)},
+        )
+        self.assertTrue(json.loads(remembered.stdout)["created"])
+
+        connected = bootstrap(
+            claude_skill,
+            "connect",
+            "--no-open",
+        )
+        self.assertEqual(connected["harness"], "claude")
+        self.assertTrue(connected["clone_created"])
+        retrieved = run(
+            ["python3", str(claude_skill / "scripts" / "megabrain.py"), "context", "--stdin"],
+            home,
+            stdin={"task": "Prepare the synthetic consumer report format"},
+            env={"HOME": str(home)},
+        )
+        summaries = [item["summary"] for item in json.loads(retrieved.stdout)["memories"]]
+        self.assertEqual(summaries, ["Use decisions first in the synthetic report."])
+
+        disconnected = bootstrap(codex_skill, "disconnect")
+        self.assertEqual(disconnected["message"], "MegaBrain is disconnected from this agent.")
+        self.assertTrue(disconnected["local_clone_retained"])
+        self.assertTrue(codex_skill.is_dir())
+        self.assertTrue(
+            not codex_instructions.exists()
+            or "<!-- MEGABRAIN:START -->" not in codex_instructions.read_text(encoding="utf-8")
+        )
+
+    def test_consumer_bootstrap_creates_a_private_github_repository(self) -> None:
+        home = self.network.root / "github-consumer-home"
+        skill = home / ".codex" / "skills" / "megabrain"
+        skill.parent.mkdir(parents=True)
+        shutil.copytree(
+            SOURCE_ROOT / "skill" / "megabrain",
+            skill,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        fake_bin = self.network.root / "fake-bin"
+        fake_bin.mkdir()
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(os.environ["FAKE_GH_ROOT"])
+args = sys.argv[1:]
+with (root / "gh.log").open("a", encoding="utf-8") as log:
+    log.write(" ".join(args) + "\\n")
+if args[:2] == ["auth", "status"] or args[:2] == ["auth", "setup-git"]:
+    raise SystemExit(0)
+if args[:2] == ["api", "user"]:
+    print("synthetic-user")
+    raise SystemExit(0)
+if args[:2] == ["config", "get"]:
+    print("https")
+    raise SystemExit(0)
+if args[:2] == ["repo", "create"]:
+    subprocess.run(
+        ["git", "init", "--bare", "--initial-branch=main", str(root / "created-private.git")],
+        check=True,
+        capture_output=True,
+    )
+    (root / "repo-created").touch()
+    raise SystemExit(0)
+if args[:2] == ["repo", "view"]:
+    if not (root / "repo-created").exists():
+        raise SystemExit(1)
+    print(json.dumps({
+        "visibility": "PRIVATE",
+        "url": "file://" + str(root / "created-private"),
+        "sshUrl": "file://" + str(root / "created-private.git"),
+    }))
+    raise SystemExit(0)
+raise SystemExit(1)
+""",
+            encoding="utf-8",
+        )
+        fake_gh.chmod(0o755)
+        environment = {
+            "HOME": str(home),
+            "FAKE_GH_ROOT": str(self.network.root),
+            "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+        }
+
+        completed = run(
+            [
+                "python3",
+                str(skill / "scripts" / "bootstrap.py"),
+                "setup",
+                "--home",
+                str(home),
+                "--no-open",
+            ],
+            home,
+            env=environment,
+        )
+
+        result = json.loads(completed.stdout)
+        self.assertTrue(result["repository_created"])
+        self.assertEqual(result["repository"], "synthetic-user/megabrain")
+        self.assertEqual(result["message"], "MegaBrain is ready.")
+        log = (self.network.root / "gh.log").read_text(encoding="utf-8")
+        self.assertIn("repo create synthetic-user/megabrain --private", log)
+        self.assertNotIn("--public", log)
+        config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["repository"], "synthetic-user/megabrain")
+        self.assertTrue((self.network.root / "created-private.git" / "refs" / "heads" / "main").exists())
 
 
 if __name__ == "__main__":
