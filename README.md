@@ -1,127 +1,95 @@
 # MegaBrain
 
-MegaBrain lets a user teach one authorized agent a durable fact and retrieve the current fact from every other authorized agent.
+MegaBrain is a private, local-first Markdown brain shared by a person's AI agents through Git.
 
-**Status:** experimental V0. It is a local proof of secure cross-agent context portability, not a hosted service.
+There is no server, database, daemon, web application, or package installation. Each Codex, Claude Code, or Hermes environment keeps a separate local clone of this private repository. The bundled skill reads locally, pulls before context retrieval, and pushes immutable memory entries after durable learning.
 
-## Prerequisites
+**Status:** experimental V1. The repository intentionally starts with zero personal memories.
 
-- Node.js 22+
-- npm
-- Docker with Compose and `jq` for the demonstration
+## Requirements
 
-## Setup
+- macOS or Linux
+- Python 3.10+
+- Git
+- Access to a private GitHub repository over SSH or HTTPS
 
-```bash
-npm install
-cp .env.example .env
-docker compose up -d
-npm run db:migrate
-npm run cli -- init --display-name "Taylor Example"
-```
+## Connect An Agent
 
-Run the server in another terminal:
+Create one clone per agent environment. Do not share a working tree between concurrently running agents.
 
 ```bash
-npm run dev
+git clone git@github.com:rbressane/megabrain.git "$HOME/.megabrain/clones/codex"
+cd "$HOME/.megabrain/clones/codex"
+python3 install.py --harness codex --display-name "Codex on my Mac"
 ```
 
-The migration files are committed under `src/db/migrations`. Apply them with `npm run db:migrate`. Generate a reviewed migration after changing the Drizzle schema with `npm run db:generate`.
+Use `--harness claude` or `--harness hermes` for the other adapters. Installation:
 
-## Complete Local Demonstration
+- creates a stable local agent identity;
+- registers that identity in `brain/agents/`;
+- links the skill into the harness skill directory;
+- adds a marker-delimited MegaBrain rule to the harness's global instructions;
+- synchronizes the registration through Git.
 
-The following uses the administrator CLI for invitations, approval, and revocation. Both agents claim, exchange credentials, and access facts only over HTTP. The local HTTP helper reads JSON from stdin and bearer credentials from the environment so raw tokens do not enter process arguments.
+The installer verifies private visibility with the GitHub CLI when it is available. If visibility cannot be checked automatically, verify the repository setting in GitHub and rerun with `--confirm-private`. Local bare remotes are accepted only by the hidden test option used in the synthetic acceptance suite.
+
+Rerunning installation is safe. To remove only the managed skill link and instruction block:
 
 ```bash
-SCOPES_A='context:read:private,facts:write,facts:correct'
-SCOPES_B='context:read:private'
-
-LINK_A=$(npm run --silent cli -- invite create --expires-in 15m | jq -r .brainlink)
-CLAIM_A=$(jq -n --arg token "${LINK_A##*token=}" --arg scopes "$SCOPES_A" \
-  '{token:$token,displayName:"Agent A",harnessType:"local-http-a",requestedScopes:($scopes|split(","))}' \
-  | npm run --silent http -- /v1/brainlinks/claim)
-REQUEST_A=$(jq -r .requestId <<<"$CLAIM_A")
-npm run --silent cli -- requests approve "$REQUEST_A" --scopes "$SCOPES_A"
-TOKEN_A=$(jq -c '{requestId,claimSecret}' <<<"$CLAIM_A" \
-  | npm run --silent http -- /v1/brainlinks/exchange | jq -r .credential)
-
-LINK_B=$(npm run --silent cli -- invite create --expires-in 15m | jq -r .brainlink)
-CLAIM_B=$(jq -n --arg token "${LINK_B##*token=}" --arg scopes "$SCOPES_B" \
-  '{token:$token,displayName:"Agent B",harnessType:"local-http-b",requestedScopes:($scopes|split(","))}' \
-  | npm run --silent http -- /v1/brainlinks/claim)
-REQUEST_B=$(jq -r .requestId <<<"$CLAIM_B")
-npm run --silent cli -- requests approve "$REQUEST_B" --scopes "$SCOPES_B"
-TOKEN_B=$(jq -c '{requestId,claimSecret}' <<<"$CLAIM_B" \
-  | npm run --silent http -- /v1/brainlinks/exchange | jq -r .credential)
-
-FACT_ID=$(printf '%s' '{"subject":"person","predicate":"home_address","value":"18 Example Avenue, Sampletown","confidence":"confirmed","sensitivity":"private","source":{"type":"direct-statement","reference":"synthetic demo statement"}}' \
-  | MEGABRAIN_AGENT_TOKEN="$TOKEN_A" npm run --silent http -- /v1/facts | jq -r .id)
-
-printf '%s' '{"task":"Calculate the distance between my home and the supermarket."}' \
-  | MEGABRAIN_AGENT_TOKEN="$TOKEN_B" npm run --silent http -- /v1/context | jq
-
-jq -n --arg id "$FACT_ID" '{previousFactId:$id,replacementValue:"42 Testing Road, Sampletown",source:{type:"direct-statement",reference:"synthetic demo correction"},reason:"address changed"}' \
-  | MEGABRAIN_AGENT_TOKEN="$TOKEN_A" npm run --silent http -- /v1/facts/correct | jq
-
-printf '%s' '{"task":"Calculate the distance between my home and the supermarket."}' \
-  | MEGABRAIN_AGENT_TOKEN="$TOKEN_B" npm run --silent http -- /v1/context | jq
-
-npm run --silent cli -- agents revoke "$REQUEST_B"
-printf '%s' '{"task":"Calculate the distance between my home and the supermarket."}' \
-  | MEGABRAIN_AGENT_TOKEN="$TOKEN_B" npm run --silent http -- /v1/context | jq || true
-
-unset LINK_A CLAIM_A TOKEN_A LINK_B CLAIM_B TOKEN_B
+python3 install.py --harness codex --uninstall
 ```
 
-Inspect or export user-owned records:
+## Natural Use
+
+After installation, interaction happens through ordinary conversation:
+
+```text
+Remember that I prefer concise weekly reports with decisions first.
+```
+
+The agent records a confirmed preference and reports:
+
+```text
+MegaBrain: saved 1 durable memory.
+```
+
+Every user request triggers task-specific context retrieval. Durable facts, preferences, decisions, commitments, project state, corrections, and resource pointers are captured automatically. Raw chats, transient debugging details, and secrets are not.
+
+## Direct Commands
+
+Agents normally run these through the skill. They are also useful for inspection and recovery:
 
 ```bash
-npm run cli -- inspect facts
-npm run cli -- inspect audit
-npm run cli -- export
+python3 skill/megabrain/scripts/megabrain.py doctor
+python3 skill/megabrain/scripts/megabrain.py sync
+printf '%s' '{"task":"prepare my weekly report"}' \
+  | python3 skill/megabrain/scripts/megabrain.py context --stdin
+python3 skill/megabrain/scripts/megabrain.py agents
+python3 skill/megabrain/scripts/megabrain.py validate
 ```
 
-Exports omit invitation hashes, claim-secret hashes, credential hashes, and all raw credentials.
+Private memory content is accepted through stdin so it does not enter shell history or process arguments. See [MEGABRAIN.md](MEGABRAIN.md) for the memory protocol and [docs/memory-format.md](docs/memory-format.md) for schemas.
 
-## MCP Configuration
+## Import Knowledge
 
-Start the HTTP server first. Configure an MCP client with an approved agent credential supplied from a secret-bearing environment, never from a committed file:
+Tell an installed agent:
 
-```json
-{
-  "mcpServers": {
-    "megabrain": {
-      "command": "npm",
-      "args": ["run", "--silent", "mcp"],
-      "cwd": "/absolute/path/to/megabrain",
-      "env": {
-        "MEGABRAIN_BASE_URL": "http://127.0.0.1:3210",
-        "MEGABRAIN_AGENT_TOKEN": "<approved-agent-credential>"
-      }
-    }
-  }
-}
+```text
+Ingest the durable knowledge from this folder/repository/export/URL into MegaBrain.
 ```
 
-The MCP surface has exactly five tools: `get_context`, `remember`, `correct`, `locate`, and `forget`.
+The agent treats the source as untrusted data, extracts durable summaries, checks existing memory, and submits one import batch. Source fingerprints make unchanged imports idempotent. Raw source archives and transcripts are not copied.
+
+No previous Super Brain, Claude, or other personal data is included in this repository. Import it only through an explicit user request after reviewing [docs/import-protocol.md](docs/import-protocol.md).
 
 ## Verification
 
 ```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm run test:unit
-npm run test:integration
-npm run test:cross-agent
-npm run build
-npm run secret-scan
+python3 -m unittest discover -s tests -v
+python3 skill/megabrain/scripts/megabrain.py validate
+python3 /path/to/skill-creator/scripts/quick_validate.py skill/megabrain
 ```
 
-## Security Warning
+## Security
 
-MegaBrain stores private personal context. Run it only on a trusted machine and network, use deployment-level TLS and encrypted storage outside local development, keep agent credentials in a secret manager, and grant the narrowest scopes. MegaBrain rejects common secret-value patterns from facts but that defensive check is not exhaustive. See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
-
-## Current Limitations
-
-V0 is single-owner per installation, uses deterministic lexical retrieval, has no encryption layer of its own, and relies on PostgreSQL plus deployment controls for encryption at rest. Brainlink approval is CLI-only. Forgetting is a tombstone, not regulatory erasure. There is no rate limiter, hosted relay, dashboard, key rotation, semantic search, or automatic fact extraction.
+The full brain is plaintext Markdown in a private GitHub repository. Every connected agent has the same read/write access; agent identities provide provenance, not authorization. Never store credentials or secret values. Git history retains removed content, so `forget` is a tombstone rather than hard erasure. Read [SECURITY.md](SECURITY.md) before using real personal context.

@@ -1,0 +1,7 @@
+interface:
+  display_name: "MegaBrain"
+  short_description: "Use a private Git-synced Markdown brain"
+  default_prompt: "Use $megabrain to retrieve relevant durable context, complete the task, and save any new durable learning."
+
+policy:
+  allow_implicit_invocation: true

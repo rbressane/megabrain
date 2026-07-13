@@ -1,12 +1,18 @@
-node_modules/
+.DS_Store
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+.context/
+.megabrain/
+test-results/
 dist/
-coverage/
+node_modules/
+
+# MegaBrain knowledge must never be supplied through environment files.
 .env
 .env.*
-!.env.example
-*.log
-*.sqlite*
-*.db
-.DS_Store
-.context/
-test-results/
+*.pem
+*.key
+*.p12
+*.pfx

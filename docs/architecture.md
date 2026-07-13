@@ -1,9 +1,9 @@
 # Architecture
 
-MegaBrain V0 is one Fastify process backed by PostgreSQL 16. Zod contracts validate HTTP and MCP inputs. Drizzle provides typed database access and reviewed SQL migrations.
+MegaBrain has no running architecture. It is a private Git repository cloned once per agent environment.
 
-The administrator CLI connects directly to the local database for owner initialization, Brainlink creation, approval, denial, inspection, revocation, and export. Agent clients cross the HTTP boundary. The stdio MCP server exposes exactly five tools and forwards each call to the authenticated HTTP equivalent, keeping authorization and auditing in one core path.
+The installed skill calls a standard-library Python helper. `context` pulls, resolves the immutable memory graph, and performs lexical task matching. Write operations pull, create new Markdown files, validate and secret-scan them, commit only those files, and push. Rejected pushes fetch, rebase, and retry because unique memory filenames normally merge without conflict.
 
-Brainlink claim creates a pending agent and a one-time claim secret. Approval selects scopes. Credential exchange generates the long-lived credential only once, returns it to the claimant, and stores only its hash. Every protected request authenticates, checks live agent status, checks operation scope, filters sensitivity, and writes value-free audit events.
+Each clone stores an ignored `.megabrain/local.json` identity. The corresponding public provenance record lives under `brain/agents/`. Skill links and global instruction markers cause Codex, Claude Code, and Hermes to invoke the same protocol.
 
-Facts are structured JSON records. One active value per owner/subject/predicate avoids ambiguous single-valued state. Corrections supersede the active row and insert its replacement in one transaction. Context compilation scans only current rows and applies deterministic token and alias scoring.
+If GitHub is unavailable, reads use the last local state and writes remain committed locally. A later brain operation retries synchronization. Unexpected tracked changes block automatic rebasing.

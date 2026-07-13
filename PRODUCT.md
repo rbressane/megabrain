@@ -1,37 +1,28 @@
 # MegaBrain Product
 
-## Thesis
+## Promise
 
-MegaBrain is a private, user-owned personal context service for AI agents: teach one authorized agent and every authorized agent can retrieve the current, task-relevant context.
+Teach one connected agent; every connected agent can use the same current context without a server or database.
 
-The target user works across multiple agent harnesses or models and wants durable context without binding it to one vendor. Useful examples include a home address used for routing, a corrected writing preference, or the location of a project document. Credentials are represented only by external references; MegaBrain never acts as a secret manager.
+## V1 Product
+
+MegaBrain is a local-first replicated Markdown repository for one person. Each trusted agent has its own clone and stable identity. A universal skill synchronizes through private GitHub, retrieves task-relevant current memory, and captures durable learning during normal conversation.
 
 ## Principles
 
-1. The user is central; agents are replaceable clients.
-2. Teach once, use everywhere.
-3. Return task-specific context, not memory dumps.
-4. Preserve provenance and correction history.
-5. Keep data private by default.
-6. Store secret references, never secret values.
-7. Use an agent-agnostic MCP and HTTP protocol.
-8. Keep user data inspectable, exportable, correctable, and forgettable.
-9. Audit writes, access decisions, denial, correction, and revocation.
-10. Add complexity only when an acceptance test requires it.
+1. The person owns the brain; agents are replaceable replicas and contributors.
+2. Local reads continue when GitHub is unavailable.
+3. Git is synchronization and audit history, not a database server.
+4. Immutable entries make concurrent writes safe and correction history visible.
+5. Context is task-specific rather than a memory dump.
+6. Natural conversation is the primary interface.
+7. Imports extract durable knowledge instead of copying archives.
+8. Secrets never enter the brain.
 
-## V0 Scope And Acceptance
+## V1 Acceptance
 
-V0 proves that two independently authenticated clients can claim separately approved Brainlinks, share a confirmed private fact over HTTP, observe an atomic correction, and lose access immediately after revocation. It includes five MCP operations, an HTTP service, PostgreSQL migrations, a local administrator CLI, scoped resource references, portable export, and value-free audits.
-
-Acceptance is the live-boundary test in `tests/cross-agent/portability.test.ts`, plus permission, replay, secret rejection, and current-fact tests.
+Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories.
 
 ## Non-goals
 
-V0 is not a notes app, dashboard, knowledge graph, generic RAG system, chatbot, hosted relay, billing system, document ingestion service, secret retrieval system, or autonomous memory process. It performs no embeddings, vector search, server-side LLM extraction, personality simulation, or provider-specific agent adaptation.
-
-## Future Hypotheses, Not Commitments
-
-- Human approval may move to a web or messaging interface without changing Brainlink semantics.
-- Credential rotation, rate limiting, hard deletion workflows, and stronger encrypted storage may be required for hosted use.
-- Better deterministic matching or semantic retrieval may be justified by measured retrieval failures.
-- Multi-owner tenancy may be useful after the single-owner security model is proven.
+V1 does not provide a web UI, hosted service, database, background synchronization daemon, embeddings, semantic search, access tiers, raw transcript storage, secret management, hard regulatory erasure, or automatic migration from previous brains.
