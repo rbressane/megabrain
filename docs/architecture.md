@@ -1,9 +1,21 @@
 # Architecture
 
-MegaBrain has no running architecture. It is a private Git repository cloned once per agent environment.
+MegaBrain has no running service. It consists of a versioned local runtime and isolated clones of one private data repository.
 
-The installed skill calls a standard-library Python helper. `context` pulls, resolves the immutable memory graph, and performs lexical task matching. Write operations pull, create new Markdown files, validate and secret-scan them, commit only those files, and push. Rejected pushes fetch, rebase, and retry because unique memory filenames normally merge without conflict.
+## Runtime
 
-Each clone stores an ignored `.megabrain/local.json` identity. The corresponding public provenance record lives under `brain/agents/`. Skill links and global instruction markers cause Codex, Claude Code, and Hermes to invoke the same protocol.
+The official product repository publishes stable Git tags. Setup copies a selected release under `~/.megabrain/runtime/releases/<version>` and atomically points `~/.megabrain/runtime/current` at it. Harness skill links point through `current`, so a validated release switch takes effect without editing a live runtime. Failed downloads or validation leave the current release active.
 
-If GitHub is unavailable, reads use the last local state and writes remain committed locally. A later brain operation retries synchronization. Unexpected tracked changes block automatic rebasing.
+The runtime checks for compatible releases at most once per day during normal context retrieval. It never follows `main`. Major updates require approval, and an explicit version can be activated for recovery.
+
+## Private Brain
+
+Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, private-brain documentation, and a validation workflow. They do not contain the executable product runtime.
+
+The installed helper pulls before context retrieval, resolves the immutable memory graph, and performs lexical task matching. Write operations create new Markdown records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared memory files.
+
+Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
+
+## Compatibility
+
+`skill/megabrain/runtime.json` declares the installed version and supported protocol. A private brain's `megabrain.json` declares its protocol and minimum runtime. A runtime may read a compatible older protocol but refuses new writes when it is below the brain's minimum version. Runtime updates never migrate or rewrite memory files.

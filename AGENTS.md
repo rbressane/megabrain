@@ -1,11 +1,11 @@
 # Repository Instructions
 
-This is a private, local-first Markdown brain. Read [MEGABRAIN.md](MEGABRAIN.md) before changing its protocol or helper.
+This is the canonical MegaBrain product and protocol repository. Personal memories live only in separate private user repositories. Read [MEGABRAIN.md](MEGABRAIN.md) before changing the protocol, runtime, or helper.
 
 ## Commands
 
 - Tests: `python3 -m unittest discover -s tests -v`
-- Validate brain: `python3 skill/megabrain/scripts/megabrain.py validate`
+- Validate brain seed: `MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate`
 - Bootstrap help: `python3 skill/megabrain/scripts/bootstrap.py --help`
 - Generate browser without opening: `python3 skill/megabrain/scripts/megabrain.py browse --no-open`
 - Validate skill with the `skill-creator` quick validator when it is available.

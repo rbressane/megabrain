@@ -1,0 +1,9 @@
+name: Validate MegaBrain data
+description: Validate a private MegaBrain repository without reading or printing memory values
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MEGABRAIN_ROOT: ${{ github.workspace }}
+      run: python3 "$GITHUB_ACTION_PATH/../../../skill/megabrain/scripts/megabrain.py" validate

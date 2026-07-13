@@ -47,6 +47,7 @@ class BrainNetwork:
         self.remote = self.root / "megabrain.git"
         self.homes: dict[str, Path] = {}
         self.clones: dict[str, Path] = {}
+        self.harnesses: dict[str, str] = {}
         self._create_seed()
 
     def close(self) -> None:
@@ -54,22 +55,12 @@ class BrainNetwork:
 
     def _create_seed(self) -> None:
         self.seed.mkdir()
-        for name in (
-            ".gitignore",
-            "AGENTS.md",
-            "MEGABRAIN.md",
-            "PRODUCT.md",
-            "README.md",
-            "SECURITY.md",
-            "install.py",
-        ):
-            shutil.copy2(SOURCE_ROOT / name, self.seed / name)
-        for directory in ("brain", "docs", "skill", ".github"):
-            shutil.copytree(
-                SOURCE_ROOT / directory,
-                self.seed / directory,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
+        shutil.copytree(
+            SOURCE_ROOT / "skill" / "megabrain" / "seed",
+            self.seed,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
         run(["git", "init", "--initial-branch=main"], self.seed)
         run(["git", "config", "user.name", "MegaBrain Tests"], self.seed)
         run(["git", "config", "user.email", "tests@example.invalid"], self.seed)
@@ -80,23 +71,25 @@ class BrainNetwork:
         run(["git", "push", "-u", "origin", "main"], self.seed)
 
     def clone(self, name: str, harness: str | None = None) -> Path:
-        clone = self.root / name
         home = self.root / f"home-{name}"
         home.mkdir()
+        self.homes[name] = home
+        if harness:
+            self.install(name, harness)
+            return self.clones[name]
+        clone = self.root / name
         run(["git", "clone", str(self.remote), str(clone)], self.root)
         run(["git", "config", "user.name", f"Test {name}"], clone)
         run(["git", "config", "user.email", f"{name}@example.invalid"], clone)
         self.clones[name] = clone
-        self.homes[name] = home
-        if harness:
-            self.install(name, harness)
         return clone
 
     def install(self, name: str, harness: str, *extra: str) -> subprocess.CompletedProcess[str]:
-        return run(
+        completed = run(
             [
                 "python3",
-                "install.py",
+                str(SOURCE_ROOT / "install.py"),
+                "setup",
                 "--harness",
                 harness,
                 "--display-name",
@@ -104,10 +97,18 @@ class BrainNetwork:
                 "--home",
                 str(self.homes[name]),
                 "--allow-local-remote",
+                "--repository",
+                str(self.remote),
+                "--distribution",
+                str(SOURCE_ROOT),
+                "--no-open",
                 *extra,
             ],
-            self.clones[name],
+            SOURCE_ROOT,
         )
+        self.harnesses[name] = harness
+        self.clones[name] = self.homes[name] / ".megabrain" / "clones" / harness
+        return completed
 
     def command(
         self,
@@ -118,10 +119,16 @@ class BrainNetwork:
         expected: int = 0,
     ) -> dict:
         completed = run(
-            ["python3", "skill/megabrain/scripts/megabrain.py", command, *arguments],
+            [
+                "python3",
+                str(self.homes[name] / f".{self.harnesses[name]}" / "skills" / "megabrain" / "scripts" / "megabrain.py"),
+                command,
+                *arguments,
+            ],
             self.clones[name],
             stdin=payload,
             expected=expected,
+            env={"HOME": str(self.homes[name])},
         )
         output = completed.stdout if completed.stdout.strip() else completed.stderr
         return json.loads(output)
@@ -159,21 +166,38 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         first = self.network.install("codex", "codex")
         second = self.network.install("codex", "codex")
 
-        self.assertIn("installed for codex", first.stdout)
-        self.assertIn("already registered", second.stdout)
+        first_result = json.loads(first.stdout)
+        second_result = json.loads(second.stdout)
+        self.assertEqual(first_result["message"], "MegaBrain is ready.")
+        self.assertFalse(second_result["registered"])
         text = instructions.read_text(encoding="utf-8")
         self.assertEqual(text.count("<!-- MEGABRAIN:START -->"), 1)
         self.assertIn("# Existing instructions", text)
         link = home / ".codex" / "skills" / "megabrain"
         self.assertTrue(link.is_symlink())
+        clone = self.network.clones["codex"]
         identity = json.loads((clone / ".megabrain" / "local.json").read_text(encoding="utf-8"))
         self.assertTrue((clone / "brain" / "agents" / f"{identity['id']}.md").exists())
+        self.assertIn((home / ".megabrain" / "runtime").resolve(), link.resolve().parents)
+        self.assertFalse((clone / "skill").exists())
 
-        self.network.install("codex", "codex", "--uninstall")
+        doctor = self.network.command("codex", "doctor", expected=1)
+        disconnected = run(
+            [
+                "python3",
+                str(home / ".megabrain" / "runtime" / "current" / "skill" / "megabrain" / "scripts" / "bootstrap.py"),
+                "disconnect",
+                "--harness",
+                "codex",
+                "--home",
+                str(home),
+            ],
+            home,
+        )
+        self.assertEqual(json.loads(disconnected.stdout)["message"], "MegaBrain is disconnected from this agent.")
         self.assertFalse(link.exists())
         self.assertEqual(instructions.read_text(encoding="utf-8"), "# Existing instructions\n")
         self.assertTrue((clone / ".megabrain" / "local.json").exists())
-        doctor = self.network.command("codex", "doctor", expected=1)
         self.assertTrue(doctor["checks"]["python"]["ok"])
         self.assertTrue(doctor["checks"]["git"]["ok"])
         self.assertTrue(doctor["checks"]["identity"]["ok"])
@@ -552,24 +576,18 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         remote = self.network.root / "consumer-brain.git"
         run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
 
-        codex_skill = home / ".codex" / "skills" / "megabrain"
-        claude_skill = home / ".claude" / "skills" / "megabrain"
-        for destination in (codex_skill, claude_skill):
-            destination.parent.mkdir(parents=True)
-            shutil.copytree(
-                SOURCE_ROOT / "skill" / "megabrain",
-                destination,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
-
-        def bootstrap(skill: Path, command: str, *extra: str) -> dict:
+        def bootstrap(command: str, harness: str, *extra: str) -> dict:
+            distribution = ["--distribution", str(SOURCE_ROOT)] if command in {"setup", "connect"} else []
             completed = run(
                 [
                     "python3",
-                    str(skill / "scripts" / "bootstrap.py"),
+                    str(SOURCE_ROOT / "install.py"),
                     command,
+                    "--harness",
+                    harness,
                     "--home",
                     str(home),
+                    *distribution,
                     *extra,
                 ],
                 home,
@@ -577,16 +595,16 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             return json.loads(completed.stdout)
 
         first = bootstrap(
-            codex_skill,
             "setup",
+            "codex",
             "--repository",
             str(remote),
             "--allow-local-remote",
             "--no-open",
         )
         second = bootstrap(
-            codex_skill,
             "setup",
+            "codex",
             "--repository",
             str(remote),
             "--allow-local-remote",
@@ -597,24 +615,24 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertEqual(first["harness"], "codex")
         self.assertTrue(first["clone_created"])
         self.assertTrue(first["identity_created"])
-        self.assertFalse(first["skill_linked"])
         self.assertFalse(second["clone_created"])
         self.assertFalse(second["identity_created"])
         self.assertFalse(second["registered"])
         codex_clone = home / ".megabrain" / "clones" / "codex"
         self.assertTrue((codex_clone / "brain" / "memories" / ".gitkeep").exists())
         self.assertEqual(list((codex_clone / "brain" / "memories").rglob("*.md")), [])
-        self.assertFalse((codex_clone / "skill" / "megabrain" / "seed").exists())
+        self.assertFalse((codex_clone / "skill").exists())
         self.assertEqual((home / ".megabrain" / "config.json").stat().st_mode & 0o777, 0o600)
-        self.assertTrue(codex_skill.is_dir())
-        self.assertFalse(codex_skill.is_symlink())
+        codex_skill = home / ".codex" / "skills" / "megabrain"
+        self.assertTrue(codex_skill.is_symlink())
+        self.assertIn((home / ".megabrain" / "runtime").resolve(), codex_skill.resolve().parents)
         codex_instructions = home / ".codex" / "AGENTS.md"
         self.assertEqual(codex_instructions.read_text(encoding="utf-8").count("<!-- MEGABRAIN:START -->"), 1)
 
-        status = bootstrap(codex_skill, "status")
+        status = bootstrap("status", "codex")
         self.assertTrue(status["ready"])
         self.assertTrue(status["sync"]["synced"])
-        opened = bootstrap(codex_skill, "open", "--no-open")
+        opened = bootstrap("open", "codex", "--no-open")
         self.assertTrue(opened["generated"])
         self.assertTrue(Path(opened["path"]).exists())
 
@@ -636,12 +654,13 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertTrue(json.loads(remembered.stdout)["created"])
 
         connected = bootstrap(
-            claude_skill,
             "connect",
+            "claude",
             "--no-open",
         )
         self.assertEqual(connected["harness"], "claude")
         self.assertTrue(connected["clone_created"])
+        claude_skill = home / ".claude" / "skills" / "megabrain"
         retrieved = run(
             ["python3", str(claude_skill / "scripts" / "megabrain.py"), "context", "--stdin"],
             home,
@@ -651,10 +670,10 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         summaries = [item["summary"] for item in json.loads(retrieved.stdout)["memories"]]
         self.assertEqual(summaries, ["Use decisions first in the synthetic report."])
 
-        disconnected = bootstrap(codex_skill, "disconnect")
+        disconnected = bootstrap("disconnect", "codex")
         self.assertEqual(disconnected["message"], "MegaBrain is disconnected from this agent.")
         self.assertTrue(disconnected["local_clone_retained"])
-        self.assertTrue(codex_skill.is_dir())
+        self.assertFalse(codex_skill.exists())
         self.assertTrue(
             not codex_instructions.exists()
             or "<!-- MEGABRAIN:START -->" not in codex_instructions.read_text(encoding="utf-8")
@@ -662,13 +681,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
     def test_consumer_bootstrap_creates_a_private_github_repository(self) -> None:
         home = self.network.root / "github-consumer-home"
-        skill = home / ".codex" / "skills" / "megabrain"
-        skill.parent.mkdir(parents=True)
-        shutil.copytree(
-            SOURCE_ROOT / "skill" / "megabrain",
-            skill,
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
+        home.mkdir()
         fake_bin = self.network.root / "fake-bin"
         fake_bin.mkdir()
         fake_gh = fake_bin / "gh"
@@ -723,10 +736,14 @@ raise SystemExit(1)
         completed = run(
             [
                 "python3",
-                str(skill / "scripts" / "bootstrap.py"),
+                str(SOURCE_ROOT / "install.py"),
                 "setup",
+                "--harness",
+                "codex",
                 "--home",
                 str(home),
+                "--distribution",
+                str(SOURCE_ROOT),
                 "--no-open",
             ],
             home,
@@ -735,14 +752,163 @@ raise SystemExit(1)
 
         result = json.loads(completed.stdout)
         self.assertTrue(result["repository_created"])
-        self.assertEqual(result["repository"], "synthetic-user/megabrain")
+        self.assertEqual(result["repository"], "synthetic-user/megabrain-data")
         self.assertEqual(result["message"], "MegaBrain is ready.")
         log = (self.network.root / "gh.log").read_text(encoding="utf-8")
-        self.assertIn("repo create synthetic-user/megabrain --private", log)
+        self.assertIn("repo create synthetic-user/megabrain-data --private", log)
         self.assertNotIn("--public", log)
         config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
-        self.assertEqual(config["repository"], "synthetic-user/megabrain")
+        self.assertEqual(config["repository"], "synthetic-user/megabrain-data")
         self.assertTrue((self.network.root / "created-private.git" / "refs" / "heads" / "main").exists())
+
+    def test_versioned_runtime_updates_and_rolls_back_without_touching_memories(self) -> None:
+        distribution_work = self.network.root / "distribution-work"
+        distribution_remote = self.network.root / "distribution.git"
+        shutil.copytree(
+            SOURCE_ROOT,
+            distribution_work,
+            ignore=shutil.ignore_patterns(".git", ".context", ".megabrain", "__pycache__", "*.pyc"),
+        )
+        run(["git", "init", "--initial-branch=main"], distribution_work)
+        run(["git", "config", "user.name", "MegaBrain Release Tests"], distribution_work)
+        run(["git", "config", "user.email", "releases@example.invalid"], distribution_work)
+        run(["git", "add", "."], distribution_work)
+        run(["git", "commit", "-m", "release: v1.0.0"], distribution_work)
+        run(["git", "tag", "v1.0.0"], distribution_work)
+
+        runtime_manifest = distribution_work / "skill" / "megabrain" / "runtime.json"
+        metadata = json.loads(runtime_manifest.read_text(encoding="utf-8"))
+        metadata["version"] = "1.1.0"
+        runtime_manifest.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        run(["git", "add", str(runtime_manifest.relative_to(distribution_work))], distribution_work)
+        run(["git", "commit", "-m", "release: v1.1.0"], distribution_work)
+        run(["git", "tag", "v1.1.0"], distribution_work)
+        run(["git", "init", "--bare", "--initial-branch=main", str(distribution_remote)], self.network.root)
+        run(["git", "remote", "add", "release", str(distribution_remote)], distribution_work)
+        run(["git", "push", "release", "main", "--tags"], distribution_work)
+        run(["git", "checkout", "v1.0.0"], distribution_work)
+
+        home = self.network.root / "update-home"
+        home.mkdir()
+        installed = run(
+            [
+                "python3", str(distribution_work / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(distribution_remote), "--no-open",
+            ],
+            distribution_work,
+        )
+        self.assertEqual(json.loads(installed.stdout)["runtime_version"], "1.0.0")
+        clone = home / ".megabrain" / "clones" / "codex"
+        helper = home / ".codex" / "skills" / "megabrain" / "scripts" / "megabrain.py"
+        remembered = run(
+            ["python3", str(helper), "remember", "--stdin"],
+            home,
+            stdin={
+                "kind": "fact", "subject": "update.synthetic_memory",
+                "summary": "The synthetic memory survives runtime changes.", "confidence": "confirmed",
+                "sensitivity": "general", "importance": "normal", "tags": ["update"],
+                "source": {"type": "user-statement"},
+            },
+            env={"HOME": str(home)},
+        )
+        memory_id = json.loads(remembered.stdout)["memory_id"]
+        bootstrap = home / ".megabrain" / "runtime" / "current" / "skill" / "megabrain" / "scripts" / "bootstrap.py"
+
+        updated = run(["python3", str(bootstrap), "update", "--home", str(home)], home)
+        update_result = json.loads(updated.stdout)
+        self.assertTrue(update_result["updated"])
+        self.assertEqual(update_result["notice"], "MegaBrain: updated to v1.1.0.")
+        self.assertEqual(json.loads((helper.resolve().parents[1] / "runtime.json").read_text())["version"], "1.1.0")
+
+        rolled_back = run(
+            ["python3", str(bootstrap), "update", "--home", str(home), "--version", "1.0.0"],
+            home,
+        )
+        self.assertEqual(json.loads(rolled_back.stdout)["current_version"], "1.0.0")
+        self.assertTrue(any(memory_id in path.name for path in (clone / "brain" / "memories").rglob("*.md")))
+        self.assertFalse((clone / "skill").exists())
+
+        update_state_path = home / ".megabrain" / "update-state.json"
+        update_state_path.unlink()
+        automatic = run(
+            ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
+            home,
+        )
+        self.assertEqual(json.loads(automatic.stdout)["current_version"], "1.1.0")
+        throttled = run(
+            ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
+            home,
+        )
+        self.assertEqual(json.loads(throttled.stdout)["reason"], "check_not_due")
+
+    def test_outdated_runtime_can_read_but_refuses_new_writes(self) -> None:
+        clone = self.network.clone("compatibility-agent", "codex")
+        manifest_path = clone / "megabrain.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["minimum_runtime"] = "9.0.0"
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        run(["git", "add", "megabrain.json"], clone)
+        run(["git", "commit", "-m", "test: require a newer runtime"], clone)
+        run(["git", "push", "origin", "HEAD:main"], clone)
+
+        context = self.network.command("compatibility-agent", "context", {"task": "read synthetic context"}, "--stdin")
+        self.assertTrue(context["ok"])
+        rejected = self.network.command(
+            "compatibility-agent",
+            "remember",
+            {
+                "kind": "fact", "subject": "compatibility.synthetic_write",
+                "summary": "This synthetic write must be rejected.", "confidence": "confirmed",
+                "sensitivity": "general", "importance": "normal", "tags": ["compatibility"],
+                "source": {"type": "user-statement"},
+            },
+            "--stdin",
+            expected=2,
+        )
+        self.assertEqual(rejected["error"]["code"], "RUNTIME_UPDATE_REQUIRED")
+
+    def test_setup_migrates_a_legacy_install_without_changing_memories(self) -> None:
+        clone = self.network.clone("legacy-agent", "codex")
+        remembered = self.network.remember(
+            "legacy-agent",
+            subject="migration.synthetic_memory",
+            summary="The synthetic memory survives installation migration.",
+            tags=["migration"],
+        )
+        manifest = clone / "megabrain.json"
+        manifest.unlink()
+        shutil.copytree(
+            SOURCE_ROOT / "skill" / "megabrain",
+            clone / "skill" / "megabrain",
+            ignore=shutil.ignore_patterns("seed", "__pycache__", "*.pyc"),
+        )
+        run(["git", "add", "-A"], clone)
+        run(["git", "commit", "-m", "test: simulate legacy product-coupled clone"], clone)
+        run(["git", "push", "origin", "HEAD:main"], clone)
+
+        home = self.network.homes["legacy-agent"]
+        config_path = home / ".megabrain" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config.pop("runtime")
+        config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        link = home / ".codex" / "skills" / "megabrain"
+        link.unlink()
+        link.symlink_to(clone / "skill" / "megabrain")
+
+        migrated = run(
+            [
+                "python3", str(SOURCE_ROOT / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(SOURCE_ROOT), "--no-open",
+            ],
+            SOURCE_ROOT,
+        )
+        result = json.loads(migrated.stdout)
+        self.assertTrue(result["manifest_created"])
+        self.assertTrue(manifest.exists())
+        self.assertIn((home / ".megabrain" / "runtime").resolve(), link.resolve().parents)
+        self.assertTrue(any(remembered["memory_id"] in path.name for path in (clone / "brain" / "memories").rglob("*.md")))
 
 
 if __name__ == "__main__":

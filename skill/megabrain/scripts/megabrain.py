@@ -23,6 +23,9 @@ from typing import Any, Iterable
 MEMORY_SCHEMA = "megabrain.memory.v1"
 AGENT_SCHEMA = "megabrain.agent.v1"
 IMPORT_SCHEMA = "megabrain.import.v1"
+BRAIN_SCHEMA = "megabrain.brain.v1"
+RUNTIME_SCHEMA = "megabrain.runtime.v1"
+SUPPORTED_PROTOCOL = 1
 KINDS = {
     "fact",
     "preference",
@@ -80,6 +83,69 @@ class Record:
     path: Path
     meta: dict[str, Any]
     body: str
+
+
+def semantic_version(value: Any) -> tuple[int, int, int] | None:
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value)
+    return tuple(map(int, match.groups())) if match else None
+
+
+def runtime_manifest() -> dict[str, Any]:
+    path = Path(__file__).resolve().parents[1] / "runtime.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise BrainError("RUNTIME_INVALID", "MegaBrain runtime metadata is invalid") from error
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != RUNTIME_SCHEMA
+        or semantic_version(value.get("version")) is None
+        or value.get("protocol_version") != SUPPORTED_PROTOCOL
+    ):
+        raise BrainError("RUNTIME_INVALID", "MegaBrain runtime metadata is invalid")
+    return value
+
+
+def brain_manifest(root: Path) -> dict[str, Any]:
+    path = root / "megabrain.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise BrainError("BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid") from error
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != BRAIN_SCHEMA
+        or not isinstance(value.get("protocol_version"), int)
+        or semantic_version(value.get("minimum_runtime")) is None
+    ):
+        raise BrainError("BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid")
+    return value
+
+
+def require_compatible_runtime(root: Path, *, writing: bool) -> dict[str, Any]:
+    brain = brain_manifest(root)
+    runtime = runtime_manifest()
+    if brain["protocol_version"] > runtime["protocol_version"]:
+        raise BrainError(
+            "PROTOCOL_UPDATE_REQUIRED",
+            "This brain requires a newer MegaBrain protocol",
+            {"brain_protocol": brain["protocol_version"], "runtime_protocol": runtime["protocol_version"]},
+        )
+    if writing and semantic_version(runtime["version"]) < semantic_version(brain["minimum_runtime"]):
+        raise BrainError(
+            "RUNTIME_UPDATE_REQUIRED",
+            "Update MegaBrain before writing to this brain",
+            {"minimum_runtime": brain["minimum_runtime"], "runtime_version": runtime["version"]},
+        )
+    return {"brain": brain, "runtime": runtime}
+
+
+def runtime_can_write(compatibility: dict[str, Any]) -> bool:
+    return semantic_version(compatibility["runtime"]["version"]) >= semantic_version(
+        compatibility["brain"]["minimum_runtime"]
+    )
 
 
 def utc_now() -> str:
@@ -429,7 +495,7 @@ def push_with_retry(root: Path, attempts: int = 3) -> tuple[bool, str | None]:
     return False, "push_rejected"
 
 
-def sync_repo(root: Path) -> dict[str, Any]:
+def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
     if not is_git_repo(root):
         return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
     dirty = changed_files(root)
@@ -456,6 +522,15 @@ def sync_repo(root: Path) -> dict[str, Any]:
             "stale": True,
             "reason": "validation_failed",
             "error_count": len(validation["errors"]),
+        }
+    if not allow_push:
+        ahead = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
+        pending = ahead.returncode != 0 or ahead.stdout.strip() != "0"
+        return {
+            "synced": not pending,
+            "stale": pending,
+            "reason": "runtime_update_required" if pending else None,
+            "pending_local_commits": pending,
         }
     pushed, reason = push_with_retry(root)
     if not pushed:
@@ -654,16 +729,21 @@ def command_validate(root: Path) -> dict[str, Any]:
     agents: list[Record] = []
     imports: list[Record] = []
     required_paths = (
+        root / "megabrain.json",
         root / "brain" / "memories",
         root / "brain" / "agents",
         root / "brain" / "imports",
-        root / "skill" / "megabrain" / "SKILL.md",
-        root / "skill" / "megabrain" / "scripts" / "megabrain.py",
-        root / "skill" / "megabrain" / "assets" / "browser.html",
     )
     for path in required_paths:
         if not path.exists():
             errors.append({"path": relative(root, path), "message": "required repository path is missing"})
+    if (root / "megabrain.json").exists():
+        try:
+            manifest = brain_manifest(root)
+            if manifest["protocol_version"] > SUPPORTED_PROTOCOL:
+                errors.append({"path": "megabrain.json", "message": "brain protocol requires a newer runtime"})
+        except BrainError as error:
+            errors.append({"path": "megabrain.json", "message": error.message})
     for path, validator, destination in (
         *((path, validate_memory, memories) for path in memory_files(root)),
         *((path, validate_agent, agents) for path in agent_files(root)),
@@ -741,10 +821,11 @@ def command_validate(root: Path) -> dict[str, Any]:
 
 
 def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str, Any]:
+    compatibility = require_compatible_runtime(root, writing=False)
     task = payload.get("task")
     if not isinstance(task, str) or not task.strip():
         raise BrainError("INVALID_TASK", "task must be a non-empty string")
-    sync = sync_repo(root)
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     if sync.get("reason") == "validation_failed":
         raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
     records = load_memories(root)
@@ -800,6 +881,7 @@ def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str
 
 
 def command_remember(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
     sync = sync_repo(root)
     require_clean_or_offline(sync)
@@ -830,6 +912,7 @@ def find_memory(root: Path, memory_id: str) -> tuple[Record, bool]:
 
 
 def command_correct(root: Path, memory_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
     sync = sync_repo(root)
     require_clean_or_offline(sync)
@@ -864,6 +947,7 @@ def command_correct(root: Path, memory_id: str, payload: dict[str, Any]) -> dict
 
 
 def command_forget(root: Path, memory_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
     sync = sync_repo(root)
     require_clean_or_offline(sync)
@@ -910,6 +994,7 @@ def prior_import(root: Path, source: dict[str, str]) -> Record | None:
 
 
 def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
     sync = sync_repo(root)
     require_clean_or_offline(sync)
@@ -1130,7 +1215,8 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
 
 
 def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
-    sync = sync_repo(root)
+    compatibility = require_compatible_runtime(root, writing=False)
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     validation = command_validate(root)
     if not validation["ok"]:
         raise BrainError(
@@ -1191,9 +1277,40 @@ def command_doctor(root: Path) -> dict[str, Any]:
     elif remote and not repository:
         privacy = {"ok": False, "status": "non_github_remote"}
     checks["privacy"] = privacy
+    try:
+        compatibility = require_compatible_runtime(root, writing=False)
+        checks["compatibility"] = {
+            "ok": runtime_can_write(compatibility),
+            "runtime_version": compatibility["runtime"]["version"],
+            "minimum_runtime": compatibility["brain"]["minimum_runtime"],
+            "protocol_version": compatibility["brain"]["protocol_version"],
+        }
+    except BrainError as error:
+        checks["compatibility"] = {"ok": False, "reason": error.code.lower()}
     validation = command_validate(root)
     checks["validation"] = {"ok": validation["ok"], "errors": len(validation["errors"]), "warnings": len(validation["warnings"])}
     return {"ok": all(check["ok"] for check in checks.values()), "checks": checks}
+
+
+def automatic_runtime_update() -> dict[str, Any] | None:
+    resolved = Path(__file__).resolve()
+    runtime_root = Path.home() / ".megabrain" / "runtime"
+    if runtime_root not in resolved.parents or not (Path.home() / ".megabrain" / "config.json").exists():
+        return None
+    checked = subprocess.run(
+        [sys.executable, str(resolved.with_name("bootstrap.py")), "update", "--automatic"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    output = checked.stdout if checked.stdout.strip() else checked.stderr
+    try:
+        result = json.loads(output)
+    except json.JSONDecodeError:
+        return {"updated": False, "reason": "update_check_failed"}
+    if checked.returncode != 0:
+        return {"updated": False, "reason": str(result.get("error", {}).get("code", "update_check_failed")).lower()}
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1225,8 +1342,10 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     try:
+        runtime_update = automatic_runtime_update() if args.command == "context" else None
         root = repo_root()
         if args.command == "sync":
+            require_compatible_runtime(root, writing=True)
             sync = sync_repo(root)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}
         elif args.command == "context":
@@ -1252,6 +1371,12 @@ def main() -> int:
         else:
             parser.error("unknown command")
             return 2
+        if runtime_update and (
+            runtime_update.get("updated")
+            or runtime_update.get("approval_required")
+            or runtime_update.get("stale")
+        ):
+            result["runtime_update"] = runtime_update
         emit(result)
         return 0 if result.get("ok", False) else 1
     except BrainError as error:
