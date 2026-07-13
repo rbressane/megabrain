@@ -6,7 +6,7 @@ Teach one connected agent; every connected agent can use the same current contex
 
 ## V1 Product
 
-MegaBrain is a local-first replicated Markdown repository for one person. Each trusted agent has its own clone and stable identity. A universal skill synchronizes through private GitHub, retrieves task-relevant current memory, and captures durable learning during normal conversation.
+MegaBrain combines a versioned local runtime with a replicated private Markdown repository for one person. Each trusted agent has its own data clone and stable identity. The universal skill synchronizes through private GitHub, retrieves task-relevant current memory, and captures durable learning during normal conversation.
 
 ## Principles
 
@@ -19,10 +19,12 @@ MegaBrain is a local-first replicated Markdown repository for one person. Each t
 7. Imports extract durable knowledge instead of copying archives.
 8. Secrets never enter the brain.
 9. Repository creation, clone paths, harness detection, identity registration, and validation are invisible onboarding details.
+10. The public product repository is the software source of truth; a user's private repository is their personal-data source of truth.
+11. Runtime updates are versioned, validated, reversible, and never modify memory records.
 
 ## V1 Acceptance
 
-One conversational setup action must create or connect the private repository and active agent without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories.
+One copied repository setup message must teach an unfamiliar agent how to install and connect MegaBrain without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories. Compatible runtime updates and rollback must leave memory files untouched.
 
 ## Non-goals
 

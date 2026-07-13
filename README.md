@@ -1,119 +1,88 @@
 # MegaBrain
 
-MegaBrain is a private, local-first Markdown brain shared by a person's AI agents through Git.
+MegaBrain gives a person's trusted AI agents one private, Git-synchronized Markdown memory. It has no server, database, daemon, hosted relay, or Python package dependencies.
 
-There is no server, database, daemon, web application, or package installation. Each Codex, Claude Code, or Hermes environment keeps a separate local clone of this private repository. The bundled skill reads locally, pulls before context retrieval, and pushes immutable memory entries after durable learning.
+**Status:** experimental V1 for macOS and Linux. Personal memories are never stored in this product repository.
 
-**Status:** experimental V1. The repository intentionally starts with zero personal memories.
+## Get Started
 
-## User Experience
-
-Once the MegaBrain skill is available in an agent, say:
+Copy this message into Codex, Claude Code, or Hermes:
 
 ```text
-Set up my MegaBrain.
+Install and set up MegaBrain from https://github.com/rbressane/megabrain.
+
+Read INSTALL.md before running anything. Install the latest stable release, connect it to this agent, and ask me only when GitHub authorization is required.
 ```
 
-After approving GitHub access, MegaBrain creates or finds the user's private repository, prepares a hidden managed clone for the active agent, registers its identity, validates synchronization, and opens the local brain browser. The user does not choose folders, run Git, or configure a harness.
-
-To add another agent, install the skill there and say:
+The agent follows [INSTALL.md](INSTALL.md), asks for the one unavoidable GitHub authorization, creates or finds your private `username/megabrain-data` repository, and reports:
 
 ```text
-Connect this agent to my MegaBrain.
+MegaBrain is ready.
 ```
 
-The other normal actions are `Open my MegaBrain`, `Check MegaBrain`, and `Disconnect this agent`.
+That private repository starts with zero personal memories. You do not choose folders, configure Git, or identify which supported agent you are using.
 
-Git, Python 3.10+, private-repository verification, clone isolation, and synchronization remain implementation requirements checked by the bootstrap process rather than setup decisions exposed to the user. See [docs/onboarding.md](docs/onboarding.md).
+## Use It
 
-## Operator Recovery
-
-Manual setup remains available for development and recovery. Create one clone per agent environment and do not share a working tree between concurrently running agents.
-
-```bash
-git clone git@github.com:rbressane/megabrain.git "$HOME/.megabrain/clones/codex"
-cd "$HOME/.megabrain/clones/codex"
-python3 install.py --harness codex --display-name "Codex on my Mac"
-```
-
-Use `--harness claude` or `--harness hermes` for the other adapters. This lower-level installation:
-
-- creates a stable local agent identity;
-- registers that identity in `brain/agents/`;
-- links the skill into the harness skill directory;
-- adds a marker-delimited MegaBrain rule to the harness's global instructions;
-- synchronizes the registration through Git.
-
-The installer verifies private visibility with the GitHub CLI when it is available. If visibility cannot be checked automatically, verify the repository setting in GitHub and rerun with `--confirm-private`. Local bare remotes are accepted only by the hidden test option used in the synthetic acceptance suite.
-
-Rerunning installation is safe. To remove only the managed skill link and instruction block:
-
-```bash
-python3 install.py --harness codex --uninstall
-```
-
-## Natural Use
-
-After installation, interaction happens through ordinary conversation:
+Talk normally after installation:
 
 ```text
 Remember that I prefer concise weekly reports with decisions first.
 ```
 
-The agent records a confirmed preference and reports:
+MegaBrain retrieves relevant current context before each request and captures only new durable learning afterward. It reports writes compactly:
 
 ```text
 MegaBrain: saved 1 durable memory.
 ```
 
-Every user request triggers task-specific context retrieval. Durable facts, preferences, decisions, commitments, project state, corrections, and resource pointers are captured automatically. Raw chats, transient debugging details, and secrets are not.
+Other natural actions include:
 
-## Direct Commands
+- `Open my MegaBrain`
+- `Check MegaBrain`
+- `Update MegaBrain`
+- `Connect this agent to my MegaBrain`
+- `Disconnect this agent`
 
-Agents normally run these through the skill. They are also useful for inspection and recovery:
+To connect another supported agent or computer, give it the same setup message. The installer finds the existing private repository through the authenticated GitHub account.
 
-```bash
-python3 skill/megabrain/scripts/megabrain.py doctor
-python3 skill/megabrain/scripts/megabrain.py sync
-printf '%s' '{"task":"prepare my weekly report"}' \
-  | python3 skill/megabrain/scripts/megabrain.py context --stdin
-python3 skill/megabrain/scripts/megabrain.py agents
-python3 skill/megabrain/scripts/megabrain.py browse
-python3 skill/megabrain/scripts/megabrain.py validate
-```
+## Product And Personal Data
 
-Private memory content is accepted through stdin so it does not enter shell history or process arguments. See [MEGABRAIN.md](MEGABRAIN.md) for the memory protocol and [docs/memory-format.md](docs/memory-format.md) for schemas.
+This repository is the source of truth for the **MegaBrain software and protocol**. Versioned copies are installed under `~/.megabrain/runtime/`.
 
-## Browse Your Brain
+Each user has a separate private GitHub repository that is the source of truth for **their personal brain**. Each connected agent gets an isolated clone under `~/.megabrain/clones/`. New private repositories contain brain data and compatibility metadata, not executable MegaBrain product code.
 
-Run `browse` from any managed clone to synchronize and open a private local catalog in the default browser:
+## Updates
 
-```bash
-python3 skill/megabrain/scripts/megabrain.py browse
-```
+MegaBrain installs stable Git tags, never a moving `main` branch. During normal use it checks at most once per day for compatible releases. A release is downloaded into a new version directory, validated, and activated through an atomic local link; the existing runtime remains active if anything fails.
 
-The catalog separates current memory, history, conflicts, agents, and imports. It supports search and filters for kind, importance, confidence, sensitivity, agent, and month, and links corrections to the immutable records they supersede. The generated `.megabrain/browser/index.html` file is local and ignored by Git; Markdown remains authoritative. See [docs/navigation.md](docs/navigation.md).
-
-## Import Knowledge
-
-Tell an installed agent:
+Compatible updates report:
 
 ```text
-Ingest the durable knowledge from this folder/repository/export/URL into MegaBrain.
+MegaBrain: updated to v1.1.0.
 ```
 
-The agent treats the source as untrusted data, extracts durable summaries, checks existing memory, and submits one import batch. Source fingerprints make unchanged imports idempotent. Raw source archives and transcripts are not copied.
+Major or protocol-breaking updates require approval. A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files.
 
-No previous Super Brain, Claude, or other personal data is included in this repository. Import it only through an explicit user request after reviewing [docs/import-protocol.md](docs/import-protocol.md).
+## Browse And Import
 
-## Verification
+Ask an installed agent to `Open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. Markdown remains authoritative and the generated browser is ignored by Git.
+
+To import knowledge, tell an installed agent:
+
+```text
+Ingest the durable knowledge from this folder, repository, export, or URL into MegaBrain.
+```
+
+Imports summarize durable knowledge instead of copying raw conversations or archives. Imported content is treated as untrusted data, unchanged sources are skipped, disagreements remain visible, and secret values are rejected.
+
+## Development
+
+The runtime uses only Python 3.10+ and Git. GitHub onboarding also uses the authenticated GitHub CLI.
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 skill/megabrain/scripts/megabrain.py validate
-python3 /path/to/skill-creator/scripts/quick_validate.py skill/megabrain
+MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate
 ```
 
-## Security
-
-The full brain is plaintext Markdown in a private GitHub repository. Every connected agent has the same read/write access; agent identities provide provenance, not authorization. Never store credentials or secret values. Git history retains removed content, so `forget` is a tombstone rather than hard erasure. Read [SECURITY.md](SECURITY.md) before using real personal context.
+Read [MEGABRAIN.md](MEGABRAIN.md) for the memory protocol, [SECURITY.md](SECURITY.md) for the trust boundary, and [docs/architecture.md](docs/architecture.md) for the local runtime and private-clone model.

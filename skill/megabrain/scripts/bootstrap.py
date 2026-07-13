@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consumer onboarding for a private, local-first MegaBrain."""
+"""Consumer onboarding and versioned runtime management for MegaBrain."""
 
 from __future__ import annotations
 
@@ -10,8 +10,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ from typing import Any
 START_MARKER = "<!-- MEGABRAIN:START -->"
 END_MARKER = "<!-- MEGABRAIN:END -->"
 CONFIG_SCHEMA = "megabrain.user.v1"
+RUNTIME_SCHEMA = "megabrain.runtime.v1"
+BRAIN_SCHEMA = "megabrain.brain.v1"
+OFFICIAL_DISTRIBUTION = "https://github.com/rbressane/megabrain.git"
+UPDATE_INTERVAL = timedelta(hours=24)
 HARNESS_PATHS = {
     "codex": (".codex/skills/megabrain", ".codex/AGENTS.md"),
     "claude": (".claude/skills/megabrain", ".claude/CLAUDE.md"),
@@ -28,6 +33,7 @@ GITHUB_REMOTE = re.compile(
     r"(?:git@github\.com:|ssh://git@github\.com/|https://(?:[^@/]+@)?github\.com/)"
     r"(?P<repository>[^/]+/[^/.]+)(?:\.git)?$"
 )
+VERSION_PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
 class BootstrapError(Exception):
@@ -41,8 +47,27 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+def parse_timestamp(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def run(
+    command: list[str],
+    cwd: Path | None = None,
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, **(env or {})},
+    )
 
 
 def require_command(name: str) -> None:
@@ -50,12 +75,13 @@ def require_command(name: str) -> None:
         raise BootstrapError("REQUIREMENT_MISSING", f"MegaBrain requires {name} to be available.")
 
 
-def invoked_skill_root() -> Path:
-    return Path(os.path.abspath(__file__)).parents[1]
-
-
 def source_skill_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def source_distribution_root() -> Path | None:
+    candidate = source_skill_root().parents[1]
+    return candidate if (candidate / ".git").exists() else None
 
 
 def detect_harness(explicit: str | None) -> str:
@@ -64,9 +90,9 @@ def detect_harness(explicit: str | None) -> str:
     configured = os.environ.get("MEGABRAIN_HARNESS", "").lower()
     if configured in HARNESS_PATHS:
         return configured
-    parts = set(invoked_skill_root().parts)
+    invoked = Path(os.path.abspath(__file__))
     for harness in HARNESS_PATHS:
-        if f".{harness}" in parts:
+        if f".{harness}" in invoked.parts:
             return harness
     if any(os.environ.get(name) for name in ("CODEX_HOME", "CODEX_THREAD_ID", "CODEX_CI")):
         return "codex"
@@ -84,31 +110,168 @@ def config_path(home: Path) -> Path:
     return home / ".megabrain" / "config.json"
 
 
+def update_state_path(home: Path) -> Path:
+    return home / ".megabrain" / "update-state.json"
+
+
+def load_json(path: Path, code: str, message: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise BootstrapError(code, message) from error
+    if not isinstance(value, dict):
+        raise BootstrapError(code, message)
+    return value
+
+
 def load_config(home: Path, required: bool = False) -> dict[str, Any]:
     path = config_path(home)
     if not path.exists():
         if required:
             raise BootstrapError("SETUP_REQUIRED", "MegaBrain has not been set up for this user yet.")
         return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as error:
-        raise BootstrapError("CONFIG_INVALID", "The local MegaBrain configuration is invalid.") from error
-    if not isinstance(value, dict) or value.get("schema") != CONFIG_SCHEMA or not isinstance(value.get("clones", {}), dict):
+    value = load_json(path, "CONFIG_INVALID", "The local MegaBrain configuration is invalid.")
+    if value.get("schema") != CONFIG_SCHEMA or not isinstance(value.get("clones", {}), dict):
         raise BootstrapError("CONFIG_INVALID", "The local MegaBrain configuration is invalid.")
-    if re.match(r"https?://[^/@\s]+@", str(value.get("remote", ""))):
-        raise BootstrapError("CONFIG_INVALID", "Repository URLs containing credentials are forbidden.")
+    for remote in (value.get("remote"), value.get("runtime", {}).get("source") if isinstance(value.get("runtime"), dict) else None):
+        if remote and re.match(r"https?://[^/@\s]+@", str(remote)):
+            raise BootstrapError("CONFIG_INVALID", "Repository URLs containing credentials are forbidden.")
     return value
 
 
-def save_config(home: Path, value: dict[str, Any]) -> None:
-    path = config_path(home)
+def save_private_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     try:
         path.chmod(0o600)
     except OSError:
         pass
+
+
+def save_config(home: Path, value: dict[str, Any]) -> None:
+    save_private_json(config_path(home), value)
+
+
+def semantic_version(value: Any) -> tuple[int, int, int] | None:
+    if not isinstance(value, str):
+        return None
+    match = VERSION_PATTERN.fullmatch(value)
+    return tuple(map(int, match.groups())) if match else None
+
+
+def runtime_metadata(skill_root: Path) -> dict[str, Any]:
+    value = load_json(skill_root / "runtime.json", "RUNTIME_INVALID", "MegaBrain runtime metadata is invalid.")
+    if (
+        value.get("schema") != RUNTIME_SCHEMA
+        or semantic_version(value.get("version")) is None
+        or not isinstance(value.get("protocol_version"), int)
+        or value.get("automatic_updates") not in {"compatible", "disabled"}
+    ):
+        raise BootstrapError("RUNTIME_INVALID", "MegaBrain runtime metadata is invalid.")
+    return value
+
+
+def brain_metadata(root: Path) -> dict[str, Any]:
+    value = load_json(root / "megabrain.json", "BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid.")
+    if (
+        value.get("schema") != BRAIN_SCHEMA
+        or not isinstance(value.get("protocol_version"), int)
+        or semantic_version(value.get("minimum_runtime")) is None
+    ):
+        raise BootstrapError("BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid.")
+    return value
+
+
+def runtime_base(home: Path) -> Path:
+    return home / ".megabrain" / "runtime"
+
+
+def runtime_release(home: Path, version: str) -> Path:
+    return runtime_base(home) / "releases" / version.removeprefix("v")
+
+
+def current_runtime(home: Path) -> Path:
+    return runtime_base(home) / "current"
+
+
+def validate_runtime_release(root: Path, expected_version: str | None = None) -> dict[str, Any]:
+    skill = root / "skill" / "megabrain"
+    metadata = runtime_metadata(skill)
+    version = str(metadata["version"])
+    if expected_version and version != expected_version.removeprefix("v"):
+        raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
+    for relative in ("SKILL.md", "scripts/megabrain.py", "scripts/bootstrap.py", "assets/browser.html"):
+        path = skill / relative
+        if not path.is_file():
+            raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime is incomplete.")
+    for path in skill.rglob("*.py"):
+        try:
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
+        except (OSError, SyntaxError) as error:
+            raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime failed validation.") from error
+    return metadata
+
+
+def copy_runtime_release(source_skill: Path, target: Path) -> dict[str, Any]:
+    metadata = runtime_metadata(source_skill)
+    if target.exists():
+        return validate_runtime_release(target, str(metadata["version"]))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = target.parent / f".{target.name}-{uuid.uuid4().hex}"
+    try:
+        (staging / "skill").mkdir(parents=True)
+        shutil.copytree(
+            source_skill,
+            staging / "skill" / "megabrain",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        validate_runtime_release(staging, str(metadata["version"]))
+        staging.rename(target)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return metadata
+
+
+def activate_runtime(home: Path, version: str) -> Path:
+    target = runtime_release(home, version)
+    validate_runtime_release(target, version)
+    current = current_runtime(home)
+    current.parent.mkdir(parents=True, exist_ok=True)
+    temporary = current.parent / f".current-{uuid.uuid4().hex}"
+    temporary.symlink_to(Path("releases") / version.removeprefix("v"))
+    if current.exists() and not current.is_symlink():
+        temporary.unlink(missing_ok=True)
+        raise BootstrapError("RUNTIME_PATH_OCCUPIED", "MegaBrain's runtime location is occupied by another folder.")
+    os.replace(temporary, current)
+    return current
+
+
+def source_remote(requested: str | None) -> str:
+    remote = requested or os.environ.get("MEGABRAIN_DISTRIBUTION")
+    root = source_distribution_root()
+    if not remote and root:
+        result = run(["git", "remote", "get-url", "origin"], root)
+        if result.returncode == 0 and result.stdout.strip():
+            remote = result.stdout.strip()
+    remote = remote or OFFICIAL_DISTRIBUTION
+    if re.match(r"https?://[^/@\s]+@", remote):
+        raise BootstrapError("DISTRIBUTION_INVALID", "Distribution URLs containing credentials are forbidden.")
+    if not requested and not os.environ.get("MEGABRAIN_DISTRIBUTION"):
+        repository = github_repository(remote)
+        if repository and repository.lower() != "rbressane/megabrain":
+            raise BootstrapError("DISTRIBUTION_UNTRUSTED", "MegaBrain must be installed from the official repository.")
+    return remote
+
+
+def install_runtime(home: Path, distribution: str | None) -> tuple[Path, dict[str, Any], str]:
+    source = source_skill_root()
+    metadata = runtime_metadata(source)
+    version = str(metadata["version"])
+    target = runtime_release(home, version)
+    copy_runtime_release(source, target)
+    current = activate_runtime(home, version)
+    return current, metadata, source_remote(distribution)
 
 
 def github_repository(remote: str) -> str | None:
@@ -118,8 +281,7 @@ def github_repository(remote: str) -> str | None:
 
 def github_auth() -> str:
     require_command("gh")
-    auth = run(["gh", "auth", "status", "--hostname", "github.com"])
-    if auth.returncode != 0:
+    if run(["gh", "auth", "status", "--hostname", "github.com"]).returncode != 0:
         raise BootstrapError(
             "GITHUB_AUTH_REQUIRED",
             "GitHub authorization is required. Approve GitHub access, then retry MegaBrain setup.",
@@ -127,7 +289,7 @@ def github_auth() -> str:
     login = run(["gh", "api", "user", "--jq", ".login"])
     if login.returncode != 0 or not login.stdout.strip():
         raise BootstrapError("GITHUB_AUTH_REQUIRED", "The authenticated GitHub account could not be identified.")
-    run(["gh", "auth", "setup-git"], None)
+    run(["gh", "auth", "setup-git"])
     return login.stdout.strip()
 
 
@@ -147,11 +309,7 @@ def github_remote_for(repository: str) -> str:
     return str(details["url"]).rstrip("/") + ".git"
 
 
-def resolve_repository(
-    home: Path,
-    requested: str | None,
-    allow_local: bool,
-) -> tuple[str, str, bool]:
+def resolve_repository(home: Path, requested: str | None, allow_local: bool) -> tuple[str, str, bool]:
     existing = load_config(home)
     if requested:
         if re.match(r"https?://[^/@\s]+@", requested):
@@ -175,21 +333,23 @@ def resolve_repository(
             remote = github_remote_for(repository)
         return repository, remote, False
     login = github_auth()
-    repository = f"{login}/megabrain"
+    repository = f"{login}/megabrain-data"
     viewed = run(["gh", "repo", "view", repository, "--json", "visibility"])
     created = False
     if viewed.returncode != 0:
+        legacy = f"{login}/megabrain"
+        legacy_view = run(["gh", "repo", "view", legacy, "--json", "visibility"])
+        if legacy_view.returncode == 0:
+            try:
+                legacy_details = json.loads(legacy_view.stdout)
+            except json.JSONDecodeError:
+                legacy_details = {}
+            if str(legacy_details.get("visibility", "")).upper() == "PRIVATE":
+                return legacy, github_remote_for(legacy), False
         created_result = run(
             [
-                "gh",
-                "repo",
-                "create",
-                repository,
-                "--private",
-                "--disable-issues",
-                "--disable-wiki",
-                "--description",
-                "Private local-first Markdown memory for trusted AI agents",
+                "gh", "repo", "create", repository, "--private", "--disable-issues", "--disable-wiki",
+                "--description", "Private local-first Markdown memory for trusted AI agents",
             ]
         )
         if created_result.returncode != 0:
@@ -203,7 +363,7 @@ def normalize_remote(value: str) -> str:
     if repository:
         return repository.lower()
     path = Path(value).expanduser()
-    return str(path.resolve()) if path.exists() or value.startswith(('.', '/')) else value.rstrip("/")
+    return str(path.resolve()) if path.exists() or value.startswith((".", "/")) else value.rstrip("/")
 
 
 def clone_path(home: Path, harness: str) -> Path:
@@ -211,8 +371,7 @@ def clone_path(home: Path, harness: str) -> Path:
 
 
 def is_empty_repository(root: Path) -> bool:
-    result = run(["git", "rev-parse", "--verify", "HEAD"], root)
-    return result.returncode != 0
+    return run(["git", "rev-parse", "--verify", "HEAD"], root).returncode != 0
 
 
 def copy_seed(root: Path) -> None:
@@ -225,13 +384,6 @@ def copy_seed(root: Path) -> None:
         destination = root / source.relative_to(seed)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
-    destination_skill = root / "skill" / "megabrain"
-    shutil.copytree(
-        source_skill_root(),
-        destination_skill,
-        dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("seed", "__pycache__", "*.pyc"),
-    )
 
 
 def configure_git(root: Path, name: str, identity_id: str | None = None) -> None:
@@ -248,8 +400,7 @@ def seed_repository(root: Path) -> None:
     committed = run(["git", "commit", "-m", "feat: initialize private MegaBrain"], root)
     if added.returncode != 0 or committed.returncode != 0:
         raise BootstrapError("SEED_COMMIT_FAILED", "The initial private brain could not be committed.")
-    pushed = run(["git", "push", "-u", "origin", "main"], root)
-    if pushed.returncode != 0:
+    if run(["git", "push", "-u", "origin", "main"], root).returncode != 0:
         raise BootstrapError("SEED_PUSH_FAILED", "The initial private brain could not be synchronized to GitHub.")
 
 
@@ -257,8 +408,7 @@ def assert_clean(root: Path) -> None:
     status = run(["git", "status", "--porcelain", "--untracked-files=all"], root)
     if status.returncode != 0:
         raise BootstrapError("CLONE_INVALID", "The managed MegaBrain clone is not a Git repository.")
-    changed = [line[3:] for line in status.stdout.splitlines() if line.strip()]
-    if changed:
+    if any(line.strip() for line in status.stdout.splitlines()):
         raise BootstrapError("CLONE_DIRTY", "The managed MegaBrain clone has unexpected local edits.")
 
 
@@ -274,24 +424,36 @@ def ensure_clone(home: Path, harness: str, remote: str) -> tuple[Path, bool]:
         assert_clean(root)
     else:
         root.parent.mkdir(parents=True, exist_ok=True)
-        cloned = run(["git", "clone", remote, str(root)], root.parent)
-        if cloned.returncode != 0:
+        if run(["git", "clone", remote, str(root)], root.parent).returncode != 0:
             raise BootstrapError("CLONE_FAILED", "The private MegaBrain repository could not be cloned.")
         created = True
     if is_empty_repository(root):
         seed_repository(root)
     else:
-        remote_main = run(["git", "ls-remote", "--heads", "origin", "main"], root)
-        if remote_main.returncode == 0 and not remote_main.stdout.strip():
-            pushed = run(["git", "push", "-u", "origin", "HEAD:main"], root)
-            if pushed.returncode != 0:
-                raise BootstrapError("SEED_PUSH_FAILED", "The initial private brain could not be synchronized to GitHub.")
         fetched = run(["git", "fetch", "origin", "main"], root)
         rebased = run(["git", "rebase", "origin/main"], root) if fetched.returncode == 0 else fetched
         if rebased.returncode != 0:
             run(["git", "rebase", "--abort"], root)
             raise BootstrapError("SYNC_FAILED", "The private MegaBrain repository could not be synchronized.")
     return root, created
+
+
+def ensure_brain_manifest(root: Path) -> bool:
+    path = root / "megabrain.json"
+    if path.exists():
+        brain_metadata(root)
+        return False
+    source = source_skill_root() / "seed" / "megabrain.json"
+    if not source.exists():
+        raise BootstrapError("SEED_MISSING", "The MegaBrain compatibility manifest is missing.")
+    shutil.copy2(source, path)
+    run(["git", "add", "--", "megabrain.json"], root)
+    if run(["git", "commit", "-m", "chore: add brain compatibility manifest"], root).returncode != 0:
+        path.unlink(missing_ok=True)
+        raise BootstrapError("MIGRATION_FAILED", "The private brain compatibility manifest could not be committed.")
+    if not push_with_retry(root):
+        print("MegaBrain: compatibility manifest added locally; synchronization is pending.", file=sys.stderr)
+    return True
 
 
 def record_text(meta: dict[str, object], body: str) -> str:
@@ -301,19 +463,11 @@ def record_text(meta: dict[str, object], body: str) -> str:
 def load_or_create_identity(root: Path, harness: str, display_name: str) -> tuple[dict[str, str], bool]:
     path = root / ".megabrain" / "local.json"
     if path.exists():
-        try:
-            identity = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            raise BootstrapError("IDENTITY_INVALID", "The local agent identity is invalid.") from error
+        identity = load_json(path, "IDENTITY_INVALID", "The local agent identity is invalid.")
         if identity.get("harness") != harness:
             raise BootstrapError("IDENTITY_MISMATCH", "This clone belongs to another agent harness.")
-        return identity, False
-    identity = {
-        "id": str(uuid.uuid4()),
-        "harness": harness,
-        "display_name": display_name,
-        "created_at": utc_now(),
-    }
+        return {key: str(value) for key, value in identity.items()}, False
+    identity = {"id": str(uuid.uuid4()), "harness": harness, "display_name": display_name, "created_at": utc_now()}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return identity, True
@@ -321,8 +475,7 @@ def load_or_create_identity(root: Path, harness: str, display_name: str) -> tupl
 
 def push_with_retry(root: Path) -> bool:
     for _ in range(3):
-        pushed = run(["git", "push", "origin", "HEAD:main"], root)
-        if pushed.returncode == 0:
+        if run(["git", "push", "origin", "HEAD:main"], root).returncode == 0:
             return True
         fetched = run(["git", "fetch", "origin", "main"], root)
         rebased = run(["git", "rebase", "origin/main"], root) if fetched.returncode == 0 else fetched
@@ -337,11 +490,8 @@ def register_agent(root: Path, identity: dict[str, str]) -> bool:
     if registry.exists():
         return False
     meta = {
-        "schema": "megabrain.agent.v1",
-        "id": identity["id"],
-        "harness": identity["harness"],
-        "display_name": identity["display_name"],
-        "created_at": identity["created_at"],
+        "schema": "megabrain.agent.v1", "id": identity["id"], "harness": identity["harness"],
+        "display_name": identity["display_name"], "created_at": identity["created_at"],
     }
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text(
@@ -349,8 +499,7 @@ def register_agent(root: Path, identity: dict[str, str]) -> bool:
         encoding="utf-8",
     )
     run(["git", "add", "--", str(registry.relative_to(root))], root)
-    committed = run(["git", "commit", "-m", f"agent: register {identity['harness']} {identity['id']}"], root)
-    if committed.returncode != 0:
+    if run(["git", "commit", "-m", f"agent: register {identity['harness']} {identity['id']}"], root).returncode != 0:
         registry.unlink(missing_ok=True)
         raise BootstrapError("AGENT_COMMIT_FAILED", "The agent identity could not be registered.")
     if not push_with_retry(root):
@@ -369,7 +518,7 @@ Before every user request, retrieve private task context:
 printf '%s' '{{"task":"brief description of the current user request"}}' | {helper} context --stdin
 ```
 
-Use relevant current memories privately. Surface every relevant conflicting claim and ask for clarification. Continue from local state during outages and mention staleness only when material.
+Use relevant current memories privately. Surface every relevant conflicting claim and ask for clarification. Continue from local state during outages and mention staleness only when material. Show any returned `runtime_update.notice` once.
 
 Before finishing, capture only new durable facts, preferences, decisions, commitments, project state, corrections, or resource pointers with `{helper} remember --stdin`. Never store raw chat, transient work, credentials, or secret values. Show compact `MegaBrain:` save notices. Use `correct`, `forget`, or `ingest` for those explicit operations.
 {END_MARKER}"""
@@ -388,28 +537,35 @@ def replace_block(path: Path, block: str | None) -> None:
         path.unlink()
 
 
-def install_skill(home: Path, harness: str, target: Path) -> tuple[Path, bool]:
+def install_skill(home: Path, harness: str, target: Path) -> Path:
     link_rel, _ = HARNESS_PATHS[harness]
     link = home / link_rel
     link.parent.mkdir(parents=True, exist_ok=True)
     if link.is_symlink():
-        if link.resolve() != target.resolve():
+        resolved = link.resolve()
+        managed = runtime_base(home) in resolved.parents or (home / ".megabrain" / "clones") in resolved.parents
+        if resolved != target.resolve() and not managed:
+            raise BootstrapError("SKILL_PATH_OCCUPIED", "The agent's MegaBrain skill path belongs to another installation.")
+        if resolved != target.resolve():
             link.unlink()
             link.symlink_to(target)
-        return link, True
+        return link
     if link.exists():
-        if link.resolve() == invoked_skill_root().resolve():
-            return link, False
         raise BootstrapError("SKILL_PATH_OCCUPIED", "The agent's MegaBrain skill path is occupied by another installation.")
     link.symlink_to(target)
-    return link, True
+    return link
 
 
-def validate_clone(root: Path) -> dict[str, Any]:
-    helper = root / "skill" / "megabrain" / "scripts" / "megabrain.py"
-    if not helper.exists():
-        raise BootstrapError("REPOSITORY_INVALID", "The selected repository is not a MegaBrain repository.")
-    validated = run([sys.executable, str(helper), "validate"], root)
+def helper_command(skill: Path, root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    return run(
+        [sys.executable, str(skill / "scripts" / "megabrain.py"), *arguments],
+        root,
+        env={"MEGABRAIN_ROOT": str(root)},
+    )
+
+
+def validate_clone(root: Path, skill: Path) -> dict[str, Any]:
+    validated = helper_command(skill, root, "validate")
     try:
         result = json.loads(validated.stdout)
     except json.JSONDecodeError as error:
@@ -425,14 +581,20 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
         raise BootstrapError("PYTHON_UNSUPPORTED", "MegaBrain requires Python 3.10 or newer.")
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
+    runtime, runtime_meta, distribution = install_runtime(home, args.distribution)
+    runtime_skill = runtime / "skill" / "megabrain"
     repository, remote, repository_created = resolve_repository(home, args.repository, args.allow_local_remote)
     root, clone_created = ensure_clone(home, harness, remote)
-    validation = validate_clone(root)
+    manifest_created = ensure_brain_manifest(root)
+    validation = validate_clone(root, runtime_skill)
+    brain = brain_metadata(root)
+    if brain["protocol_version"] > runtime_meta["protocol_version"]:
+        raise BootstrapError("PROTOCOL_UPDATE_REQUIRED", "This brain requires a newer MegaBrain runtime.")
     display_name = args.display_name or f"{harness.title()} on {os.uname().nodename}"
     identity, identity_created = load_or_create_identity(root, harness, display_name)
     configure_git(root, f"MegaBrain {identity['display_name']}", identity["id"])
     registered = register_agent(root, identity)
-    link, linked = install_skill(home, harness, root / "skill" / "megabrain")
+    link = install_skill(home, harness, runtime_skill)
     _, instructions_rel = HARNESS_PATHS[harness]
     replace_block(home / instructions_rel, instruction_block(link / "scripts" / "megabrain.py"))
     config = load_config(home)
@@ -440,71 +602,165 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
         config = {"schema": CONFIG_SCHEMA, "created_at": utc_now(), "clones": {}}
     config.update({"repository": repository, "remote": remote})
     config.setdefault("clones", {})[harness] = str(root)
+    config["runtime"] = {
+        "version": runtime_meta["version"], "protocol_version": runtime_meta["protocol_version"],
+        "source": distribution, "automatic_updates": runtime_meta["automatic_updates"] == "compatible",
+    }
     save_config(home, config)
-    validation = validate_clone(root)
+    validation = validate_clone(root, runtime_skill)
     browser: dict[str, Any] | None = None
     if not args.no_open:
-        browsed = run([sys.executable, str(root / "skill" / "megabrain" / "scripts" / "megabrain.py"), "browse"], root)
+        browsed = helper_command(runtime_skill, root, "browse")
         if browsed.stdout.strip():
             try:
                 browser = json.loads(browsed.stdout)
             except json.JSONDecodeError:
                 browser = {"generated": False, "opened": False}
     return {
-        "ok": True,
-        "message": "MegaBrain is ready.",
-        "harness": harness,
-        "repository": repository,
-        "repository_created": repository_created,
-        "clone_created": clone_created,
-        "identity_created": identity_created,
-        "registered": registered,
-        "skill_linked": linked,
-        "agent_id": identity["id"],
-        "counts": validation["counts"],
-        "browser": browser,
+        "ok": True, "message": "MegaBrain is ready.", "harness": harness, "repository": repository,
+        "repository_created": repository_created, "clone_created": clone_created,
+        "manifest_created": manifest_created,
+        "identity_created": identity_created, "registered": registered, "runtime_version": runtime_meta["version"],
+        "agent_id": identity["id"], "counts": validation["counts"], "browser": browser,
+    }
+
+
+def configured_root(home: Path, harness: str) -> tuple[dict[str, Any], Path, Path]:
+    config = load_config(home, required=True)
+    root_value = config.get("clones", {}).get(harness)
+    if not root_value:
+        raise BootstrapError("SETUP_REQUIRED", "MegaBrain is not connected to this agent.")
+    root = Path(str(root_value)).expanduser().resolve()
+    skill = current_runtime(home) / "skill" / "megabrain"
+    validate_runtime_release(current_runtime(home))
+    return config, root, skill
+
+
+def release_versions(remote: str) -> list[tuple[tuple[int, int, int], str]]:
+    listed = run(["git", "ls-remote", "--tags", "--refs", remote, "v*"])
+    if listed.returncode != 0:
+        raise BootstrapError("UPDATE_UNAVAILABLE", "MegaBrain could not reach the official release repository.")
+    found: dict[tuple[int, int, int], str] = {}
+    for line in listed.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        tag = parts[1].removeprefix("refs/tags/")
+        version = semantic_version(tag)
+        if version:
+            found[version] = tag
+    return sorted((version, found[version]) for version in found)
+
+
+def checkout_release(remote: str, tag: str, destination: Path) -> tuple[Path, str]:
+    cloned = run(["git", "clone", "--quiet", "--depth", "1", "--branch", tag, remote, str(destination)])
+    if cloned.returncode != 0:
+        raise BootstrapError("UPDATE_DOWNLOAD_FAILED", "MegaBrain could not download the selected release.")
+    commit = run(["git", "rev-parse", "HEAD"], destination)
+    if commit.returncode != 0:
+        raise BootstrapError("UPDATE_INVALID", "The downloaded MegaBrain release is invalid.")
+    return destination / "skill" / "megabrain", commit.stdout.strip()
+
+
+def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
+    require_command("git")
+    home = args.home.expanduser().resolve()
+    config = load_config(home, required=True)
+    runtime_config = config.get("runtime")
+    if not isinstance(runtime_config, dict):
+        raise BootstrapError("RUNTIME_MIGRATION_REQUIRED", "Run MegaBrain setup once to migrate this installation.")
+    current_version = str(runtime_config.get("version", ""))
+    current_tuple = semantic_version(current_version)
+    if current_tuple is None:
+        raise BootstrapError("CONFIG_INVALID", "The installed MegaBrain version is invalid.")
+    state_path = update_state_path(home)
+    state = load_json(state_path, "UPDATE_STATE_INVALID", "MegaBrain update state is invalid.") if state_path.exists() else {}
+    checked = parse_timestamp(str(state.get("checked_at", "")))
+    if args.automatic and state.get("status") != "offline" and checked and datetime.now(timezone.utc) - checked < UPDATE_INTERVAL:
+        return {"ok": True, "checked": False, "updated": False, "reason": "check_not_due", "current_version": current_version}
+    remote = str(runtime_config.get("source") or OFFICIAL_DISTRIBUTION)
+    try:
+        versions = release_versions(remote)
+    except BootstrapError as error:
+        save_private_json(state_path, {"checked_at": utc_now(), "status": "offline", "current_version": current_version})
+        if args.automatic or args.check:
+            return {"ok": True, "checked": True, "updated": False, "stale": True, "reason": error.code.lower(), "current_version": current_version}
+        raise
+    requested = semantic_version(args.version) if args.version else None
+    if args.version and requested is None:
+        raise BootstrapError("INVALID_VERSION", "MegaBrain versions use major.minor.patch format.")
+    selected = requested or (versions[-1][0] if versions else current_tuple)
+    tag_by_version = dict(versions)
+    if selected not in tag_by_version:
+        if selected == current_tuple and runtime_release(home, current_version).exists():
+            metadata = validate_runtime_release(runtime_release(home, current_version), current_version)
+            selected_tag = f"v{current_version}"
+        else:
+            raise BootstrapError("VERSION_NOT_FOUND", "The requested MegaBrain release does not exist.")
+    else:
+        selected_tag = tag_by_version[selected]
+        metadata = None
+    latest = ".".join(map(str, selected))
+    if args.check:
+        save_private_json(state_path, {"checked_at": utc_now(), "status": "current" if selected == current_tuple else "available", "current_version": current_version, "latest_version": latest})
+        return {"ok": True, "checked": True, "updated": False, "update_available": selected != current_tuple, "current_version": current_version, "latest_version": latest}
+    if args.automatic and selected[0] != current_tuple[0]:
+        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": latest})
+        return {"ok": True, "checked": True, "updated": False, "approval_required": True, "current_version": current_version, "latest_version": latest}
+    commit = None
+    target = runtime_release(home, latest)
+    if not target.exists():
+        with tempfile.TemporaryDirectory(prefix="megabrain-update-") as temporary:
+            checkout, commit = checkout_release(remote, selected_tag, Path(temporary) / "release")
+            downloaded = runtime_metadata(checkout)
+            if str(downloaded["version"]) != latest:
+                raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
+            roots = [Path(str(path)).expanduser().resolve() for path in config.get("clones", {}).values()]
+            for root in roots:
+                brain = brain_metadata(root)
+                if brain["protocol_version"] > downloaded["protocol_version"]:
+                    raise BootstrapError("PROTOCOL_UPDATE_REQUIRED", "The selected runtime cannot read this brain protocol.")
+            metadata = copy_runtime_release(checkout, target)
+    metadata = metadata or validate_runtime_release(target, latest)
+    activate_runtime(home, latest)
+    runtime_config.update({"version": latest, "protocol_version": metadata["protocol_version"]})
+    config["runtime"] = runtime_config
+    save_config(home, config)
+    save_private_json(state_path, {"checked_at": utc_now(), "status": "updated", "current_version": latest, "release_commit": commit})
+    changed = latest != current_version
+    return {
+        "ok": True, "checked": True, "updated": changed, "previous_version": current_version,
+        "current_version": latest, "release_commit": commit,
+        "notice": f"MegaBrain: updated to v{latest}." if changed else None,
     }
 
 
 def status(args: argparse.Namespace) -> dict[str, Any]:
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
-    config = load_config(home, required=True)
-    root_value = config.get("clones", {}).get(harness)
-    if not root_value:
-        return {"ok": True, "ready": False, "harness": harness, "message": "MegaBrain is not connected to this agent."}
-    root = Path(str(root_value)).expanduser().resolve()
-    identity_path = root / ".megabrain" / "local.json"
-    validation = validate_clone(root)
-    sync = run([sys.executable, str(root / "skill" / "megabrain" / "scripts" / "megabrain.py"), "sync"], root)
+    config, root, skill = configured_root(home, harness)
+    validation = validate_clone(root, skill)
+    synced = helper_command(skill, root, "sync")
     try:
-        sync_result = json.loads(sync.stdout)
+        sync_result = json.loads(synced.stdout)
     except json.JSONDecodeError:
         sync_result = {"synced": False, "stale": True, "reason": "status_unavailable"}
+    update_args = argparse.Namespace(home=home, automatic=False, check=True, version=None)
+    update = update_runtime(update_args)
+    identity_exists = (root / ".megabrain" / "local.json").exists()
     return {
-        "ok": True,
-        "ready": identity_path.exists() and validation["ok"],
-        "harness": harness,
-        "repository": config.get("repository"),
-        "counts": validation["counts"],
-        "sync": sync_result,
-        "message": "MegaBrain is ready." if identity_path.exists() else "MegaBrain needs repair.",
+        "ok": True, "ready": identity_exists and validation["ok"], "harness": harness,
+        "repository": config.get("repository"), "counts": validation["counts"], "sync": sync_result,
+        "runtime": update, "message": "MegaBrain is ready." if identity_exists else "MegaBrain needs repair.",
     }
 
 
 def open_brain(args: argparse.Namespace) -> dict[str, Any]:
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
-    config = load_config(home, required=True)
-    root_value = config.get("clones", {}).get(harness)
-    if not root_value:
-        raise BootstrapError("SETUP_REQUIRED", "MegaBrain is not connected to this agent.")
-    root = Path(str(root_value)).expanduser().resolve()
-    helper = root / "skill" / "megabrain" / "scripts" / "megabrain.py"
-    command = [sys.executable, str(helper), "browse"]
-    if args.no_open:
-        command.append("--no-open")
-    browsed = run(command, root)
+    _, root, skill = configured_root(home, harness)
+    command = ["browse"] + (["--no-open"] if args.no_open else [])
+    browsed = helper_command(skill, root, *command)
     output = browsed.stdout if browsed.stdout.strip() else browsed.stderr
     try:
         result = json.loads(output)
@@ -524,17 +780,15 @@ def disconnect(args: argparse.Namespace) -> dict[str, Any]:
     root = Path(str(root_value)).expanduser().resolve() if root_value else clone_path(home, harness)
     link_rel, instructions_rel = HARNESS_PATHS[harness]
     link = home / link_rel
-    target = root / "skill" / "megabrain"
+    target = current_runtime(home) / "skill" / "megabrain"
     if link.is_symlink() and link.resolve() == target.resolve():
         link.unlink()
     replace_block(home / instructions_rel, None)
     config.setdefault("clones", {}).pop(harness, None)
     save_config(home, config)
     return {
-        "ok": True,
-        "message": "MegaBrain is disconnected from this agent.",
-        "harness": harness,
-        "local_clone_retained": root.exists(),
+        "ok": True, "message": "MegaBrain is disconnected from this agent.", "harness": harness,
+        "local_clone_retained": root.exists(), "runtime_retained": current_runtime(home).exists(),
         "repository_retained": True,
     }
 
@@ -549,6 +803,7 @@ def build_parser() -> argparse.ArgumentParser:
         action.add_argument("--repository")
         action.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
         action.add_argument("--allow-local-remote", action="store_true", help=argparse.SUPPRESS)
+        action.add_argument("--distribution", help=argparse.SUPPRESS)
         action.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)
     for command in ("status", "open", "disconnect"):
         action = subparsers.add_parser(command)
@@ -556,6 +811,11 @@ def build_parser() -> argparse.ArgumentParser:
         action.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
         if command == "open":
             action.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)
+    update = subparsers.add_parser("update")
+    update.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
+    update.add_argument("--check", action="store_true")
+    update.add_argument("--automatic", action="store_true", help=argparse.SUPPRESS)
+    update.add_argument("--version")
     return parser
 
 
@@ -576,6 +836,8 @@ def main() -> int:
             result = open_brain(args)
         elif args.command == "disconnect":
             result = disconnect(args)
+        elif args.command == "update":
+            result = update_runtime(args)
         else:
             parser.error("unknown command")
             return 2

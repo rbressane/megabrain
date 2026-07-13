@@ -1,0 +1,5 @@
+{
+  "schema": "megabrain.brain.v1",
+  "protocol_version": 1,
+  "minimum_runtime": "1.0.0"
+}

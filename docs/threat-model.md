@@ -13,6 +13,7 @@ The brain owner, private GitHub repository, authenticated clones, and all connec
 - GitHub outage: local reads and pending local commits.
 - Silent corruption: schema validation, Git history, provenance, and conflict surfacing.
 - Stale knowledge: explicit correction and tombstone records.
+- Compromised product release: stable official tags, local validation before atomic activation, retained prior releases, and no runtime code in the private data clone.
 
 ## Accepted Risks
 

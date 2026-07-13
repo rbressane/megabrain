@@ -1,31 +1,29 @@
 # Consumer Onboarding
 
-MegaBrain's normal setup surface is conversation, not Git or the terminal.
+## First Contact
 
-## Set Up
+An unfamiliar agent does not understand `Set up my MegaBrain` until the skill exists. The product repository README therefore provides one setup message for the user to copy into Codex, Claude Code, or Hermes. The message directs the agent to the official repository and [INSTALL.md](../INSTALL.md).
 
-The user says `Set up my MegaBrain.` The active skill requests GitHub approval when needed and runs the bootstrap for its own harness. Bootstrap then:
+The installing agent selects the latest stable tag, inspects it, runs the repository installer, and requests approval only when GitHub authorization is needed.
+
+## Setup
+
+Bootstrap then:
 
 1. verifies Python, Git, GitHub authentication, and private-repository access;
-2. creates `OWNER/megabrain` as a private repository when it does not exist;
-3. seeds an empty brain and validation workflow when the repository is empty;
-4. creates the active agent's hidden managed clone;
-5. creates and registers a stable agent identity;
-6. installs idempotent harness instructions;
+2. installs a versioned runtime separate from personal data;
+3. creates `OWNER/megabrain-data` as a private repository when needed;
+4. seeds an empty, data-only brain with compatibility metadata;
+5. creates the active agent's hidden managed clone and stable identity;
+6. installs the skill link and marker-delimited harness instructions;
 7. validates and synchronizes the result;
-8. opens the generated local browser; and
+8. opens the local browser; and
 9. reports `MegaBrain is ready.`
 
-The user does not choose a filesystem path, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
+The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
-## Connect Another Agent
+## Later Agents And Updates
 
-After the skill is available in another harness, the user says `Connect this agent to my MegaBrain.` Bootstrap reuses the locally configured private repository, creates a separate managed clone, registers the new provenance identity, and validates cross-agent synchronization.
+The same repository setup message connects another agent or computer through the authenticated GitHub account. Installed users can ask to open, check, update, or disconnect MegaBrain naturally.
 
-## Other Actions
-
-- `Open my MegaBrain` regenerates and opens the private local catalog.
-- `Check MegaBrain` synchronizes and reports user-relevant health.
-- `Disconnect this agent` removes managed harness instructions and links while retaining the private repository and synchronized local clone to prevent accidental data loss.
-
-Manual clone and installer commands remain documented only for development, recovery, and environments where a skill marketplace is unavailable.
+Compatible stable updates activate automatically at most once per day. Major updates request approval. Disconnect removes managed links and instructions while retaining the runtime, private repository, and synchronized clone to prevent data loss.
