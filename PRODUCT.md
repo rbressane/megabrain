@@ -18,10 +18,11 @@ MegaBrain is a local-first replicated Markdown repository for one person. Each t
 6. Natural conversation is the primary interface.
 7. Imports extract durable knowledge instead of copying archives.
 8. Secrets never enter the brain.
+9. Repository creation, clone paths, harness detection, identity registration, and validation are invisible onboarding details.
 
 ## V1 Acceptance
 
-Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories.
+One conversational setup action must create or connect the private repository and active agent without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories.
 
 ## Non-goals
 
