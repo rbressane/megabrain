@@ -1,0 +1,57 @@
+{
+  "name": "megabrain",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Private, user-owned context portability for AI agents.",
+  "type": "module",
+  "bin": {
+    "megabrain": "dist/src/cli/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/src/server.js",
+    "cli": "tsx src/cli/index.ts",
+    "http": "tsx scripts/http-client.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:cross-agent": "vitest run tests/cross-agent",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "secret-scan": "tsx scripts/secret-scan.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "commander": "^14.0.0",
+    "dotenv": "^17.2.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.4.0",
+    "postgres": "^3.4.7",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.0",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.0",
+    "prettier": "^3.6.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.37.0",
+    "vitest": "^3.2.0"
+  },
+  "overrides": {
+    "esbuild": "^0.25.4"
+  }
+}
