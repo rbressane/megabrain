@@ -13,14 +13,16 @@ Bootstrap then:
 1. verifies Python, Git, GitHub authentication, and private-repository access;
 2. installs a versioned runtime separate from personal data;
 3. creates `OWNER/megabrain-data` as a private repository when needed;
-4. seeds an empty, data-only brain with compatibility metadata;
+4. seeds an empty, data-only brain with compatibility metadata and no GitHub Actions workflow;
 5. creates the active agent's hidden managed clone and stable identity;
 6. installs the skill link and marker-delimited harness instructions;
 7. validates and synchronizes the result;
-8. opens the local browser; and
+8. opens the local browser on the machine running the agent and reports that host explicitly; and
 9. reports `MegaBrain is ready.`
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
+
+If setup is interrupted after creating the private repository or committing the local seed, rerunning setup converges on the same private repository. A clean local seed is pushed to an empty remote once authorization is fixed; a dirty managed clone is never reset or silently repaired.
 
 ## Later Agents And Updates
 

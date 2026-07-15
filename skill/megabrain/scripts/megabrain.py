@@ -1245,6 +1245,7 @@ def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
         "generated": True,
         "opened": opened,
         "path": str(output),
+        "host": os.uname().nodename,
         "sync": sync,
     }
 

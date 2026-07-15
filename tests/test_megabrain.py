@@ -203,6 +203,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertTrue(doctor["checks"]["identity"]["ok"])
         self.assertTrue(doctor["checks"]["remote_access"]["ok"])
         self.assertEqual(doctor["checks"]["privacy"]["status"], "non_github_remote")
+        self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
 
     def test_three_agents_share_correct_and_forget_immutable_memories(self) -> None:
         self.network.clone("agent-a", "codex")
@@ -635,6 +636,8 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         opened = bootstrap("open", "codex", "--no-open")
         self.assertTrue(opened["generated"])
         self.assertTrue(Path(opened["path"]).exists())
+        self.assertIn("MegaBrain browser is ready on ", opened["message"])
+        self.assertIn("machine running this agent", opened["device_boundary"])
 
         remembered = run(
             ["python3", str(codex_skill / "scripts" / "megabrain.py"), "remember", "--stdin"],
@@ -760,6 +763,76 @@ raise SystemExit(1)
         config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(config["repository"], "synthetic-user/megabrain-data")
         self.assertTrue((self.network.root / "created-private.git" / "refs" / "heads" / "main").exists())
+
+    def test_setup_recovers_clean_local_seed_when_remote_is_empty(self) -> None:
+        home = self.network.root / "interrupted-home"
+        home.mkdir()
+        remote = self.network.root / "interrupted.git"
+        clone = home / ".megabrain" / "clones" / "codex"
+        run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
+        clone.parent.mkdir(parents=True)
+        run(["git", "clone", str(remote), str(clone)], self.network.root)
+        run(["git", "config", "user.name", "MegaBrain Bootstrap"], clone)
+        run(["git", "config", "user.email", "megabrain+bootstrap@users.noreply.github.com"], clone)
+        shutil.copytree(SOURCE_ROOT / "skill" / "megabrain" / "seed", clone, dirs_exist_ok=True)
+        run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], clone)
+        run(["git", "add", "."], clone)
+        run(["git", "commit", "-m", "feat: initialize private MegaBrain"], clone)
+        self.assertFalse((remote / "refs" / "heads" / "main").exists())
+
+        unexpected = clone / "unexpected.txt"
+        unexpected.write_text("synthetic local edit\n", encoding="utf-8")
+        refused = run(
+            [
+                "python3",
+                str(SOURCE_ROOT / "install.py"),
+                "setup",
+                "--harness",
+                "codex",
+                "--display-name",
+                "Codex Test",
+                "--home",
+                str(home),
+                "--allow-local-remote",
+                "--repository",
+                str(remote),
+                "--distribution",
+                str(SOURCE_ROOT),
+                "--no-open",
+            ],
+            SOURCE_ROOT,
+            expected=2,
+        )
+        refusal = json.loads(refused.stderr)
+        self.assertEqual(refusal["error"]["code"], "CLONE_DIRTY")
+        self.assertFalse((remote / "refs" / "heads" / "main").exists())
+        unexpected.unlink()
+
+        completed = run(
+            [
+                "python3",
+                str(SOURCE_ROOT / "install.py"),
+                "setup",
+                "--harness",
+                "codex",
+                "--display-name",
+                "Codex Test",
+                "--home",
+                str(home),
+                "--allow-local-remote",
+                "--repository",
+                str(remote),
+                "--distribution",
+                str(SOURCE_ROOT),
+                "--no-open",
+            ],
+            SOURCE_ROOT,
+        )
+        result = json.loads(completed.stdout)
+
+        self.assertEqual(result["message"], "MegaBrain is ready.")
+        self.assertTrue((remote / "refs" / "heads" / "main").exists())
+        self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
 
     def test_versioned_runtime_updates_and_rolls_back_without_touching_memories(self) -> None:
         distribution_work = self.network.root / "distribution-work"

@@ -64,7 +64,7 @@ Major or protocol-breaking updates require approval. A private brain declares it
 
 ## Browse And Import
 
-Ask an installed agent to `Open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. Markdown remains authoritative and the generated browser is ignored by Git.
+Ask an installed agent to `Open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. The command reports the machine where the browser opened, because the browser is local to the agent host. Markdown remains authoritative and the generated browser is ignored by Git.
 
 To import knowledge, tell an installed agent:
 
