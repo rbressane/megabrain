@@ -845,21 +845,24 @@ raise SystemExit(1)
         run(["git", "init", "--initial-branch=main"], distribution_work)
         run(["git", "config", "user.name", "MegaBrain Release Tests"], distribution_work)
         run(["git", "config", "user.email", "releases@example.invalid"], distribution_work)
-        run(["git", "add", "."], distribution_work)
-        run(["git", "commit", "-m", "release: v1.0.0"], distribution_work)
-        run(["git", "tag", "v1.0.0"], distribution_work)
-
         runtime_manifest = distribution_work / "skill" / "megabrain" / "runtime.json"
         metadata = json.loads(runtime_manifest.read_text(encoding="utf-8"))
-        metadata["version"] = "1.1.0"
+        current_version = str(metadata["version"])
+        major, minor, _ = (int(part) for part in current_version.split("."))
+        next_version = f"{major}.{minor + 1}.0"
+        run(["git", "add", "."], distribution_work)
+        run(["git", "commit", "-m", f"release: v{current_version}"], distribution_work)
+        run(["git", "tag", f"v{current_version}"], distribution_work)
+
+        metadata["version"] = next_version
         runtime_manifest.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         run(["git", "add", str(runtime_manifest.relative_to(distribution_work))], distribution_work)
-        run(["git", "commit", "-m", "release: v1.1.0"], distribution_work)
-        run(["git", "tag", "v1.1.0"], distribution_work)
+        run(["git", "commit", "-m", f"release: v{next_version}"], distribution_work)
+        run(["git", "tag", f"v{next_version}"], distribution_work)
         run(["git", "init", "--bare", "--initial-branch=main", str(distribution_remote)], self.network.root)
         run(["git", "remote", "add", "release", str(distribution_remote)], distribution_work)
         run(["git", "push", "release", "main", "--tags"], distribution_work)
-        run(["git", "checkout", "v1.0.0"], distribution_work)
+        run(["git", "checkout", f"v{current_version}"], distribution_work)
 
         home = self.network.root / "update-home"
         home.mkdir()
@@ -871,7 +874,7 @@ raise SystemExit(1)
             ],
             distribution_work,
         )
-        self.assertEqual(json.loads(installed.stdout)["runtime_version"], "1.0.0")
+        self.assertEqual(json.loads(installed.stdout)["runtime_version"], current_version)
         clone = home / ".megabrain" / "clones" / "codex"
         helper = home / ".codex" / "skills" / "megabrain" / "scripts" / "megabrain.py"
         remembered = run(
@@ -891,14 +894,17 @@ raise SystemExit(1)
         updated = run(["python3", str(bootstrap), "update", "--home", str(home)], home)
         update_result = json.loads(updated.stdout)
         self.assertTrue(update_result["updated"])
-        self.assertEqual(update_result["notice"], "MegaBrain: updated to v1.1.0.")
-        self.assertEqual(json.loads((helper.resolve().parents[1] / "runtime.json").read_text())["version"], "1.1.0")
+        self.assertEqual(update_result["notice"], f"MegaBrain: updated to v{next_version}.")
+        self.assertEqual(
+            json.loads((helper.resolve().parents[1] / "runtime.json").read_text())["version"],
+            next_version,
+        )
 
         rolled_back = run(
-            ["python3", str(bootstrap), "update", "--home", str(home), "--version", "1.0.0"],
+            ["python3", str(bootstrap), "update", "--home", str(home), "--version", current_version],
             home,
         )
-        self.assertEqual(json.loads(rolled_back.stdout)["current_version"], "1.0.0")
+        self.assertEqual(json.loads(rolled_back.stdout)["current_version"], current_version)
         self.assertTrue(any(memory_id in path.name for path in (clone / "brain" / "memories").rglob("*.md")))
         self.assertFalse((clone / "skill").exists())
 
@@ -908,7 +914,7 @@ raise SystemExit(1)
             ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
             home,
         )
-        self.assertEqual(json.loads(automatic.stdout)["current_version"], "1.1.0")
+        self.assertEqual(json.loads(automatic.stdout)["current_version"], next_version)
         throttled = run(
             ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
             home,
