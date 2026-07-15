@@ -15,5 +15,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - run: python3 -m pip install -r requirements-vault.txt
+      - run: python3 -m pip check
       - run: python3 -m unittest discover -s tests -v
       - run: MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate
