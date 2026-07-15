@@ -4,13 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
+import sqlite3
+import statistics
 import subprocess
 import sys
+import tarfile
+import tempfile
+import time
 import uuid
 import webbrowser
 from collections import Counter, defaultdict
@@ -18,6 +25,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+import vault as vault_module
 
 
 MEMORY_SCHEMA = "megabrain.memory.v1"
@@ -38,13 +47,21 @@ KINDS = {
 }
 CONFIDENCES = {"confirmed", "inferred", "unconfirmed"}
 SENSITIVITIES = {"general", "private", "sensitive"}
-IMPORTANCES = {"core", "normal"}
+IMPORTANCES = {"always", "core", "normal"}
+ALWAYS_MEMORY_LIMIT = 3
+CONFLICT_EXPANSION_LIMIT = 5
+DEFAULT_FRESHNESS_SECONDS = 0
+RETRIEVAL_INDEX_SCHEMA = "megabrain.retrieval-index.v2"
 SOURCE_TYPES = {"user-statement", "agent-observation", "import"}
 META_PATTERN = re.compile(
     r"\A<!--\s*megabrain-meta\s*\n(?P<meta>.*?)\n-->\s*\n(?P<body>.*)\Z",
     re.DOTALL,
 )
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+TOKEN_STOPWORDS = {
+    "a", "all", "an", "and", "are", "for", "in", "is", "it", "of", "on", "or",
+    "should", "the", "this", "to", "use", "we", "what", "which", "with",
+}
 SHA256_PATTERN = re.compile(r"^(?:sha256:)?[a-f0-9]{64}$", re.I)
 ROLE_LINE_PATTERN = re.compile(r"(?im)^(?:user|human|assistant|claude|codex|hermes)\s*:")
 PROMPT_INJECTION_PATTERNS = [
@@ -121,6 +138,8 @@ def brain_manifest(root: Path) -> dict[str, Any]:
         or semantic_version(value.get("minimum_runtime")) is None
     ):
         raise BrainError("BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid")
+    if "brain_id" in value and not valid_uuid(value.get("brain_id")):
+        raise BrainError("BRAIN_MANIFEST_INVALID", "The brain identifier is invalid")
     return value
 
 
@@ -340,6 +359,19 @@ def validate_import(record: Record) -> list[str]:
     counts = meta.get("counts")
     if not isinstance(counts, dict) or not all(isinstance(value, int) and value >= 0 for value in (counts or {}).values()):
         errors.append("counts must contain non-negative integers")
+    coverage = meta.get("coverage", [])
+    if not isinstance(coverage, list):
+        errors.append("coverage must be an array")
+    else:
+        for entry in coverage:
+            if (
+                not isinstance(entry, dict)
+                or not isinstance(entry.get("locator"), str)
+                or entry.get("access") not in {"writable", "reference-only", "excluded"}
+                or entry.get("status") not in {"discovered", "scanned", "candidate-extracted", "intentionally-skipped"}
+                or not isinstance(entry.get("canonical"), bool)
+            ):
+                errors.append("coverage entries must declare locator, access, canonical, and status")
     secret = detect_secret({"meta": meta, "body": record.body})
     if secret:
         errors.append(f"possible secret material: {secret}")
@@ -427,7 +459,13 @@ def normalize(value: str) -> str:
 
 
 def tokens(value: str) -> set[str]:
-    return set(TOKEN_PATTERN.findall(value.lower()))
+    raw = TOKEN_PATTERN.findall(value.lower())
+    result = set(raw)
+    for token in raw:
+        result.update(TOKEN_PATTERN.findall(re.sub(r"(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])", " ", token)))
+        if len(token) > 3 and token.endswith("s"):
+            result.add(token[:-1])
+    return {token for token in result if token not in TOKEN_STOPWORDS and not token.isdigit()}
 
 
 def score_memory(record: Record, task_tokens: set[str]) -> int:
@@ -436,6 +474,67 @@ def score_memory(record: Record, task_tokens: set[str]) -> int:
     tag_tokens = tokens(" ".join(str(tag) for tag in meta.get("tags", [])))
     body_tokens = tokens(summary_text(record))
     return 6 * len(task_tokens & subject_tokens) + 4 * len(task_tokens & tag_tokens) + len(task_tokens & body_tokens)
+
+
+def atomic_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def git_commit(root: Path) -> str | None:
+    result = run(["git", "rev-parse", "HEAD"], root)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def sync_state_path(root: Path) -> Path:
+    return root / ".megabrain" / "sync-state.json"
+
+
+def recent_sync(root: Path, freshness_seconds: int) -> dict[str, Any] | None:
+    try:
+        state = json.loads(sync_state_path(root).read_text(encoding="utf-8"))
+        age = time.time() - float(state["successful_at"])
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+    if state.get("commit") != git_commit(root) or not 0 <= age <= freshness_seconds:
+        return None
+    return {
+        "synced": True,
+        "stale": False,
+        "reason": "freshness_window",
+        "pending_local_commits": False,
+        "freshness_age_seconds": round(age, 3),
+        "freshness_window_seconds": freshness_seconds,
+    }
+
+
+def sync_marker(root: Path) -> float | None:
+    try:
+        state = json.loads(sync_state_path(root).read_text(encoding="utf-8"))
+        if state.get("commit") != git_commit(root):
+            return None
+        return float(state["successful_at"])
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+
+
+def remember_sync(root: Path) -> None:
+    commit = git_commit(root)
+    if commit:
+        atomic_json(sync_state_path(root), {"commit": commit, "successful_at": time.time()})
 
 
 def relative(root: Path, path: Path) -> str:
@@ -495,7 +594,13 @@ def push_with_retry(root: Path, attempts: int = 3) -> tuple[bool, str | None]:
     return False, "push_rejected"
 
 
-def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
+def sync_repo(
+    root: Path,
+    *,
+    allow_push: bool = True,
+    fresh: bool = True,
+    freshness_seconds: int = DEFAULT_FRESHNESS_SECONDS,
+) -> dict[str, Any]:
     if not is_git_repo(root):
         return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
     dirty = changed_files(root)
@@ -503,39 +608,69 @@ def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
         return {"synced": False, "stale": True, "reason": "dirty_worktree", "files": dirty}
     if not has_remote(root):
         return {"synced": False, "stale": True, "reason": "missing_origin"}
-    rebased, reason = rebase_remote(root)
-    if not rebased:
-        if reason == "remote_unavailable":
-            validation = command_validate(root)
-            if not validation["ok"]:
+    observed_sync = sync_marker(root) if not fresh else None
+    if not fresh and freshness_seconds > 0:
+        cached = recent_sync(root, freshness_seconds)
+        if cached:
+            return cached
+    lock_path = root / ".megabrain" / "sync.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not fresh and freshness_seconds > 0:
+            cached = recent_sync(root, freshness_seconds)
+            if cached:
+                return cached
+        if not fresh:
+            completed_while_waiting = sync_marker(root)
+            if completed_while_waiting is not None and (
+                observed_sync is None or completed_while_waiting > observed_sync
+            ):
                 return {
-                    "synced": False,
-                    "stale": True,
-                    "reason": "validation_failed",
-                    "error_count": len(validation["errors"]),
+                    "synced": True,
+                    "stale": False,
+                    "reason": "coalesced",
+                    "pending_local_commits": False,
+                    "freshness_window_seconds": 0,
                 }
-        return {"synced": False, "stale": True, "reason": reason}
-    validation = command_validate(root)
-    if not validation["ok"]:
-        return {
-            "synced": False,
-            "stale": True,
-            "reason": "validation_failed",
-            "error_count": len(validation["errors"]),
-        }
-    if not allow_push:
-        ahead = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
-        pending = ahead.returncode != 0 or ahead.stdout.strip() != "0"
-        return {
-            "synced": not pending,
-            "stale": pending,
-            "reason": "runtime_update_required" if pending else None,
-            "pending_local_commits": pending,
-        }
-    pushed, reason = push_with_retry(root)
-    if not pushed:
-        return {"synced": False, "stale": True, "reason": reason, "pending_local_commits": True}
-    return {"synced": True, "stale": False, "reason": None, "pending_local_commits": False}
+        rebased, reason = rebase_remote(root)
+        if not rebased:
+            if reason == "remote_unavailable":
+                validation = command_validate(root)
+                if not validation["ok"]:
+                    return {
+                        "synced": False,
+                        "stale": True,
+                        "reason": "validation_failed",
+                        "error_count": len(validation["errors"]),
+                    }
+            return {"synced": False, "stale": True, "reason": reason}
+        validation = command_validate(root)
+        if not validation["ok"]:
+            return {
+                "synced": False,
+                "stale": True,
+                "reason": "validation_failed",
+                "error_count": len(validation["errors"]),
+            }
+        if not allow_push:
+            ahead = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
+            pending = ahead.returncode != 0 or ahead.stdout.strip() != "0"
+            result = {
+                "synced": not pending,
+                "stale": pending,
+                "reason": "runtime_update_required" if pending else None,
+                "pending_local_commits": pending,
+            }
+            if not pending:
+                remember_sync(root)
+            return result
+        pushed, reason = push_with_retry(root)
+        if not pushed:
+            return {"synced": False, "stale": True, "reason": reason, "pending_local_commits": True}
+        remember_sync(root)
+        return {"synced": True, "stale": False, "reason": None, "pending_local_commits": False}
 
 
 def require_clean_or_offline(sync: dict[str, Any]) -> None:
@@ -820,44 +955,315 @@ def command_validate(root: Path) -> dict[str, Any]:
     }
 
 
-def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str, Any]:
-    compatibility = require_compatible_runtime(root, writing=False)
+def compiled_task(payload: dict[str, Any]) -> str:
     task = payload.get("task")
-    if not isinstance(task, str) or not task.strip():
-        raise BrainError("INVALID_TASK", "task must be a non-empty string")
-    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    if isinstance(task, str):
+        values = [task]
+    elif isinstance(task, dict):
+        allowed = ("task", "artifact_type", "domain", "intent", "audience", "subject_family")
+        unknown = sorted(set(task) - set(allowed))
+        if unknown:
+            raise BrainError("INVALID_TASK", "structured task contains unsupported fields")
+        values = []
+        for field in allowed:
+            value = task.get(field)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise BrainError("INVALID_TASK", "structured task fields must be non-empty strings")
+            if isinstance(value, str):
+                values.append(value)
+    else:
+        values = []
+    if not values or not any(value.strip() for value in values):
+        raise BrainError("INVALID_TASK", "task must be a non-empty string or structured task")
+    if detect_secret(values):
+        raise BrainError("SECRET_VALUE_REJECTED", "Likely secret material cannot be used as retrieval evidence")
+    return " ".join(value.strip() for value in values)
+
+
+def retrieval_index_path(root: Path) -> Path:
+    return root / ".megabrain" / "retrieval-index.sqlite3"
+
+
+def build_retrieval_index(root: Path, commit: str, path: Path) -> dict[str, float]:
+    started = time.perf_counter()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix=".retrieval-tree-", dir=path.parent) as tree_name:
+        snapshot_root = Path(tree_name)
+        archived = subprocess.Popen(
+            ["git", "archive", "--format=tar", commit, "--", "brain"],
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert archived.stdout is not None
+        try:
+            with tarfile.open(fileobj=archived.stdout, mode="r|") as archive:
+                for member in archive:
+                    member_path = Path(member.name)
+                    if member_path.is_absolute() or ".." in member_path.parts or member.issym() or member.islnk():
+                        raise BrainError("INDEX_SNAPSHOT_INVALID", "The committed Brain archive contains an unsafe path")
+                    archive.extract(member, snapshot_root)
+        except BrainError:
+            archived.kill()
+            archived.wait()
+            raise
+        except (tarfile.TarError, OSError) as error:
+            archived.kill()
+            archived.wait()
+            raise BrainError("INDEX_SNAPSHOT_FAILED", "The committed Brain snapshot could not be read") from error
+        finally:
+            archived.stdout.close()
+        stderr = archived.stderr.read().decode("utf-8", errors="replace") if archived.stderr is not None else ""
+        if archived.stderr is not None:
+            archived.stderr.close()
+        if archived.wait() != 0:
+            raise BrainError("INDEX_SNAPSHOT_FAILED", "The committed Brain snapshot could not be read", {"git": stderr.strip()})
+        records = load_memories(snapshot_root)
+        loaded_at = time.perf_counter()
+        active, conflicts = current_memories(records)
+        resolved_at = time.perf_counter()
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".retrieval-index-", dir=path.parent)
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            connection = sqlite3.connect(temporary)
+            connection.executescript(
+                """
+                PRAGMA journal_mode=OFF;
+                CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE records (
+                    id TEXT PRIMARY KEY, path TEXT NOT NULL, meta_json TEXT NOT NULL,
+                    summary TEXT NOT NULL, importance TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE TABLE postings (token TEXT NOT NULL, record_id TEXT NOT NULL, weight INTEGER NOT NULL,
+                    PRIMARY KEY(token, record_id));
+                CREATE INDEX postings_record ON postings(record_id);
+                CREATE TABLE conflicts (subject TEXT NOT NULL, record_id TEXT NOT NULL,
+                    PRIMARY KEY(subject, record_id));
+                """
+            )
+            connection.executemany(
+                "INSERT INTO metadata VALUES (?, ?)",
+                (("schema", RETRIEVAL_INDEX_SCHEMA), ("commit", commit)),
+            )
+            for record in active:
+                record_id = str(record.meta["id"])
+                summary = summary_text(record)
+                connection.execute(
+                    "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        record_id,
+                        relative(snapshot_root, record.path),
+                        json.dumps(record.meta, ensure_ascii=True, sort_keys=True, separators=(",", ":")),
+                        summary,
+                        record.meta.get("importance", "normal"),
+                        record.meta.get("created_at", ""),
+                    ),
+                )
+                subject_tokens = tokens(str(record.meta.get("subject", "")))
+                tag_tokens = tokens(" ".join(str(tag) for tag in record.meta.get("tags", [])))
+                body_tokens = tokens(summary)
+                weighted = {
+                    token: 6 * (token in subject_tokens) + 4 * (token in tag_tokens) + (token in body_tokens)
+                    for token in subject_tokens | tag_tokens | body_tokens
+                }
+                connection.executemany(
+                    "INSERT INTO postings VALUES (?, ?, ?)",
+                    ((token, record_id, weight) for token, weight in weighted.items()),
+                )
+            connection.executemany(
+                "INSERT INTO conflicts VALUES (?, ?)",
+                ((subject, record_id) for subject, ids in conflicts.items() for record_id in ids),
+            )
+            connection.commit()
+            connection.close()
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {
+        "local_index_refresh": loaded_at - started,
+        "memory_graph_resolution": resolved_at - loaded_at,
+    }
+
+
+def open_retrieval_index(
+    root: Path,
+    *,
+    allow_rebuild: bool = True,
+) -> tuple[sqlite3.Connection, str, dict[str, float]]:
+    started = time.perf_counter()
+    commit = git_commit(root)
+    path = retrieval_index_path(root)
+    if not commit:
+        raise BrainError("INDEX_UNAVAILABLE", "Retrieval indexing requires a Git commit")
+    if not path.exists() and not allow_rebuild:
+        raise BrainError(
+            "DIRTY_WORKTREE_INDEX_UNAVAILABLE",
+            "Retrieval will not compile uncommitted Brain content into the persistent index",
+        )
+    state = "warm"
+    timings = {"local_index_refresh": 0.0, "memory_graph_resolution": 0.0}
+    try:
+        connection = sqlite3.connect(path)
+        metadata = dict(connection.execute("SELECT key,value FROM metadata"))
+        if metadata != {"schema": RETRIEVAL_INDEX_SCHEMA, "commit": commit}:
+            raise sqlite3.DatabaseError("stale index")
+    except (OSError, sqlite3.DatabaseError):
+        try:
+            connection.close()
+        except UnboundLocalError:
+            pass
+        path.unlink(missing_ok=True)
+        if not allow_rebuild:
+            raise BrainError(
+                "DIRTY_WORKTREE_INDEX_UNAVAILABLE",
+                "Retrieval will not compile uncommitted Brain content into the persistent index",
+            )
+        timings = build_retrieval_index(root, commit, path)
+        state = "cold"
+        connection = sqlite3.connect(path)
+    if state == "warm":
+        timings["local_index_refresh"] = time.perf_counter() - started
+    return connection, state, timings
+
+
+def row_record(root: Path, row: sqlite3.Row | tuple[Any, ...]) -> Record:
+    return Record(path=root / str(row[1]), meta=json.loads(row[2]), body=str(row[3]))
+
+
+def indexed_memories(
+    root: Path,
+    task_tokens: set[str],
+    *,
+    allow_rebuild: bool = True,
+) -> tuple[list[tuple[int, Record]], dict[str, list[str]], str, dict[str, float]]:
+    connection, state, timings = open_retrieval_index(root, allow_rebuild=allow_rebuild)
+    try:
+        scores: dict[str, int] = {}
+        if task_tokens:
+            placeholders = ",".join("?" for _ in task_tokens)
+            scores = {
+                record_id: score
+                for record_id, score in connection.execute(
+                    f"SELECT record_id,SUM(weight) FROM postings WHERE token IN ({placeholders}) GROUP BY record_id",
+                    sorted(task_tokens),
+                )
+            }
+        always_ids = {
+            row[0] for row in connection.execute("SELECT id FROM records WHERE importance='always'")
+        }
+        candidate_ids = set(scores) | always_ids
+        candidates: list[tuple[int, Record]] = []
+        if candidate_ids:
+            placeholders = ",".join("?" for _ in candidate_ids)
+            for row in connection.execute(
+                f"SELECT id,path,meta_json,summary FROM records WHERE id IN ({placeholders})",
+                sorted(candidate_ids),
+            ):
+                candidates.append((scores.get(row[0], 0), row_record(root, row)))
+        conflicts: dict[str, list[str]] = defaultdict(list)
+        for subject, record_id in connection.execute("SELECT subject,record_id FROM conflicts ORDER BY subject,record_id"):
+            conflicts[subject].append(record_id)
+        return candidates, dict(conflicts), state, timings
+    finally:
+        connection.close()
+
+
+def indexed_record(root: Path, memory_id: str) -> Record | None:
+    path = retrieval_index_path(root)
+    try:
+        connection = sqlite3.connect(path)
+        row = connection.execute(
+            "SELECT id,path,meta_json,summary FROM records WHERE id=?", (memory_id,)
+        ).fetchone()
+    except sqlite3.DatabaseError:
+        return None
+    finally:
+        try:
+            connection.close()
+        except UnboundLocalError:
+            pass
+    return row_record(root, row) if row else None
+
+
+def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str, Any]:
+    total_started = time.perf_counter()
+    stage_started = total_started
+    compatibility = require_compatible_runtime(root, writing=False)
+    runtime_elapsed = time.perf_counter() - stage_started
+    task = compiled_task(payload)
+    fresh = payload.get("fresh", False)
+    diagnostic = payload.get("diagnostic", False)
+    freshness_seconds = payload.get("freshness_seconds", DEFAULT_FRESHNESS_SECONDS)
+    if not isinstance(fresh, bool) or not isinstance(diagnostic, bool):
+        raise BrainError("INVALID_TASK", "fresh and diagnostic must be booleans")
+    if not isinstance(freshness_seconds, int) or not 0 <= freshness_seconds <= 300:
+        raise BrainError("INVALID_TASK", "freshness_seconds must be between 0 and 300")
+    stage_started = time.perf_counter()
+    sync = sync_repo(
+        root,
+        allow_push=runtime_can_write(compatibility),
+        fresh=fresh,
+        freshness_seconds=freshness_seconds,
+    )
+    sync_elapsed = time.perf_counter() - stage_started
     if sync.get("reason") == "validation_failed":
         raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
-    records = load_memories(root)
-    active, conflicts = current_memories(records)
     task_tokens = tokens(task)
-    ranked: list[tuple[int, Record]] = []
-    for record in active:
-        score = score_memory(record, task_tokens)
-        if score > 0 or record.meta.get("importance") == "core":
-            ranked.append((score, record))
+    candidates, conflicts, index_state, index_timings = indexed_memories(
+        root,
+        task_tokens,
+        allow_rebuild=sync.get("reason") != "dirty_worktree",
+    )
+    stage_started = time.perf_counter()
+    ranked = [
+        (score, record)
+        for score, record in candidates
+        if score > 0 and record.meta.get("importance") != "always"
+    ]
     ranked.sort(
         key=lambda item: (
-            item[1].meta.get("importance") == "core",
             item[0],
+            item[1].meta.get("importance") == "core",
             item[1].meta.get("created_at", ""),
             item[1].meta.get("id", ""),
         ),
         reverse=True,
     )
-    core = [item for item in ranked if item[1].meta.get("importance") == "core"]
-    normal = [item for item in ranked if item[1].meta.get("importance") != "core"]
-    selected = [*core, *normal[: max(0, limit - len(core))]]
+    always = [
+        (score, record)
+        for score, record in candidates
+        if record.meta.get("importance") == "always"
+    ]
+    always.sort(key=lambda item: (item[0], item[1].meta.get("created_at", "")), reverse=True)
+    selected = [*always[:ALWAYS_MEMORY_LIMIT], *ranked]
+    selected = selected[:limit]
     selected_ids = {str(record.meta["id"]) for _, record in selected}
+    conflict_expansion = 0
+    active_by_id = {str(record.meta["id"]): record for _, record in candidates}
+    for ids in conflicts.values():
+        if selected_ids.intersection(ids):
+            for memory_id in ids:
+                if memory_id not in selected_ids and conflict_expansion < CONFLICT_EXPANSION_LIMIT:
+                    record = active_by_id.get(memory_id) or indexed_record(root, memory_id)
+                    if record:
+                        selected.append((score_memory(record, task_tokens), record))
+                        selected_ids.add(memory_id)
+                        conflict_expansion += 1
     selected_conflicts = [
         {"subject": subject, "memory_ids": ids}
         for subject, ids in sorted(conflicts.items())
         if selected_ids.intersection(ids)
     ]
-    return {
+    ranking_elapsed = time.perf_counter() - stage_started
+    conflicting_ids = {item for conflict in conflicts.values() for item in conflict}
+    result: dict[str, Any] = {
         "ok": True,
         "sync": sync,
         "stale": not sync.get("synced", False),
+        "limit": limit,
+        "conflict_expansion": conflict_expansion,
         "memories": [
             {
                 "id": record.meta["id"],
@@ -868,16 +1274,42 @@ def command_context(root: Path, payload: dict[str, Any], limit: int) -> dict[str
                 "sensitivity": record.meta["sensitivity"],
                 "importance": record.meta["importance"],
                 "tags": record.meta["tags"],
-                "created_at": record.meta["created_at"],
-                "created_by": record.meta["created_by"],
-                "source": record.meta["source"],
                 "score": score,
-                "conflict": str(record.meta["id"]) in {item for conflict in conflicts.values() for item in conflict},
+                "conflict": str(record.meta["id"]) in conflicting_ids,
+                **(
+                    {
+                        "provenance": {
+                            "created_at": record.meta["created_at"],
+                            "created_by": record.meta["created_by"],
+                            "source": record.meta["source"],
+                        }
+                    }
+                    if str(record.meta["id"]) in conflicting_ids
+                    else {}
+                ),
             }
             for score, record in selected
         ],
         "conflicts": selected_conflicts,
     }
+    serialization_started = time.perf_counter()
+    json.dumps(result, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    serialization_elapsed = time.perf_counter() - serialization_started
+    if diagnostic:
+        result["diagnostics"] = {
+            "index": index_state,
+            "freshness_window_seconds": freshness_seconds,
+            "timings_ms": {
+                "runtime_check": round(runtime_elapsed * 1000, 3),
+                "remote_synchronization": round(sync_elapsed * 1000, 3),
+                "local_index_refresh": round(index_timings["local_index_refresh"] * 1000, 3),
+                "memory_graph_resolution": round(index_timings["memory_graph_resolution"] * 1000, 3),
+                "ranking_and_collection_expansion": round(ranking_elapsed * 1000, 3),
+                "serialization": round(serialization_elapsed * 1000, 3),
+                "total": round((time.perf_counter() - total_started) * 1000, 3),
+            },
+        }
+    return result
 
 
 def command_remember(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -993,6 +1425,56 @@ def prior_import(root: Path, source: dict[str, str]) -> Record | None:
     return None
 
 
+def import_coverage(value: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if value is None:
+        return [], {
+            "writable": 0,
+            "reference_only": 0,
+            "excluded": 0,
+            "scanned": 0,
+            "candidates_extracted": 0,
+            "intentionally_skipped": 0,
+            "canonical_not_scanned": [],
+        }
+    if not isinstance(value, list):
+        raise BrainError("INVALID_SOURCE_COVERAGE", "coverage must be an array")
+    entries: list[dict[str, Any]] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise BrainError("INVALID_SOURCE_COVERAGE", "coverage entries must be objects")
+        entry = {
+            "locator": raw.get("locator"),
+            "access": raw.get("access"),
+            "canonical": raw.get("canonical", False),
+            "status": raw.get("status"),
+        }
+        if (
+            not isinstance(entry["locator"], str)
+            or not entry["locator"].strip()
+            or entry["access"] not in {"writable", "reference-only", "excluded"}
+            or not isinstance(entry["canonical"], bool)
+            or entry["status"] not in {"discovered", "scanned", "candidate-extracted", "intentionally-skipped"}
+        ):
+            raise BrainError("INVALID_SOURCE_COVERAGE", "coverage entries are invalid")
+        if detect_secret(entry):
+            raise BrainError("SECRET_VALUE_REJECTED", "Likely secret material cannot be stored in source coverage")
+        entries.append(entry)
+    summary = {
+        "writable": sum(entry["access"] == "writable" for entry in entries),
+        "reference_only": sum(entry["access"] == "reference-only" for entry in entries),
+        "excluded": sum(entry["access"] == "excluded" for entry in entries),
+        "scanned": sum(entry["status"] in {"scanned", "candidate-extracted"} for entry in entries),
+        "candidates_extracted": sum(entry["status"] == "candidate-extracted" for entry in entries),
+        "intentionally_skipped": sum(entry["status"] == "intentionally-skipped" for entry in entries),
+        "canonical_not_scanned": [
+            entry["locator"]
+            for entry in entries
+            if entry["canonical"] and entry["status"] == "discovered" and entry["access"] != "excluded"
+        ],
+    }
+    return entries, summary
+
+
 def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
@@ -1007,6 +1489,7 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     source = {key: str(value).strip() for key, value in source.items()}
     if not SHA256_PATTERN.fullmatch(source["hash"]):
         raise BrainError("INVALID_IMPORT_SOURCE", "source.hash must be a SHA-256 fingerprint")
+    coverage, coverage_summary = import_coverage(payload.get("coverage"))
     previous = prior_import(root, source)
     if previous:
         return {
@@ -1014,6 +1497,7 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
             "status": "unchanged",
             "import_id": previous.meta["id"],
             "counts": previous.meta["counts"],
+            "coverage": coverage_summary,
             "sync": sync,
         }
     candidates = payload.get("memories")
@@ -1067,6 +1551,7 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
         "duplicate_memory_ids": duplicate_ids,
         "conflicts": conflicts,
         "rejected_by_code": dict(sorted(rejected.items())),
+        "coverage": coverage,
     }
     manifest = root / "brain" / "imports" / f"{batch_id}.md"
     write_record(
@@ -1100,6 +1585,7 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
         "duplicate_memory_ids": duplicate_ids,
         "conflicts": conflicts,
         "rejected_by_code": import_meta["rejected_by_code"],
+        "coverage": coverage_summary,
         "notice": f"MegaBrain: imported {len(created)} durable memories; {counts['duplicates']} duplicates, {counts['conflicts']} conflicts, {counts['rejected']} rejected.",
         **result,
     }
@@ -1293,6 +1779,392 @@ def command_doctor(root: Path) -> dict[str, Any]:
     return {"ok": all(check["ok"] for check in checks.values()), "checks": checks}
 
 
+def vault_brain_id(root: Path, *, create: bool = False) -> str | None:
+    manifest = brain_manifest(root)
+    value = manifest.get("brain_id")
+    if valid_uuid(value):
+        return str(value)
+    if not create:
+        return None
+    sync = sync_repo(root, fresh=True)
+    require_clean_or_offline(sync)
+    value = str(uuid.uuid4())
+    manifest["brain_id"] = value
+    path = root / "megabrain.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=True, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    commit_paths(root, [path], "chore: assign stable brain identifier")
+    return value
+
+
+def write_recovery_file(path: Path, recovery_key: str) -> None:
+    if not path.parent.is_dir():
+        raise vault_module.VaultError("RECOVERY_FILE_FAILED", "The recovery file directory does not exist.")
+    try:
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as error:
+        raise vault_module.VaultError("RECOVERY_FILE_EXISTS", "The selected recovery file already exists.") from error
+    except OSError as error:
+        raise vault_module.VaultError("RECOVERY_FILE_FAILED", "The recovery file could not be created.") from error
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(recovery_key + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(path, 0o600)
+    except OSError as error:
+        path.unlink(missing_ok=True)
+        raise vault_module.VaultError("RECOVERY_FILE_FAILED", "The recovery file could not be created.") from error
+
+
+def start_vault_broker(root: Path, store: vault_module.VaultStore, master_key: bytes, timeout: int) -> dict[str, Any]:
+    socket_path = store.paths.runtime / "broker.sock"
+    if socket_path.exists():
+        try:
+            vault_module.broker_socket_request(socket_path, {"method": "owner.status"})
+            return {"ok": True, "unlocked": True, "already_unlocked": True}
+        except vault_module.VaultError:
+            pass
+    environment = dict(os.environ)
+    environment["MEGABRAIN_ROOT"] = str(root)
+    process = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "vault", "_serve", "--stdin"],
+        cwd=root,
+        env=environment,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+    assert process.stdin is not None
+    process.stdin.write(json.dumps({"master_key": vault_module.b64(master_key), "idle_timeout": timeout}))
+    process.stdin.close()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if socket_path.exists():
+            try:
+                vault_module.broker_socket_request(socket_path, {"method": "owner.status"})
+                return {"ok": True, "unlocked": True, "idle_timeout": timeout}
+            except vault_module.VaultError:
+                pass
+        if process.poll() is not None:
+            break
+        time.sleep(0.05)
+    raise vault_module.VaultError("BROKER_START_FAILED", "The local Vault broker did not start.")
+
+
+def command_vault(root: Path, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_compatible_runtime(root, writing=action not in {"status", "doctor", "metadata", "reveal", "audit"})
+    vault_module.configure_dependency(Path.home())
+    if action == "setup":
+        if not payload.get("confirm_recovery_saved", False):
+            vault_module.ensure_dependency(Path.home())
+        brain_id = vault_brain_id(root, create=not payload.get("confirm_recovery_saved", False))
+        if brain_id is None:
+            raise vault_module.VaultError("BRAIN_ID_REQUIRED", "Assign a stable brain identifier before Vault setup.")
+        store = vault_module.VaultStore(vault_module.paths_for(Path.home(), brain_id))
+        if payload.get("confirm_recovery_saved") is True:
+            store.confirm_setup()
+            return {"ok": True, "ready": True, "recovery_key_displayed": False}
+        passphrase = payload.get("passphrase")
+        if not isinstance(passphrase, str):
+            raise vault_module.VaultError("PASSPHRASE_REQUIRED", "Provide the Vault passphrase through standard input.")
+        recovery_path = payload.get("recovery_path")
+        selected_recovery: Path | None = None
+        if recovery_path is not None:
+            if not isinstance(recovery_path, str) or not recovery_path:
+                raise vault_module.VaultError("INVALID_RECOVERY_PATH", "Recovery path must be an explicit path string.")
+            selected_recovery = Path(recovery_path).expanduser().resolve()
+            if selected_recovery.exists():
+                raise vault_module.VaultError("RECOVERY_FILE_EXISTS", "The selected recovery file already exists.")
+        store, recovery_key = vault_module.VaultStore.setup(store.paths, brain_id, passphrase)
+        if selected_recovery is not None:
+            try:
+                write_recovery_file(selected_recovery, recovery_key)
+            except Exception:
+                shutil.rmtree(store.paths.root, ignore_errors=True)
+                raise
+            return {
+                "ok": True,
+                "created": True,
+                "ready": False,
+                "confirmation_required": True,
+                "recovery_file": str(selected_recovery),
+            }
+        return {
+            "ok": True,
+            "created": True,
+            "ready": False,
+            "confirmation_required": True,
+            "recovery_key": recovery_key,
+        }
+
+    brain_id = vault_brain_id(root)
+    if brain_id is None:
+        if action == "status":
+            return {"ok": True, "exists": False, "locked": True, "brain_id_assigned": False}
+        raise vault_module.VaultError("BRAIN_ID_REQUIRED", "Run vault setup to assign a stable brain identifier.")
+    store = vault_module.VaultStore(vault_module.paths_for(Path.home(), brain_id))
+    if action == "status":
+        return store.status()
+    if action == "doctor":
+        return vault_module.doctor(store)
+    if action == "_serve":
+        encoded = payload.get("master_key")
+        if not isinstance(encoded, str):
+            raise vault_module.VaultError("UNLOCK_MATERIAL_REQUIRED", "Broker unlock material is missing.")
+        vault_module.serve_broker(store, vault_module.unb64(encoded), int(payload.get("idle_timeout", 300)))
+        return {"ok": True, "locked": True}
+    if action == "lock":
+        return vault_module.lock_broker(store)
+    if action == "metadata":
+        identity = load_identity(root)
+        request = vault_module.signed_request(
+            root,
+            {
+                "method": action,
+                "resource": payload.get("resource"),
+                "fields": payload.get("fields", []),
+                "purpose": payload.get("purpose"),
+                "context": payload.get("context", {"kind": "unknown"}),
+            },
+        )
+        if request["agent_id"] != identity["id"]:
+            raise vault_module.VaultError("AGENT_KEY_MISMATCH", "The local Vault key belongs to another agent.")
+        return vault_module.broker_socket_request(store.paths.runtime / "broker.sock", request)
+    if action == "restore":
+        source = payload.get("source")
+        if not isinstance(source, str):
+            raise vault_module.VaultError("BACKUP_REQUIRED", "Restore requires an explicit backup path.")
+        return vault_module.restore_backup(
+            Path(source).expanduser().resolve(),
+            store.paths,
+            passphrase=payload.get("passphrase") if isinstance(payload.get("passphrase"), str) else None,
+            recovery_key=payload.get("recovery_key") if isinstance(payload.get("recovery_key"), str) else None,
+        )
+
+    passphrase = payload.get("passphrase")
+    recovery_key = payload.get("recovery_key")
+    master_key = store.unlock(
+        passphrase=passphrase if isinstance(passphrase, str) else None,
+        recovery_key=recovery_key if isinstance(recovery_key, str) else None,
+    )
+    if action == "unlock":
+        timeout = payload.get("idle_timeout", 300)
+        if not isinstance(timeout, int):
+            raise vault_module.VaultError("INVALID_TIMEOUT", "Vault idle timeout must be an integer.")
+        return start_vault_broker(root, store, master_key, timeout)
+    if action == "put":
+        item = payload.get("item")
+        if not isinstance(item, dict):
+            raise vault_module.VaultError("INVALID_ITEM", "Vault put requires an item object.")
+        return store.put(master_key, item)
+    if action == "reveal":
+        context = payload.get("context")
+        purpose = payload.get("purpose")
+        digest: bytes | None = None
+        try:
+            digest = store.resource_digest(master_key, payload.get("resource"))
+            if (
+                payload.get("owner_confirmed") is not True
+                or not isinstance(context, dict)
+                or context.get("kind") != "private"
+            ):
+                raise vault_module.VaultError(
+                    "OWNER_CONFIRMATION_REQUIRED",
+                    "Owner reveal requires explicit confirmation of a private output context.",
+                )
+            if not isinstance(purpose, str) or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", purpose) is None:
+                raise vault_module.VaultError("PURPOSE_REQUIRED", "Vault reveal requires a structured purpose code.")
+            result = store.reveal(master_key, payload.get("resource"), payload.get("fields", []))
+        except vault_module.VaultError as error:
+            try:
+                with store.connect() as connection:
+                    store.audit(connection, None, "reveal", digest, "denied", error.code, None)
+            except (vault_module.VaultError, sqlite3.DatabaseError):
+                pass
+            raise
+        with store.connect() as connection:
+            store.audit(
+                connection,
+                None,
+                "reveal",
+                digest,
+                "allowed",
+                "OWNER_CONFIRMED_PRIVATE_CONTEXT",
+                None,
+            )
+        return result
+    if action == "rotate-passphrase":
+        new_passphrase = payload.get("new_passphrase")
+        if not isinstance(new_passphrase, str):
+            raise vault_module.VaultError("PASSPHRASE_REQUIRED", "Provide the new passphrase through standard input.")
+        store.rotate_passphrase(master_key, new_passphrase)
+        return {"ok": True, "rotated": True}
+    if action == "rotate-recovery":
+        recovery_path = payload.get("recovery_path")
+        if not isinstance(recovery_path, str) or not recovery_path:
+            raise vault_module.VaultError(
+                "RECOVERY_PATH_REQUIRED",
+                "Recovery rotation requires an explicit new recovery-file path.",
+            )
+        selected_recovery = Path(recovery_path).expanduser().resolve()
+        if selected_recovery.exists():
+            raise vault_module.VaultError("RECOVERY_FILE_EXISTS", "The selected recovery file already exists.")
+        recovery_key = vault_module.RECOVERY_PREFIX + vault_module.b64(
+            vault_module.crypto().bindings.randombytes(32)
+        )
+        write_recovery_file(selected_recovery, recovery_key)
+        try:
+            store.rotate_recovery(master_key, vault_module.recovery_bytes(recovery_key))
+        except Exception:
+            selected_recovery.unlink(missing_ok=True)
+            raise
+        return {"ok": True, "rotated": True, "recovery_file": str(selected_recovery)}
+    if action == "delete":
+        return store.delete(master_key, payload.get("resource"))
+    if action == "grant":
+        identity = load_identity(root)
+        agent_id = payload.get("agent_id", identity["id"])
+        scopes = payload.get("scopes", [])
+        classes = payload.get("resource_classes", [])
+        if not isinstance(scopes, list) or not isinstance(classes, list):
+            raise vault_module.VaultError("INVALID_SCOPE", "Scopes and resource classes must be arrays.")
+        return vault_module.grant_agent(store, str(agent_id), root, scopes, classes)
+    if action == "revoke":
+        agent_id = payload.get("agent_id")
+        if not isinstance(agent_id, str):
+            raise vault_module.VaultError("INVALID_AGENT", "Revoke requires an agent identifier.")
+        return vault_module.revoke_agent(store, agent_id)
+    if action == "attach":
+        operation = payload.get("operation", "add")
+        if operation == "add":
+            source = payload.get("source")
+            if not isinstance(source, str):
+                raise vault_module.VaultError("ATTACHMENT_UNREADABLE", "Attach requires an explicit source path.")
+            return vault_module.add_attachment(
+                store,
+                master_key,
+                payload.get("resource"),
+                Path(source).expanduser().resolve(),
+                filename=payload.get("filename") if isinstance(payload.get("filename"), str) else None,
+                mime_type=payload.get("mime_type", "application/octet-stream"),
+            )
+        if operation == "get":
+            destination = payload.get("destination")
+            if not isinstance(destination, str):
+                raise vault_module.VaultError("OUTPUT_REQUIRED", "Attachment retrieval requires an explicit output path.")
+            output = Path(destination).expanduser().resolve()
+            if output.exists():
+                raise vault_module.VaultError("OUTPUT_EXISTS", "Attachment retrieval refuses to overwrite a file.")
+            if not output.parent.is_dir():
+                raise vault_module.VaultError("OUTPUT_REQUIRED", "The attachment output directory does not exist.")
+            descriptor, temporary_name = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
+            try:
+                os.fchmod(descriptor, 0o600)
+                with os.fdopen(descriptor, "wb") as stream:
+                    result = vault_module.extract_attachment(store, master_key, str(payload.get("attachment_id")), stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary_name, output)
+                result["path"] = str(output)
+                return result
+            finally:
+                Path(temporary_name).unlink(missing_ok=True)
+        raise vault_module.VaultError("INVALID_ATTACHMENT_OPERATION", "Attachment operation must be add or get.")
+    if action == "export":
+        destination = payload.get("destination")
+        if not isinstance(destination, str):
+            raise vault_module.VaultError("BACKUP_DESTINATION_REQUIRED", "Export requires an explicit destination.")
+        return vault_module.export_backup(store, Path(destination).expanduser().resolve())
+    if action == "audit":
+        limit = payload.get("limit", 100)
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            raise vault_module.VaultError("INVALID_LIMIT", "Audit limit must be an integer from 1 to 500.")
+        return store.audit_list(limit)
+    raise vault_module.VaultError("VAULT_ACTION_UNSUPPORTED", "The requested Vault action is unsupported.")
+
+
+def benchmark_record(root: Path, number: int) -> None:
+    memory_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://megabrain.invalid/benchmark/{number}"))
+    relevant = number < 8
+    subject = f"round6.pricing.family_{number}" if relevant else f"benchmark.unrelated_{number}"
+    tags = ["round6", "pricing", "collection"] if relevant else ["unrelated"]
+    importance = "normal" if relevant else ("core" if number < 28 else "normal")
+    meta = {
+        "schema": MEMORY_SCHEMA,
+        "id": memory_id,
+        "kind": "fact",
+        "subject": subject,
+        "created_at": "2026-01-01T00:00:00Z",
+        "created_by": "00000000-0000-4000-8000-000000000001",
+        "confidence": "confirmed",
+        "sensitivity": "general",
+        "importance": importance,
+        "tags": tags,
+        "supersedes": [],
+        "source": {"type": "agent-observation"},
+    }
+    path = root / "brain" / "memories" / "2026" / "01" / f"benchmark-{number:05d}-{memory_id}.md"
+    summary = f"Synthetic Round 6 pricing family entry {number}." if relevant else f"Synthetic unrelated benchmark memory {number}."
+    write_record(path, meta, body_for(meta, summary))
+
+
+def command_benchmark() -> dict[str, Any]:
+    reports: list[dict[str, Any]] = []
+    for size in (30, 1_000, 10_000):
+        with tempfile.TemporaryDirectory(prefix=f"megabrain-benchmark-{size}-") as temporary:
+            root = Path(temporary)
+            (root / "brain" / "memories").mkdir(parents=True)
+            (root / "brain" / "agents").mkdir()
+            (root / "brain" / "imports").mkdir()
+            (root / "megabrain.json").write_text(
+                json.dumps(
+                    {"schema": BRAIN_SCHEMA, "protocol_version": 1, "minimum_runtime": "1.0.0"},
+                    indent=2,
+                    sort_keys=True,
+                ) + "\n",
+                encoding="utf-8",
+            )
+            (root / ".gitignore").write_text(".megabrain/\n", encoding="utf-8")
+            run(["git", "init", "--initial-branch=main"], root, check=True)
+            run(["git", "config", "user.name", "MegaBrain Benchmark"], root, check=True)
+            run(["git", "config", "user.email", "benchmark@example.invalid"], root, check=True)
+            for number in range(size):
+                benchmark_record(root, number)
+            run(["git", "add", "."], root, check=True)
+            run(["git", "commit", "-m", "benchmark: fixed synthetic corpus"], root, check=True)
+            request = {"task": "Return all Round 6 prices", "diagnostic": True}
+            cold = command_context(root, request, 12)
+            warm_runs = [command_context(root, request, 12) for _ in range(5)]
+            warm_totals = [run_result["diagnostics"]["timings_ms"]["total"] for run_result in warm_runs]
+            reports.append(
+                {
+                    "memories": size,
+                    "returned": len(cold["memories"]),
+                    "target_collection_complete": len(cold["memories"]) == 8,
+                    "cold": cold["diagnostics"],
+                    "warm_median_ms": round(statistics.median(warm_totals), 3),
+                    "warm_runs_ms": warm_totals,
+                    "warm_stage_medians_ms": {
+                        stage: round(statistics.median(run_result["diagnostics"]["timings_ms"][stage] for run_result in warm_runs), 3)
+                        for stage in warm_runs[0]["diagnostics"]["timings_ms"]
+                    },
+                }
+            )
+    return {
+        "ok": True,
+        "synthetic": True,
+        "environment": {
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "python": platform.python_version(),
+        },
+        "reports": reports,
+    }
+
+
 def automatic_runtime_update() -> dict[str, Any] | None:
     resolved = Path(__file__).resolve()
     runtime_root = Path.home() / ".megabrain" / "runtime"
@@ -1336,6 +2208,17 @@ def build_parser() -> argparse.ArgumentParser:
     browse.add_argument("--no-open", action="store_true", help="generate the browser without opening it")
     subparsers.add_parser("validate")
     subparsers.add_parser("doctor")
+    subparsers.add_parser("benchmark")
+    vault = subparsers.add_parser("vault")
+    vault.add_argument(
+        "action",
+        choices=(
+            "setup", "status", "unlock", "lock", "put", "metadata", "reveal", "attach",
+            "export", "restore", "grant", "revoke", "rotate-passphrase", "rotate-recovery",
+            "delete", "audit", "doctor", "_serve",
+        ),
+    )
+    vault.add_argument("--stdin", action="store_true")
     return parser
 
 
@@ -1344,7 +2227,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         runtime_update = automatic_runtime_update() if args.command == "context" else None
-        root = repo_root()
+        root = repo_root() if args.command != "benchmark" else Path.cwd()
         if args.command == "sync":
             require_compatible_runtime(root, writing=True)
             sync = sync_repo(root)
@@ -1369,6 +2252,10 @@ def main() -> int:
             result = command_validate(root)
         elif args.command == "doctor":
             result = command_doctor(root)
+        elif args.command == "vault":
+            result = command_vault(root, args.action, read_input(required=False))
+        elif args.command == "benchmark":
+            result = command_benchmark()
         else:
             parser.error("unknown command")
             return 2
@@ -1381,6 +2268,9 @@ def main() -> int:
         emit(result)
         return 0 if result.get("ok", False) else 1
     except BrainError as error:
+        emit({"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}}, stream=sys.stderr)
+        return 2
+    except vault_module.VaultError as error:
         emit({"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}}, stream=sys.stderr)
         return 2
 
