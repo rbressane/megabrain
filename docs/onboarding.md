@@ -22,7 +22,7 @@ Bootstrap then:
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
-If setup is interrupted after creating the private repository or committing the local seed, rerunning setup converges on the same private repository. A clean local seed is pushed to an empty remote once authorization is fixed; a dirty managed clone is never reset or silently repaired.
+If setup is interrupted after creating the private repository or committing the local seed, rerunning setup converges on the same private repository. A clean local seed is pushed to an empty remote once authorization is fixed. Setup can safely remove the legacy workflow from an exact, pristine v1.0.0 seed before its first push; any other committed or uncommitted change is left untouched and blocks automatic recovery.
 
 ## Later Agents And Updates
 
