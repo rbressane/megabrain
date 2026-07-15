@@ -374,6 +374,11 @@ def is_empty_repository(root: Path) -> bool:
     return run(["git", "rev-parse", "--verify", "HEAD"], root).returncode != 0
 
 
+def remote_has_main(root: Path) -> bool:
+    listed = run(["git", "ls-remote", "--heads", "origin", "main"], root)
+    return listed.returncode == 0 and bool(listed.stdout.strip())
+
+
 def copy_seed(root: Path) -> None:
     seed = source_skill_root() / "seed"
     if not seed.exists():
@@ -429,6 +434,9 @@ def ensure_clone(home: Path, harness: str, remote: str) -> tuple[Path, bool]:
         created = True
     if is_empty_repository(root):
         seed_repository(root)
+    elif not remote_has_main(root):
+        if not push_with_retry(root):
+            raise BootstrapError("SYNC_FAILED", "The private MegaBrain repository could not be synchronized.")
     else:
         fetched = run(["git", "fetch", "origin", "main"], root)
         rebased = run(["git", "rebase", "origin/main"], root) if fetched.returncode == 0 else fetched
@@ -768,7 +776,16 @@ def open_brain(args: argparse.Namespace) -> dict[str, Any]:
         raise BootstrapError("BROWSER_FAILED", "MegaBrain could not open the local browser.") from error
     if browsed.returncode != 0:
         raise BootstrapError("BROWSER_FAILED", "MegaBrain could not open the local browser.")
-    result["message"] = "MegaBrain is open." if result.get("opened") else "MegaBrain browser is ready."
+    host = result.get("host") or os.uname().nodename
+    result["message"] = (
+        f"MegaBrain opened on {host}."
+        if result.get("opened")
+        else f"MegaBrain browser is ready on {host}."
+    )
+    result["device_boundary"] = (
+        "The browser is local to the machine running this agent. "
+        'To browse it on another Mac, connect MegaBrain there and run "Open my MegaBrain."'
+    )
     return result
 
 

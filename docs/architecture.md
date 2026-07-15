@@ -10,11 +10,13 @@ The runtime checks for compatible releases at most once per day during normal co
 
 ## Private Brain
 
-Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, private-brain documentation, and a validation workflow. They do not contain the executable product runtime.
+Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, and private-brain documentation. They do not contain GitHub Actions workflows or the executable product runtime.
 
 The installed helper pulls before context retrieval, resolves the immutable memory graph, and performs lexical task matching. Write operations create new Markdown records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared memory files.
 
 Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
+
+If first setup creates a local seed but the initial push fails, rerunning setup after authorization is repaired pushes the clean local seed into the still-empty remote instead of discarding local state or requiring manual Git repair.
 
 ## Compatibility
 
