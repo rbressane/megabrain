@@ -34,6 +34,23 @@ GITHUB_REMOTE = re.compile(
     r"(?P<repository>[^/]+/[^/.]+)(?:\.git)?$"
 )
 VERSION_PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+LEGACY_SEED_WORKFLOW_PATH = Path(".github/workflows/validate.yml")
+LEGACY_SEED_WORKFLOW = b"""name: Validate MegaBrain
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: rbressane/megabrain/.github/actions/validate-brain@v1.0.0
+"""
 
 
 class BootstrapError(Exception):
@@ -375,8 +392,19 @@ def is_empty_repository(root: Path) -> bool:
 
 
 def remote_has_main(root: Path) -> bool:
-    listed = run(["git", "ls-remote", "--heads", "origin", "main"], root)
-    return listed.returncode == 0 and bool(listed.stdout.strip())
+    listed = run(["git", "ls-remote", "origin"], root)
+    if listed.returncode != 0:
+        raise BootstrapError("SYNC_FAILED", "The private MegaBrain repository could not be reached.")
+    references = {
+        line.split("\t", 1)[1]
+        for line in listed.stdout.splitlines()
+        if "\t" in line
+    }
+    if "refs/heads/main" in references:
+        return True
+    if references:
+        raise BootstrapError("SYNC_FAILED", "The private MegaBrain repository does not have the expected main branch.")
+    return False
 
 
 def copy_seed(root: Path) -> None:
@@ -417,6 +445,71 @@ def assert_clean(root: Path) -> None:
         raise BootstrapError("CLONE_DIRTY", "The managed MegaBrain clone has unexpected local edits.")
 
 
+def rewrite_legacy_unpushed_seed(root: Path) -> bool:
+    workflow = root / LEGACY_SEED_WORKFLOW_PATH
+    if not os.path.lexists(workflow):
+        return False
+
+    seed = source_skill_root() / "seed"
+    expected_files = {
+        source.relative_to(seed).as_posix(): source.read_bytes()
+        for source in seed.rglob("*")
+        if source.is_file() and not source.is_symlink()
+    }
+    expected_paths = set(expected_files) | {LEGACY_SEED_WORKFLOW_PATH.as_posix()}
+    commit_count = run(["git", "rev-list", "--count", "HEAD"], root)
+    branch = run(["git", "symbolic-ref", "--short", "HEAD"], root)
+    subject = run(["git", "show", "-s", "--format=%s", "HEAD"], root)
+    listed = run(["git", "ls-tree", "-r", "--name-only", "HEAD"], root)
+    tracked_paths = set(listed.stdout.splitlines()) if listed.returncode == 0 else set()
+    try:
+        workflow_matches = (
+            workflow.is_file()
+            and not workflow.is_symlink()
+            and workflow.read_bytes() == LEGACY_SEED_WORKFLOW
+        )
+        seed_matches = all(
+            (root / relative).is_file()
+            and not (root / relative).is_symlink()
+            and (root / relative).read_bytes() == content
+            for relative, content in expected_files.items()
+        )
+    except OSError:
+        workflow_matches = False
+        seed_matches = False
+    recognized = (
+        workflow_matches
+        and commit_count.returncode == 0
+        and commit_count.stdout.strip() == "1"
+        and branch.returncode == 0
+        and branch.stdout.strip() == "main"
+        and subject.returncode == 0
+        and subject.stdout.strip() == "feat: initialize private MegaBrain"
+        and tracked_paths == expected_paths
+        and seed_matches
+    )
+    if not recognized:
+        raise BootstrapError(
+            "LEGACY_SEED_UNSAFE",
+            "The interrupted MegaBrain seed contains unexpected committed changes and was not modified.",
+        )
+
+    removed = run(["git", "rm", "--", LEGACY_SEED_WORKFLOW_PATH.as_posix()], root)
+    amended = run(
+        ["git", "-c", "commit.gpgsign=false", "commit", "--amend", "--no-edit", "--no-verify"],
+        root,
+    ) if removed.returncode == 0 else removed
+    if removed.returncode != 0 or amended.returncode != 0:
+        run(["git", "restore", "--staged", "--worktree", "--", LEGACY_SEED_WORKFLOW_PATH.as_posix()], root)
+        raise BootstrapError("SEED_MIGRATION_FAILED", "The interrupted MegaBrain seed could not be safely upgraded.")
+    for directory in (workflow.parent, workflow.parent.parent):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+    return True
+
+
 def ensure_clone(home: Path, harness: str, remote: str) -> tuple[Path, bool]:
     root = clone_path(home, harness)
     created = False
@@ -435,6 +528,7 @@ def ensure_clone(home: Path, harness: str, remote: str) -> tuple[Path, bool]:
     if is_empty_repository(root):
         seed_repository(root)
     elif not remote_has_main(root):
+        rewrite_legacy_unpushed_seed(root)
         if not push_with_retry(root):
             raise BootstrapError("SYNC_FAILED", "The private MegaBrain repository could not be synchronized.")
     else:

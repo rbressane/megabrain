@@ -16,7 +16,7 @@ The installed helper pulls before context retrieval, resolves the immutable memo
 
 Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
 
-If first setup creates a local seed but the initial push fails, rerunning setup after authorization is repaired pushes the clean local seed into the still-empty remote instead of discarding local state or requiring manual Git repair.
+If first setup creates a local seed but the initial push fails, rerunning setup after authorization is repaired pushes the clean local seed into the still-empty remote instead of discarding local state or requiring manual Git repair. A pristine, unpushed v1.0.0 seed is recognized exactly and has its legacy validation workflow removed from the root commit before synchronization. Any dirty worktree, additional commit, changed seed content, unexpected remote history, or unreachable remote blocks that migration without modifying the clone.
 
 ## Compatibility
 

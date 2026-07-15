@@ -12,6 +12,22 @@ from pathlib import Path
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+LEGACY_SEED_WORKFLOW = """name: Validate MegaBrain
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: rbressane/megabrain/.github/actions/validate-brain@v1.0.0
+"""
 
 
 def run(
@@ -154,6 +170,60 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.network.close()
+
+    def create_interrupted_seed(
+        self,
+        name: str,
+        *,
+        legacy_workflow: bool = True,
+    ) -> tuple[Path, Path, Path]:
+        home = self.network.root / f"{name}-home"
+        home.mkdir()
+        remote = self.network.root / f"{name}.git"
+        clone = home / ".megabrain" / "clones" / "codex"
+        run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
+        clone.parent.mkdir(parents=True)
+        run(["git", "clone", str(remote), str(clone)], self.network.root)
+        run(["git", "config", "user.name", "MegaBrain Bootstrap"], clone)
+        run(["git", "config", "user.email", "megabrain+bootstrap@users.noreply.github.com"], clone)
+        shutil.copytree(SOURCE_ROOT / "skill" / "megabrain" / "seed", clone, dirs_exist_ok=True)
+        if legacy_workflow:
+            workflow = clone / ".github" / "workflows" / "validate.yml"
+            workflow.parent.mkdir(parents=True, exist_ok=True)
+            workflow.write_text(LEGACY_SEED_WORKFLOW, encoding="utf-8")
+        run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], clone)
+        run(["git", "add", "."], clone)
+        run(["git", "commit", "-m", "feat: initialize private MegaBrain"], clone)
+        return home, remote, clone
+
+    def run_interrupted_setup(
+        self,
+        home: Path,
+        remote: Path,
+        *,
+        expected: int = 0,
+    ) -> subprocess.CompletedProcess[str]:
+        return run(
+            [
+                "python3",
+                str(SOURCE_ROOT / "install.py"),
+                "setup",
+                "--harness",
+                "codex",
+                "--display-name",
+                "Codex Test",
+                "--home",
+                str(home),
+                "--allow-local-remote",
+                "--repository",
+                str(remote),
+                "--distribution",
+                str(SOURCE_ROOT),
+                "--no-open",
+            ],
+            SOURCE_ROOT,
+            expected=expected,
+        )
 
     def test_clean_repository_install_is_idempotent_and_uninstall_is_scoped(self) -> None:
         clone = self.network.clone("codex")
@@ -764,75 +834,76 @@ raise SystemExit(1)
         self.assertEqual(config["repository"], "synthetic-user/megabrain-data")
         self.assertTrue((self.network.root / "created-private.git" / "refs" / "heads" / "main").exists())
 
-    def test_setup_recovers_clean_local_seed_when_remote_is_empty(self) -> None:
-        home = self.network.root / "interrupted-home"
-        home.mkdir()
-        remote = self.network.root / "interrupted.git"
-        clone = home / ".megabrain" / "clones" / "codex"
-        run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
-        clone.parent.mkdir(parents=True)
-        run(["git", "clone", str(remote), str(clone)], self.network.root)
-        run(["git", "config", "user.name", "MegaBrain Bootstrap"], clone)
-        run(["git", "config", "user.email", "megabrain+bootstrap@users.noreply.github.com"], clone)
-        shutil.copytree(SOURCE_ROOT / "skill" / "megabrain" / "seed", clone, dirs_exist_ok=True)
-        run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], clone)
-        run(["git", "add", "."], clone)
-        run(["git", "commit", "-m", "feat: initialize private MegaBrain"], clone)
+    def test_setup_recovers_clean_legacy_seed_when_remote_is_empty(self) -> None:
+        home, remote, clone = self.create_interrupted_seed("interrupted-legacy")
         self.assertFalse((remote / "refs" / "heads" / "main").exists())
 
         unexpected = clone / "unexpected.txt"
         unexpected.write_text("synthetic local edit\n", encoding="utf-8")
-        refused = run(
-            [
-                "python3",
-                str(SOURCE_ROOT / "install.py"),
-                "setup",
-                "--harness",
-                "codex",
-                "--display-name",
-                "Codex Test",
-                "--home",
-                str(home),
-                "--allow-local-remote",
-                "--repository",
-                str(remote),
-                "--distribution",
-                str(SOURCE_ROOT),
-                "--no-open",
-            ],
-            SOURCE_ROOT,
-            expected=2,
-        )
+        refused = self.run_interrupted_setup(home, remote, expected=2)
         refusal = json.loads(refused.stderr)
         self.assertEqual(refusal["error"]["code"], "CLONE_DIRTY")
         self.assertFalse((remote / "refs" / "heads" / "main").exists())
         unexpected.unlink()
 
-        completed = run(
-            [
-                "python3",
-                str(SOURCE_ROOT / "install.py"),
-                "setup",
-                "--harness",
-                "codex",
-                "--display-name",
-                "Codex Test",
-                "--home",
-                str(home),
-                "--allow-local-remote",
-                "--repository",
-                str(remote),
-                "--distribution",
-                str(SOURCE_ROOT),
-                "--no-open",
-            ],
-            SOURCE_ROOT,
-        )
+        completed = self.run_interrupted_setup(home, remote)
         result = json.loads(completed.stdout)
 
         self.assertEqual(result["message"], "MegaBrain is ready.")
         self.assertTrue((remote / "refs" / "heads" / "main").exists())
         self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
+        workflow_history = run(
+            ["git", f"--git-dir={remote}", "rev-list", "--all", "--", ".github/workflows/validate.yml"],
+            self.network.root,
+        )
+        self.assertEqual(workflow_history.stdout.strip(), "")
+
+    def test_setup_recovers_clean_current_seed_when_remote_is_empty(self) -> None:
+        home, remote, clone = self.create_interrupted_seed("interrupted-current", legacy_workflow=False)
+
+        completed = self.run_interrupted_setup(home, remote)
+        result = json.loads(completed.stdout)
+
+        self.assertEqual(result["message"], "MegaBrain is ready.")
+        self.assertTrue((remote / "refs" / "heads" / "main").exists())
+        self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
+
+    def test_setup_refuses_unrecognized_legacy_seed_history(self) -> None:
+        for variant in ("modified-workflow", "additional-commit"):
+            with self.subTest(variant=variant):
+                home, remote, clone = self.create_interrupted_seed(variant)
+                if variant == "modified-workflow":
+                    workflow = clone / ".github" / "workflows" / "validate.yml"
+                    workflow.write_text(LEGACY_SEED_WORKFLOW + "\n# synthetic change\n", encoding="utf-8")
+                    run(["git", "add", str(workflow.relative_to(clone))], clone)
+                    run(["git", "commit", "--amend", "--no-edit"], clone)
+                else:
+                    extra = clone / "synthetic-committed.txt"
+                    extra.write_text("synthetic committed change\n", encoding="utf-8")
+                    run(["git", "add", str(extra.relative_to(clone))], clone)
+                    run(["git", "commit", "-m", "test: add unexpected committed state"], clone)
+                original_head = run(["git", "rev-parse", "HEAD"], clone).stdout.strip()
+
+                refused = self.run_interrupted_setup(home, remote, expected=2)
+                refusal = json.loads(refused.stderr)
+
+                self.assertEqual(refusal["error"]["code"], "LEGACY_SEED_UNSAFE")
+                self.assertEqual(run(["git", "rev-parse", "HEAD"], clone).stdout.strip(), original_head)
+                self.assertTrue((clone / ".github" / "workflows" / "validate.yml").exists())
+                self.assertFalse((remote / "refs" / "heads" / "main").exists())
+
+    def test_setup_does_not_rewrite_legacy_seed_when_remote_is_unreachable(self) -> None:
+        home, _, clone = self.create_interrupted_seed("unreachable")
+        unreachable = self.network.root / "missing-remote.git"
+        run(["git", "remote", "set-url", "origin", str(unreachable)], clone)
+        original_head = run(["git", "rev-parse", "HEAD"], clone).stdout.strip()
+
+        refused = self.run_interrupted_setup(home, unreachable, expected=2)
+        refusal = json.loads(refused.stderr)
+
+        self.assertEqual(refusal["error"]["code"], "SYNC_FAILED")
+        self.assertEqual(run(["git", "rev-parse", "HEAD"], clone).stdout.strip(), original_head)
+        self.assertTrue((clone / ".github" / "workflows" / "validate.yml").exists())
 
     def test_versioned_runtime_updates_and_rolls_back_without_touching_memories(self) -> None:
         distribution_work = self.network.root / "distribution-work"
