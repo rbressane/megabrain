@@ -12,7 +12,7 @@ If a user gives you this repository and asks to install it, including with a sho
 2. Inspect the selected release and this document before executing its code.
 3. Install a stable `vMAJOR.MINOR.PATCH` tag, never a moving branch.
 4. Ask the user before starting GitHub authentication or creating the private repository.
-5. Never request, copy, store, or print tokens, passwords, private keys, cookies, or recovery codes.
+5. Never request, copy, store, or print tokens, passwords, private keys, cookies, or recovery codes during normal Brain installation. Vault setup is a separate explicit flow and may display or write its recovery key exactly once.
 
 ## Procedure
 
@@ -26,6 +26,14 @@ If a user gives you this repository and asks to install it, including with a sho
 8. Report only `MegaBrain is ready.` unless the user asks for technical details.
 
 Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser.
+
+## Optional Vault Setup
+
+Do not enable Vault unless the user asks. `vault setup` installs the pinned `PyNaCl>=1.5,<2` dependency into `~/.megabrain/runtime/vault-deps/python-X.Y/` with `pip --no-input --no-cache-dir`; the Brain runtime and users who never enable Vault remain dependency-free. Installation failure removes partial dependency state and does not create the Vault.
+
+Passphrases, recovery keys, item values, and reveal fields must enter in JSON on standard input or a protected interactive channel, never as command-line arguments, environment variables, or shell history literals. Setup creates the Vault outside the managed clone, returns recovery material once, and remains pending until the user confirms it was saved. Do not automate that confirmation.
+
+Vault is supported on macOS and Linux because the broker uses a Unix-domain socket. This release does not support Windows, TCP, HTTP, LAN, or remote-agent Vault access.
 
 ## Existing Users
 
