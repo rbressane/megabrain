@@ -12,7 +12,7 @@ The runtime checks for compatible releases at most once per day during normal co
 
 Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, and private-brain documentation. They do not contain GitHub Actions workflows or the executable product runtime.
 
-The installed helper pulls before context retrieval, resolves the immutable memory graph, and performs lexical task matching. Write operations create new Markdown records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared memory files.
+The installed helper pulls before context retrieval, resolves immutable memory/resource graphs, and performs bounded lexical matching. Disposable memory and resource indexes are compiled only from `git archive HEAD`, never dirty files. Write operations create new immutable records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared files.
 
 Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
 
@@ -20,4 +20,4 @@ If first setup creates a local seed but the initial push fails, rerunning setup 
 
 ## Compatibility
 
-`skill/megabrain/runtime.json` declares the installed version and supported protocol. A private brain's `megabrain.json` declares its protocol and minimum runtime. A runtime may read a compatible older protocol but refuses new writes when it is below the brain's minimum version. Runtime updates never migrate or rewrite memory files.
+`skill/megabrain/runtime.json` declares the installed version and supported protocol. A private brain's `megabrain.json` declares its protocol and minimum runtime. A runtime may read compatible protocol-1 memories, but canonical resource writes require explicit owner-local migration to protocol 2. Runtime updates never migrate or rewrite data files. See [canonical-architecture.md](canonical-architecture.md).

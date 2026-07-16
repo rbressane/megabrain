@@ -8,12 +8,13 @@ This is the canonical MegaBrain product and protocol repository. Personal memori
 - Validate brain seed: `MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate`
 - Bootstrap help: `python3 skill/megabrain/scripts/bootstrap.py --help`
 - Generate browser without opening: `python3 skill/megabrain/scripts/megabrain.py browse --no-open`
+- Retrieval/resource benchmark: `MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py benchmark`
 - Validate skill with the `skill-creator` quick validator when it is available.
 
 ## Boundaries
 
 - Use only the Python standard library and Git.
-- Do not introduce a server, database, daemon, package manager, or hosted relay.
+- Do not introduce a server, authoritative database, daemon, package manager, or hosted relay. Ignored rebuildable SQLite indexes are permitted projections.
 - Keep memory entries immutable and individually addressable.
 - Tests and documentation use synthetic information only.
 - Never import existing personal brains while developing or testing.

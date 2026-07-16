@@ -2,13 +2,17 @@
 
 ## Trusted
 
-The brain owner, private GitHub repository, authenticated clones, and all connected agents are trusted to read and write all knowledge.
+The brain owner and reviewed owner-local controls are trusted. An unrestricted private clone, its host, and its process space can read plaintext canonical content. Contributing or group-facing agents are not granted unrestricted clones merely because they can submit proposals or receive scoped digests.
 
 ## Controls
 
 - Compromised agent or device: revoke its GitHub credential and rotate any exposed external secrets.
 - Accidental secrets: input scanning, ignored secret file patterns, pre-commit validation, and value-free rejection reports.
 - Prompt injection in imports: sources are data; only durable factual summaries may become memories.
+- Source traversal and stale review: an owner-run explicit allowlist rejects symlinks, traversal, confusable paths, malformed metadata, limits violations, and changed post-review fingerprints.
+- Context disclosure: private/sensitive retrieval requires relevance plus exact immutable policy and trusted host context; default deny covers group, channel, API, cron, webhook, delegated, background, and unattended contexts.
+- Dirty-index poisoning: memory/resource indexes rebuild only from `git archive HEAD` and are ignored by Git.
+- Archive tampering: non-sensitive objects are content-addressed and complete-object validated through manifests.
 - Concurrent writes: unique immutable files plus fetch/rebase/push retry.
 - GitHub outage: local reads and pending local commits.
 - Silent corruption: schema validation, Git history, provenance, and conflict surfacing.
@@ -17,4 +21,4 @@ The brain owner, private GitHub repository, authenticated clones, and all connec
 
 ## Accepted Risks
 
-GitHub and all clones hold plaintext personal context. Access is repository-wide. Secret scanning is incomplete. Git history and backups prevent guaranteed erasure. Lexical retrieval can omit relevant knowledge or return extra context.
+Git hosts and unrestricted clones hold plaintext general/private content. Secret scanning is incomplete. Git history and backups prevent guaranteed erasure. Lexical retrieval can omit relevant knowledge or return extra context within policy. Python cannot guarantee in-memory zeroization. Sensitive synchronized assets are therefore rejected rather than claimed secure; see [sensitive-sync-design.md](sensitive-sync-design.md).
