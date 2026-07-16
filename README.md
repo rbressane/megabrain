@@ -54,19 +54,23 @@ Sensitive values are different. Passport numbers, recovery codes, credentials, a
 
 ## Built-in Vault
 
-Ask an installed agent to `Set up my MegaBrain Vault`. Setup installs the scoped PyNaCl dependency if needed, asks for a passphrase through a protected input channel, creates an envelope-encrypted store, and shows or writes a high-entropy recovery key exactly once. Setup is not ready until the user confirms that recovery material was saved.
+This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval.
+
+If an owner asks an agent to set up Vault, add a protected record, unlock, recover, back up, restore, or reveal plaintext, the agent must return `LOCAL_ACTION_REQUIRED` and direct the owner to the human-only local Vault control plane. It must never ask the owner to paste a passphrase, recovery key, protected value, or document into chat or an ordinary tool. The local TTY uses no-echo prompts, creates recovery material only at an explicit non-existing mode-`0600` file, and keeps confirmation separate.
+
+The owner opens that control plane directly in a local terminal with `python3 ~/.megabrain/runtime/current/skill/megabrain/scripts/vault-local.py <action>`, where the first actions are `setup` and then `confirm`. The owner, not the agent, runs that command and responds to its prompts.
 
 The ordinary flow is:
 
-1. Set up and confirm recovery material.
-2. Add a structured sensitive record or encrypted attachment.
+1. Set up locally, save the recovery file, and confirm it in a separate local action.
+2. Add a structured sensitive record or encrypted attachment locally.
 3. Grant a specific agent explicit metadata scopes and resource classes.
-4. Unlock the local broker for a bounded idle period.
+4. Unlock the local broker from the owner control plane for a bounded idle period.
 5. Retrieve protected metadata through the broker. Plaintext reveal remains owner-authenticated and explicitly confirmed until a harness can independently attest private context.
 6. Inspect the value-free audit log, then lock explicitly.
 7. Export a `.mbvault` backup and verify recovery in a clean home.
 
-New agents receive no Vault scope. Every agent reveal, including a self-asserted private context, fails closed in this release. Revocation blocks future requests but cannot erase information already revealed. Active deletion destroys the wrapped item key and removes local encrypted attachments; it cannot guarantee physical erasure or retire external backups.
+New agents receive no Vault scope. Every agent reveal, including a self-asserted private context, fails closed in this release. Model-facing setup, put, unlock, recovery, backup, restore, and owner reveal also fail with `LOCAL_ACTION_REQUIRED`. Revocation blocks future requests but cannot erase information already revealed. Active deletion destroys the wrapped item key and removes local encrypted attachments; it cannot guarantee physical erasure or retire external backups.
 
 See [docs/vault.md](docs/vault.md), [docs/vault-recovery.md](docs/vault-recovery.md), and [docs/vault-agent-policy.md](docs/vault-agent-policy.md).
 

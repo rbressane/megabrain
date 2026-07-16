@@ -9,3 +9,4 @@ MegaBrain stores personal context as plaintext in this private GitHub repository
 - Remember that tombstones do not erase Git history or backups.
 - Treat generated `.megabrain/browser/index.html` files as private local data.
 - A connected Brain agent has no Vault scope by default. Group and unknown contexts cannot reveal Vault values.
+- This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval.

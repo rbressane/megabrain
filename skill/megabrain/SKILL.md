@@ -65,13 +65,13 @@ Supported source types include files, directories, Git repositories, exports, UR
 
 Vault is separate from Brain and Git. Never put a sensitive value, recovery key, passphrase, private agent key, ciphertext, or sensitive attachment in memory, import, browser data, logs, command arguments, or environment variables.
 
-- **Set up my MegaBrain Vault**: run `vault setup --stdin` through a protected standard-input channel. Show or write the recovery key exactly once, require the owner to save it, then make the separate confirmation call. Never confirm on the user's behalf.
-- **Add a sensitive record/document**: use `vault put` or `vault attach` with a passphrase on standard input. Store only safe logical metadata in Brain.
+- **Set up my MegaBrain Vault**: do not collect input or run setup for the owner. Return `LOCAL_ACTION_REQUIRED` and direct the owner to run `python3 ~/.megabrain/runtime/current/skill/megabrain/scripts/vault-local.py setup` in their own local terminal, followed separately by `confirm`. Never execute or drive that TTY on the owner's behalf, and never ask the owner to paste a passphrase or recovery value into chat. Local setup writes recovery material once to an explicit protected file.
+- **Add a sensitive record/document**: return `LOCAL_ACTION_REQUIRED`. The owner must use the local control plane's no-echo prompts and local file picker/path. Store only safe logical metadata in Brain after the local action succeeds.
 - **Connect an agent to Vault**: obtain explicit owner approval, then grant the minimum global scopes, resource scopes, and classes. New agents have no access.
-- **Unlock/lock Vault**: unlock starts the same-host broker for a bounded idle timeout. Lock after use. Never expose it remotely.
+- **Unlock/lock Vault**: unlock is owner-local and starts the same-host broker for a bounded idle timeout. An agent may request safe lock, status, and doctor operations but must never ask for unlock material. Never expose the broker remotely.
 - **Metadata**: request only masked metadata. Metadata permission is not reveal permission.
-- **Reveal**: never treat an agent's own context claim as privacy proof. Agent broker reveal fails closed in this release. Owner reveal requires protected unlock material, selected fields, a structured purpose code, `owner_confirmed: true`, and an explicitly private output context.
-- **Back up/recover**: export to an explicit `.mbvault` destination and verify a clean-home restore. Recovery material is never inside the backup.
+- **Reveal**: never treat an agent's own context claim as privacy proof. Agent broker reveal fails closed in this release. Return `LOCAL_ACTION_REQUIRED` for owner reveal; do not create or forward `owner_confirmed` or private-context flags.
+- **Back up/recover**: return `LOCAL_ACTION_REQUIRED`. The owner exports and restores through the local control plane. Recovery material is never inside the backup or an ordinary tool result.
 - **Delete**: explain that the active wrapped key and blobs are removed but external backups and physical media may retain historical ciphertext.
 
 Revocation prevents future access only. Never imply that it erases a value already revealed, that Python perfectly zeroizes memory, or that normal filesystems guarantee secure physical deletion.
@@ -87,4 +87,4 @@ Revocation prevents future access only. Never imply that it erases a value alrea
 - `vault status|doctor|audit`: report safe Vault health and value-free events.
 - `bootstrap.py update --check`: check stable releases without installing one. Compatible releases are otherwise checked at most once per day during normal context retrieval.
 
-Use JSON on stdin for every command that accepts content. Never place sensitive content in command-line arguments.
+Use JSON on stdin only for ordinary Brain content and agent-safe Vault metadata requests. Never place sensitive content in JSON, chat, command-line arguments, environment variables, or ordinary tool results.

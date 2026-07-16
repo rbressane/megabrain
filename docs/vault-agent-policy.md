@@ -33,7 +33,9 @@ Metadata, location awareness, internal use, plaintext reveal, write, attachment,
 
 Every agent request includes schema, registered agent ID, method, logical resource, selected fields, structured purpose code, structured context, Unix timestamp, random nonce, and random request ID. The Ed25519 signature covers the complete canonical JSON request. The broker rejects missing grants, revoked grants, invalid signatures, timestamps outside 60 seconds, repeated request IDs or nonces, missing scopes, disallowed classes, and unsupported methods.
 
-An agent signature proves who made a request; it does not prove where output will appear. Therefore the broker rejects every agent reveal with `PRIVATE_CONTEXT_UNATTESTED`, including a signed self-assertion of `context.kind: private`. Metadata remains available and returns only protected, type-specific projections. Plaintext reveal requires owner authentication, selected fields, a purpose code, `owner_confirmed: true`, and an explicit private context. A future harness integration must provide independently verifiable context attestation before agent reveal can be enabled.
+An agent signature proves who made a request; it does not prove where output will appear. Therefore the broker rejects every agent reveal with `PRIVATE_CONTEXT_UNATTESTED`, including a signed self-assertion of `context.kind: private`. Metadata remains available and returns only protected, type-specific projections. Plaintext owner reveal is confined to the human local TTY control plane. A future harness integration must provide independently verifiable destination attestation and exact owner approval before agent delivery can be enabled.
+
+This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval. Agent-mediated setup, secret entry, unlock, owner reveal, recovery, backup, and restore return `LOCAL_ACTION_REQUIRED`; neither agent JSON nor chat is a protected input channel.
 
 ## Broker
 

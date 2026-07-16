@@ -20,7 +20,8 @@ MegaBrain product code is distributed from the public official repository. Norma
 - Vault directories are mode `0700`; database, encrypted blobs, signing keys, sockets, and broker state are mode `0600` where supported.
 - Passphrases use Argon2id to wrap a random master key. An independent high-entropy recovery key creates a second wrapper. Per-item and per-attachment keys use XChaCha20-Poly1305 authenticated encryption with fresh nonces and bound associated data.
 - The Vault broker binds only a Unix-domain socket, holds the unlocked master key only in process memory, serializes startup, applies per-client deadlines, locks explicitly or after idle timeout, rejects stale and replayed signed requests, and audits allowed and denied actions without values.
-- Agent-supplied context is not privacy proof, so broker reveal is disabled until harness attestation exists. Metadata permission is not reveal permission; owner reveal requires fresh authentication and explicit private-context confirmation.
+- Agent-supplied context is not privacy proof, so broker reveal is disabled until harness attestation exists. Metadata permission is not reveal permission; owner reveal requires fresh authentication in the human-only local control plane.
+- This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval. Agent-mediated secret-bearing actions fail with `LOCAL_ACTION_REQUIRED`.
 
 ## Limits
 

@@ -16,11 +16,11 @@ The release loop is: consumer finding; sanitized classification; product branch 
 
 ## Post-release Vault retest
 
-1. Set up Vault on the installed stable runtime, save the one-time recovery key, and confirm readiness.
-2. Add one real sensitive structured record and one document through protected input without exposing either to product logs or screenshots.
+1. Open the owner-local Vault control plane on the installed stable runtime, create the protected recovery file, and separately confirm readiness. Never send passphrases or recovery material through chat.
+2. Add one real sensitive structured record and one document locally without exposing either to chat, product logs, or screenshots.
 3. Grant one test agent metadata only and confirm masked metadata works while reveal fails.
 4. Add reveal scopes and confirm the broker still rejects agent reveal, including a self-asserted private context, with `PRIVATE_CONTEXT_UNATTESTED`.
-5. As the owner, provide unlock material through protected input and explicitly confirm a private output context; reveal only selected fields with a purpose code.
+5. As the owner, authenticate in the human-only local control plane and reveal only selected fields with a purpose code to the local TTY.
 6. Revoke the agent and confirm a new future metadata request fails. Do not claim any earlier disclosure was erased.
 7. Export an encrypted backup, restore it in a clean second home with recovery material, run doctor, and verify one selected field through the owner flow.
 8. Confirm Brain Git history and generated browser contain no protected value, recovery key, ciphertext, wrapper, or agent private key.

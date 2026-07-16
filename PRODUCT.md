@@ -24,12 +24,13 @@ MegaBrain combines a versioned local runtime with a replicated private Markdown 
 12. Retrieval relevance outranks unrelated importance; a bounded `always` class is the only unconditional context class.
 13. Vault is self-owned and works without an external password manager, hosted SaaS, or network listener.
 14. Recovery, deletion, revocation, and in-memory limits are described precisely rather than as hard-erasure promises.
+15. This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval.
 
 ## V1 Acceptance
 
 One copied repository setup message must teach an unfamiliar agent how to install and connect MegaBrain without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share synthetic normal knowledge while preserving concurrent writes, corrections, conflicts, tombstones, offline recovery, and imports. Retrieval must respect its declared limit, return relevant normal memories despite unrelated core memories, support structured task descriptors and collection expansion, and use a commit-keyed local index.
 
-Vault acceptance uses synthetic data only: passphrase and recovery wrappers unlock the same random master key; per-item keys protect structured records; encrypted attachments authenticate every chunk; signed agent metadata requests enforce scopes, resource classes, freshness, replay defense, revocation, and value-free audits; agent reveal fails closed without independent harness attestation; owner-confirmed reveal and portable clean-home restore are tested; normal Brain use remains available without Vault or PyNaCl.
+Vault acceptance uses synthetic data only: passphrase and recovery wrappers unlock the same random master key; per-item keys protect structured records; encrypted attachments authenticate every chunk; signed agent metadata requests enforce scopes, resource classes, freshness, replay defense, revocation, and value-free audits; agent reveal fails closed without independent harness attestation; secret-bearing machine actions return `LOCAL_ACTION_REQUIRED`; local TTY setup writes recovery material only to a protected file; owner-local reveal and portable clean-home restore are tested; normal Brain use remains available without Vault or PyNaCl.
 
 ## User-zero feedback loop
 

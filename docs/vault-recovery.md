@@ -2,7 +2,7 @@
 
 ## Recovery key
 
-Setup generates an independent 256-bit recovery key formatted with the `MBRK1-` prefix. It is not a mnemonic and is shown or written exactly once. An explicit recovery file is created with mode `0600` and never overwritten. The user must confirm storage before the Vault becomes active.
+Local TTY setup generates an independent 256-bit recovery key formatted with the `MBRK1-` prefix. It is not a mnemonic and is written exactly once to an explicit recovery file created mode `0600` and never overwritten. Non-interactive JSON and agent tools never receive it. The user must confirm storage in a separate local action before the Vault becomes active.
 
 Keep recovery material separate from the computer and encrypted Vault backup. Anyone with a Vault backup and either the passphrase or recovery key can decrypt it. If both passphrase access and recovery material are lost, MegaBrain cannot recover the master key.
 

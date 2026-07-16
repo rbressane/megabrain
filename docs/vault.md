@@ -2,6 +2,8 @@
 
 Vault is the optional local encrypted store for values and documents that must never enter Brain Markdown, Git, context packets, import manifests, logs, or the local browser. The built-in provider requires no external password manager or hosted service.
 
+This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval.
+
 ## Location and lifecycle
 
 Vault setup assigns or reuses the stable `brain_id` from `megabrain.json` and creates:
@@ -16,22 +18,24 @@ Vault setup assigns or reuses the stable `brain_id` from `megabrain.json` and cr
 
 Directories are `0700` and state files are `0600`. This directory is outside every managed Git clone. A user who never runs `vault setup` has no Vault database and does not need PyNaCl.
 
-Setup receives a passphrase on standard input, generates an independent recovery key, and returns or writes that key exactly once. The database remains `pending_confirmation` until a second setup call confirms recovery was saved. Setup never silently regenerates material.
+Setup runs only in the human local TTY control plane, receives a passphrase through a no-echo prompt, generates an independent recovery key, and writes it exactly once to an explicit non-existing mode-`0600` file. Ordinary JSON receives only a safe receipt and destination path. The database remains `pending_confirmation` until a separate local action confirms recovery was saved. Setup never silently regenerates material.
 
 ## Commands
 
-All content-bearing commands accept one JSON object on standard input. Never put passphrases, recovery keys, values, or private fields in command-line arguments or environment variables.
+The model-facing JSON command surface permits safe status, doctor, lock, and signed masked-metadata requests. Setup, unlock, put, attachment access, grant administration, owner reveal, recovery, backup, restore, rotation, deletion, and audit review require the human-only `vault-local.py` TTY and otherwise return `LOCAL_ACTION_REQUIRED`. Never put passphrases, recovery keys, values, documents, or private fields in chat, JSON, command-line arguments, environment variables, URLs, logs, or ordinary tool results.
 
-- `vault setup`: create the pending Vault or confirm recovery material.
+The owner runs `python3 ~/.megabrain/runtime/current/skill/megabrain/scripts/vault-local.py <action>` directly in a local terminal. This path follows the atomically active runtime. The agent may name the command but must not execute it, drive its prompts, or ask the owner to relay protected input.
+
+- local `setup` / `confirm`: create the pending Vault with a protected recovery file, then separately confirm it.
 - `vault status`: report existence, ready/locked state, suite, schema, and safe counts.
-- `vault unlock`: authenticate through passphrase or recovery key and start the same-host broker for a 5–3600 second idle timeout.
+- local `unlock`: authenticate through a no-echo passphrase or recovery prompt and start the same-host broker for a 5–3600 second idle timeout.
 - `vault lock`: stop the broker and discard its in-process master-key reference.
-- `vault put`: create or correct a structured encrypted item. Rewrites use a new item key and nonce.
+- local `put`: create or correct a structured encrypted item. Rewrites use a new item key and nonce.
 - `vault metadata`: send a signed broker request for safe masked metadata.
-- `vault reveal`: perform an owner-authenticated, explicitly confirmed reveal of selected fields to a private output context. Agent broker reveal fails closed until the harness can provide independently verifiable privacy attestation.
-- `vault attach`: add an encrypted file or authenticate and extract it to an explicit non-existing destination.
-- `vault export`: create an explicit non-existing `.mbvault` backup destination.
-- `vault restore`: validate and activate a matching-brain backup only when no Vault exists.
+- local `reveal`: display selected fields only in the owner's local TTY. Agent broker reveal fails closed until the harness can provide independently verifiable destination attestation and explicit approval.
+- local `attach`: add an encrypted file or authenticate and extract it to an explicit non-existing destination.
+- local `export`: create an explicit non-existing `.mbvault` backup destination.
+- local `restore`: validate and activate a matching-brain backup only when no Vault exists.
 - `vault grant` / `vault revoke`: manage a specific agent's public key, scopes, and resource classes.
 - `vault rotate-passphrase`: rewrap the master key without re-encrypting items.
 - `vault rotate-recovery`: replace the recovery wrapper and write the new key once to an explicit non-existing mode-`0600` file; ordinary command JSON never contains it.
