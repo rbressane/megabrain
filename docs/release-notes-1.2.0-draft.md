@@ -8,4 +8,6 @@ Vault schema 2 adds transactional harness pairing/rotation/revocation, exact key
 
 The reference direct-use adapter is synthetic and no-network. No real provider, remote broker, hosted relay, TCP/HTTP Vault endpoint, arbitrary shell, or secret-bearing model response is added.
 
+The separately reviewable Hermes plugin encrypts its harness private state at rest, unlocks it into the gateway process only through an owner-local no-echo Unix-socket control, fails closed without host-bound user/internal and chat-type provenance, and renders the exact approval UI directly to the owner DM. The owner slash command—not a second model call—signs and completes the pending release. The generic product-neutral Hermes provenance seam is tracked separately upstream.
+
 Before any release, the stacked MegaBrain and harness-integration drafts require maintainer review, full platform CI, explicit merge and release decisions, and independent security review for any high-assurance claim.
