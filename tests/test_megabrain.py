@@ -1,17 +1,27 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = SOURCE_ROOT / "skill" / "megabrain" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+SPEC = importlib.util.spec_from_file_location("megabrain_runtime", SCRIPTS / "megabrain.py")
+assert SPEC is not None and SPEC.loader is not None
+megabrain_runtime = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = megabrain_runtime
+SPEC.loader.exec_module(megabrain_runtime)
 LEGACY_SEED_WORKFLOW = """name: Validate MegaBrain
 
 on:
@@ -376,17 +386,123 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             "agent-a", "context", {"task": "Which project release channel should we use?"}, "--stdin"
         )
         summaries = {item["summary"] for item in context["memories"]}
-        self.assertIn("Use concise explanations.", summaries)
+        self.assertNotIn("Use concise explanations.", summaries)
+        self.assertNotIn("Never store synthetic secret values.", summaries)
         self.assertIn("The release channel is stable.", summaries)
         self.assertIn("The release channel is preview.", summaries)
         self.assertNotIn("The synthetic garden has four plots.", summaries)
         self.assertEqual(len(context["conflicts"]), 1)
         self.assertEqual(len(context["conflicts"][0]["memory_ids"]), 2)
         limited = self.network.command(
-            "agent-a", "context", {"task": "An otherwise unrelated task"}, "--stdin", "--limit", "1"
+            "agent-a", "context", {"task": "Quantum zephyr"}, "--stdin", "--limit", "1"
         )
-        self.assertEqual(len(limited["memories"]), 2)
-        self.assertTrue(all(item["importance"] == "core" for item in limited["memories"]))
+        self.assertEqual(limited["memories"], [])
+        self.assertEqual(limited["limit"], 1)
+
+    def test_retrieval_budget_collection_sensitive_policy_and_committed_index(self) -> None:
+        clone = self.network.clone("ranking-agent", "codex")
+        target = "Synthetic X copy uses a spoken direct voice with simple words."
+        self.network.remember(
+            "ranking-agent",
+            kind="preference",
+            subject="person.x_writing_human_voice",
+            summary=target,
+            tags=["human", "voice", "writing", "x"],
+        )
+        for number in range(5):
+            self.network.remember(
+                "ranking-agent",
+                kind="decision",
+                subject=f"universal.synthetic_invariant_{number}",
+                summary=f"Synthetic universal invariant {number}.",
+                importance="always",
+                tags=["universal", "review"],
+            )
+        for number in range(20):
+            self.network.remember(
+                "ranking-agent",
+                subject=f"core.unrelated_{number}",
+                summary=f"Synthetic unrelated core rule {number}.",
+                importance="core",
+                tags=["unrelated"],
+            )
+        pricing = set()
+        for number in range(8):
+            summary = f"Synthetic Round 6 pricing family entry {number}."
+            pricing.add(summary)
+            self.network.remember(
+                "ranking-agent",
+                subject=f"round6.pricing.family_{number}",
+                summary=summary,
+                tags=["round6", "pricing", "collection"],
+            )
+        private_pricing = "Synthetic private pricing entry must require authorization."
+        self.network.remember(
+            "ranking-agent",
+            subject="round6.pricing.private",
+            summary=private_pricing,
+            sensitivity="sensitive",
+            importance="core",
+            tags=["round6", "pricing", "collection"],
+        )
+        collection = self.network.command(
+            "ranking-agent",
+            "context",
+            {"task": "Return all Round 6 prices", "diagnostic": True},
+            "--stdin",
+        )
+        summaries = {item["summary"] for item in collection["memories"]}
+        self.assertTrue(pricing <= summaries)
+        self.assertNotIn(private_pricing, summaries)
+        self.assertNotIn("Synthetic unrelated core rule 0.", summaries)
+        self.assertEqual(sum(item["importance"] == "always" for item in collection["memories"]), 3)
+        self.assertLessEqual(len(collection["memories"]), collection["limit"] + collection["collection_expansion"])
+        self.assertEqual(collection["diagnostics"]["index"], "cold")
+        structured = self.network.command(
+            "ranking-agent",
+            "context",
+            {
+                "task": {
+                    "task": "Rewrite the supplied post",
+                    "artifact_type": "x-post",
+                    "domain": "writing",
+                    "intent": "edit",
+                    "audience": "public",
+                },
+                "diagnostic": True,
+            },
+            "--stdin",
+        )
+        self.assertIn(target, {item["summary"] for item in structured["memories"]})
+        self.assertLessEqual(len(structured["memories"]), structured["limit"])
+        self.assertEqual(structured["diagnostics"]["index"], "warm")
+
+        index = clone / ".megabrain" / "retrieval-index.sqlite3"
+        index.unlink()
+        memory_path = next(
+            path for path in (clone / "brain" / "memories").rglob("*.md")
+            if target in path.read_text(encoding="utf-8")
+        )
+        original = memory_path.read_text(encoding="utf-8")
+        canary = "UNCOMMITTED-SYNTHETIC-CANARY"
+        original_sync = megabrain_runtime.sync_repo
+
+        def sync_then_inject(*args, **kwargs):
+            result = original_sync(*args, **kwargs)
+            memory_path.write_text(original.replace(target, canary), encoding="utf-8")
+            return result
+
+        with mock.patch.object(megabrain_runtime, "sync_repo", side_effect=sync_then_inject):
+            raced = megabrain_runtime.command_context(
+                clone,
+                {"task": "Write a new X post.", "diagnostic": True},
+                12,
+            )
+        self.assertEqual(raced["diagnostics"]["index"], "cold")
+        self.assertIn(target, {item["summary"] for item in raced["memories"]})
+        self.assertNotIn(canary, json.dumps(raced))
+        self.assertNotIn(canary.encode(), index.read_bytes())
+        memory_path.write_text(original, encoding="utf-8")
 
     def test_simultaneous_offline_writes_sync_without_data_loss(self) -> None:
         self.network.clone("agent-a", "codex")
