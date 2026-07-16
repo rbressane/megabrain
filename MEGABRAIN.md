@@ -22,7 +22,7 @@ This repository defines the MegaBrain protocol. Each person's knowledge lives in
 
 Brain is the Git-synchronized immutable Markdown knowledge layer. Vault is an optional encrypted local store for sensitive values and documents. Brain may know that a resource exists, its safe dates, and its logical identifier; it must never contain the corresponding secret value. Vault has an independent schema, key hierarchy, backup format, and authorization policy. Normal Brain behavior remains available when Vault is absent or locked.
 
-This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval. Machine-readable secret-bearing Vault actions fail with `LOCAL_ACTION_REQUIRED`; the human local TTY is the only owner control plane in this release.
+Vault plaintext stays owner-local by default. A separately paired trusted harness may request one short-lived, signed, destination-bound release after exact owner approval; Vault returns only a sealed payload that the trusted adapter delivers without exposing it to model/tool output. All other machine-readable secret-bearing actions fail with `LOCAL_ACTION_REQUIRED`, and the human local TTY remains the owner control plane.
 
 New brains receive a stable `brain_id` in `megabrain.json`. Existing brains receive one only through the explicit Vault setup migration. The identifier is not derived from a mutable repository URL and does not rewrite memory entries.
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "MegaBrain"
-  short_description: "Use private Brain memory and encrypted Vault"
-  default_prompt: "Use $megabrain to retrieve relevant private Brain context or request agent-safe masked Vault metadata."
+  short_description: "Use private Brain context and protected Vault actions"
+  default_prompt: "Use $megabrain to retrieve relevant private Brain context, request masked Vault metadata, or make a value-free delivery/use request for a paired trusted harness."

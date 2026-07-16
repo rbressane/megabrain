@@ -223,7 +223,8 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
     if expected_version and version != expected_version.removeprefix("v"):
         raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
     for relative in (
-        "SKILL.md", "scripts/megabrain.py", "scripts/vault.py", "scripts/vault-local.py", "scripts/bootstrap.py",
+        "SKILL.md", "scripts/megabrain.py", "scripts/vault.py", "scripts/vault_delivery.py",
+        "scripts/vault-local.py", "scripts/bootstrap.py",
         "assets/browser.html", "requirements-vault.txt",
     ):
         path = skill / relative

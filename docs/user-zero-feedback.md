@@ -25,4 +25,14 @@ The release loop is: consumer finding; sanitized classification; product branch 
 7. Export an encrypted backup, restore it in a clean second home with recovery material, run doctor, and verify one selected field through the owner flow.
 8. Confirm Brain Git history and generated browser contain no protected value, recovery key, ciphertext, wrapper, or agent private key.
 
+## Post-release private-delivery retest
+
+1. Pair the released trusted harness from its owner-local control plane and verify the displayed harness fingerprint and exact owner DM destination outside model-visible input.
+2. Set one synthetic-equivalent identity resource to `private_dm_opt_in`; request one selected field in the live paired owner DM and approve only the exact resource label, field list, purpose, requester, destination class, and expiry shown.
+3. Confirm the selected value appears only through the trusted DM adapter. Inspect the model request, tool result, response transcript, process arguments/environment, session database, logs, audit output, generated browser, and Brain Git history and confirm the value is absent.
+4. Replay the same request and approval, tamper with each signed binding, and retry from a group, channel, forum, email, cron, webhook, delegated, unattended, background, API, internal event, and a different owner identity. Confirm stable fail-closed codes and no adapter invocation.
+5. Grant one synthetic credential capability for an exact adapter, host, operation, field set, and timeout. Confirm `use` succeeds without returning the credential, while an arbitrary adapter, host, operation, extra field, revoked capability, or secret-bearing receipt fails.
+6. Rotate the harness key, verify the bounded grace interval, exercise rollback during grace, then revoke both the old path and a direct-use capability and confirm future requests fail.
+7. Record only sanitized timings, stable codes, installed version/commit, and VERIFIED, PARTIAL, or FAILED. Never include the real value, destination identifier, key material, or sealed payload.
+
 The consumer report must not include the real value. Record only outcome, stable error codes, masking shape, timing, installed version/commit, and whether the flow is VERIFIED, PARTIAL, or FAILED.
