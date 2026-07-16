@@ -37,6 +37,10 @@ The owner launches it directly with `python3 ~/.megabrain/runtime/current/skill/
 
 The model-facing command surface supports safe status, doctor, lock, and signed masked-metadata requests. Other actions return `LOCAL_ACTION_REQUIRED` without reflecting rejected input.
 
+Private delivery is a separate opt-in after Vault setup. It requires a reviewed harness integration, owner-local key unlock, an exact paired owner destination, a per-resource policy, and fresh one-shot approval for every request. Installing MegaBrain alone does not pair a harness or enable delivery. Credentials remain non-revealable and can be used only through an owner-granted exact adapter capability; this release includes only a synthetic no-network reference adapter.
+
+When updating a schema-1 Vault to a 1.2 runtime, first create and retain an encrypted `.mbvault` export through the owner-local control plane. The first schema-2 open performs one SQLite transaction without rewriting encrypted items or attachments. A failure rolls back; downgrade after a successful migration is unsupported. Follow [docs/vault-attestation.md](docs/vault-attestation.md) for the migration and rollback boundary.
+
 Vault is supported on macOS and Linux because the broker uses a Unix-domain socket. This release does not support Windows, TCP, HTTP, LAN, or remote-agent Vault access.
 
 ## Existing Users

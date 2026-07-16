@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterable
 
 
-VAULT_SCHEMA_VERSION = 1
+VAULT_SCHEMA_VERSION = 2
 VAULT_SUITE = "pynacl-argon2id-xchacha20poly1305-ed25519-v1"
 ITEM_SCHEMA = "megabrain.vault-item.v1"
 BACKUP_SCHEMA = "megabrain.vault-backup.v1"
@@ -124,6 +124,7 @@ def crypto() -> Any:
         import nacl.bindings
         import nacl.exceptions
         import nacl.pwhash
+        import nacl.public
         import nacl.signing
     except ImportError as error:
         raise VaultError(
@@ -154,16 +155,11 @@ def configure_dependency(home: Path) -> None:
 
 
 def ensure_dependency(home: Path) -> None:
-    configure_dependency(home)
-    try:
-        nacl = crypto()
-        origin = getattr(nacl, "__file__", None)
-        if isinstance(origin, str) and Path(origin).is_file():
-            return
-    except VaultError as error:
-        if error.code != "VAULT_DEPENDENCY_MISSING":
-            raise
     target = dependency_path(home)
+    if (target / "nacl" / "public.py").is_file() and (target / "nacl" / "bindings").is_dir():
+        configure_dependency(home)
+        crypto()
+        return
     secure_directory(target)
     installed = subprocess.run(
         [
@@ -234,6 +230,8 @@ def resource_class(logical_id: str) -> str:
         "identity": "identity",
         "credentials": "credentials",
         "credential": "credentials",
+        "recovery": "recovery",
+        "recovery-code": "recovery",
         "health": "health",
         "finance": "finance",
     }.get(scheme, scheme)
@@ -510,7 +508,77 @@ def create_schema(connection: sqlite3.Connection) -> None:
             timestamp INTEGER NOT NULL,
             agent_id TEXT NOT NULL
         );
-        PRAGMA user_version = 1;
+        CREATE TABLE harness_keys (
+            issuer_instance TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            public_key BLOB NOT NULL,
+            encrypted_digest_key BLOB NOT NULL,
+            digest_key_nonce BLOB NOT NULL,
+            audience TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active', 'grace', 'revoked')),
+            created_at TEXT NOT NULL,
+            grace_until INTEGER,
+            revoked_at TEXT,
+            PRIMARY KEY (issuer_instance, key_id)
+        );
+        CREATE TABLE harness_destinations (
+            issuer_instance TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            destination_digest BLOB NOT NULL,
+            platform TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            PRIMARY KEY (issuer_instance, key_id, destination_digest),
+            FOREIGN KEY (issuer_instance, key_id) REFERENCES harness_keys(issuer_instance, key_id)
+        );
+        CREATE TABLE resource_delivery_policies (
+            resource_digest BLOB PRIMARY KEY,
+            policy TEXT NOT NULL CHECK (policy IN ('metadata_only', 'local_secure_ui', 'private_dm_opt_in', 'direct_use_only', 'never_reveal')),
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE direct_use_capabilities (
+            resource_digest BLOB NOT NULL,
+            capability_id TEXT NOT NULL,
+            adapter_id TEXT NOT NULL,
+            host TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            fields_json TEXT NOT NULL,
+            timeout_seconds INTEGER NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            PRIMARY KEY (resource_digest, capability_id)
+        );
+        CREATE TABLE attested_requests (
+            request_id TEXT PRIMARY KEY,
+            nonce TEXT NOT NULL UNIQUE,
+            approval_id TEXT NOT NULL UNIQUE,
+            issuer_instance TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            issued_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            consumed_at TEXT NOT NULL
+        );
+        CREATE TABLE delivery_audit_events (
+            event_id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            issuer_instance TEXT,
+            key_id TEXT,
+            agent_id TEXT,
+            action TEXT NOT NULL,
+            delivery_policy TEXT,
+            resource_digest BLOB,
+            fields_digest BLOB,
+            destination_digest BLOB,
+            outcome TEXT NOT NULL,
+            reason_code TEXT NOT NULL,
+            request_id TEXT,
+            approval_id TEXT
+        );
+        CREATE INDEX delivery_audit_timestamp ON delivery_audit_events(timestamp);
+        PRAGMA user_version = 2;
         COMMIT;
         """
     )
@@ -523,6 +591,90 @@ def migrate_schema(connection: sqlite3.Connection, *, create: bool = False) -> N
     if version == 0 and create:
         try:
             create_schema(connection)
+            return
+        except sqlite3.DatabaseError:
+            connection.rollback()
+            raise
+    if version == 1:
+        try:
+            connection.executescript(
+                """
+                BEGIN IMMEDIATE;
+                CREATE TABLE harness_keys (
+                    issuer_instance TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    public_key BLOB NOT NULL,
+                    encrypted_digest_key BLOB NOT NULL,
+                    digest_key_nonce BLOB NOT NULL,
+                    audience TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('active', 'grace', 'revoked')),
+                    created_at TEXT NOT NULL,
+                    grace_until INTEGER,
+                    revoked_at TEXT,
+                    PRIMARY KEY (issuer_instance, key_id)
+                );
+                CREATE TABLE harness_destinations (
+                    issuer_instance TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    destination_digest BLOB NOT NULL,
+                    platform TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+                    created_at TEXT NOT NULL,
+                    revoked_at TEXT,
+                    PRIMARY KEY (issuer_instance, key_id, destination_digest),
+                    FOREIGN KEY (issuer_instance, key_id) REFERENCES harness_keys(issuer_instance, key_id)
+                );
+                CREATE TABLE resource_delivery_policies (
+                    resource_digest BLOB PRIMARY KEY,
+                    policy TEXT NOT NULL CHECK (policy IN ('metadata_only', 'local_secure_ui', 'private_dm_opt_in', 'direct_use_only', 'never_reveal')),
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE direct_use_capabilities (
+                    resource_digest BLOB NOT NULL,
+                    capability_id TEXT NOT NULL,
+                    adapter_id TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    fields_json TEXT NOT NULL,
+                    timeout_seconds INTEGER NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+                    created_at TEXT NOT NULL,
+                    revoked_at TEXT,
+                    PRIMARY KEY (resource_digest, capability_id)
+                );
+                CREATE TABLE attested_requests (
+                    request_id TEXT PRIMARY KEY,
+                    nonce TEXT NOT NULL UNIQUE,
+                    approval_id TEXT NOT NULL UNIQUE,
+                    issuer_instance TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    issued_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    consumed_at TEXT NOT NULL
+                );
+                CREATE TABLE delivery_audit_events (
+                    event_id TEXT PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    issuer_instance TEXT,
+                    key_id TEXT,
+                    agent_id TEXT,
+                    action TEXT NOT NULL,
+                    delivery_policy TEXT,
+                    resource_digest BLOB,
+                    fields_digest BLOB,
+                    destination_digest BLOB,
+                    outcome TEXT NOT NULL,
+                    reason_code TEXT NOT NULL,
+                    request_id TEXT,
+                    approval_id TEXT
+                );
+                CREATE INDEX delivery_audit_timestamp ON delivery_audit_events(timestamp);
+                UPDATE vault_header SET schema_version = 2 WHERE singleton = 1;
+                PRAGMA user_version = 2;
+                COMMIT;
+                """
+            )
             return
         except sqlite3.DatabaseError:
             connection.rollback()
@@ -634,6 +786,7 @@ class VaultStore(SensitiveStore):
                 "items": connection.execute("SELECT count(*) FROM items WHERE deleted = 0").fetchone()[0],
                 "attachments": connection.execute("SELECT count(*) FROM attachments WHERE deleted = 0").fetchone()[0],
                 "active_grants": connection.execute("SELECT count(*) FROM agent_grants WHERE status = 'active'").fetchone()[0],
+                "active_harness_keys": connection.execute("SELECT count(*) FROM harness_keys WHERE status = 'active'").fetchone()[0],
             }
         return {
             "ok": True,
@@ -1410,6 +1563,18 @@ def serve_broker(store: VaultStore, master_key: bytes, idle_timeout: int = 300) 
                     if request.get("method") == "owner.lock":
                         client.sendall(canonical({"ok": True, "locked": True}) + b"\n")
                         break
+                    if request.get("method") == "attested.release":
+                        from vault_delivery import authorize_and_seal_release, validate_model_request
+
+                        model_request = request.get("request")
+                        attestation = request.get("attestation")
+                        validate_model_request(model_request)
+                        if not isinstance(attestation, dict):
+                            raise VaultError("ATTESTATION_MALFORMED", "The trusted delivery envelope is malformed.")
+                        result = authorize_and_seal_release(store, master_key, model_request, attestation)
+                        last_activity = time.monotonic()
+                        client.sendall(canonical(result) + b"\n")
+                        continue
                     authorized = authorize_request(store, master_key, request)
                     if authorized["method"] == "metadata":
                         result = store.metadata(master_key, authorized["resource"])

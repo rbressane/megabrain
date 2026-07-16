@@ -54,7 +54,7 @@ Sensitive values are different. Passport numbers, recovery codes, credentials, a
 
 ## Built-in Vault
 
-This release provides owner-local encrypted storage and agent-safe masked metadata. Agent plaintext delivery is not enabled until the harness can prove the destination and capture explicit owner approval.
+The Vault foundation provides owner-local encrypted storage and agent-safe masked metadata. Plaintext delivery remains disabled unless a reviewed, owner-paired harness proves the exact destination and captures a fresh one-shot approval. Without that pairing, every containment rule and `LOCAL_ACTION_REQUIRED` response remains unchanged.
 
 If an owner asks an agent to set up Vault, add a protected record, unlock, recover, back up, restore, or reveal plaintext, the agent must return `LOCAL_ACTION_REQUIRED` and direct the owner to the human-only local Vault control plane. It must never ask the owner to paste a passphrase, recovery key, protected value, or document into chat or an ordinary tool. The local TTY uses no-echo prompts, creates recovery material only at an explicit non-existing mode-`0600` file, and keeps confirmation separate.
 
@@ -66,13 +66,14 @@ The ordinary flow is:
 2. Add a structured sensitive record or encrypted attachment locally.
 3. Grant a specific agent explicit metadata scopes and resource classes.
 4. Unlock the local broker from the owner control plane for a bounded idle period.
-5. Retrieve protected metadata through the broker. Plaintext reveal remains owner-authenticated and explicitly confirmed until a harness can independently attest private context.
-6. Inspect the value-free audit log, then lock explicitly.
-7. Export a `.mbvault` backup and verify recovery in a clean home.
+5. Retrieve protected metadata through the broker. Optionally pair a reviewed harness and set one resource's delivery policy locally.
+6. For an eligible live request, review the exact fields, purpose, requester, destination, warning, and expiry. The harness signs only after one-shot approval; Vault seals selected fields directly to its trusted adapter and the model receives only a receipt.
+7. Inspect the value-free Vault and delivery audit logs, then lock explicitly.
+8. Export a `.mbvault` backup and verify recovery in a clean home.
 
-New agents receive no Vault scope. Every agent reveal, including a self-asserted private context, fails closed in this release. Model-facing setup, put, unlock, recovery, backup, restore, and owner reveal also fail with `LOCAL_ACTION_REQUIRED`. Revocation blocks future requests but cannot erase information already revealed. Active deletion destroys the wrapped item key and removes local encrypted attachments; it cannot guarantee physical erasure or retire external backups.
+New agents receive no Vault scope. Self-asserted context still fails closed: destination, approval, private flags, signatures, and attestations are not accepted model fields. Model-facing setup, put, unlock, recovery, backup, restore, and owner reveal return `LOCAL_ACTION_REQUIRED`. Only a paired trusted harness may submit an opaque delivery envelope. Revocation blocks future requests but cannot erase information already delivered. Active deletion destroys the wrapped item key and removes local encrypted attachments; it cannot guarantee physical erasure or retire external backups.
 
-See [docs/vault.md](docs/vault.md), [docs/vault-recovery.md](docs/vault-recovery.md), and [docs/vault-agent-policy.md](docs/vault-agent-policy.md).
+See [docs/vault.md](docs/vault.md), [docs/vault-attestation.md](docs/vault-attestation.md), [docs/vault-delivery-policy.md](docs/vault-delivery-policy.md), [docs/vault-direct-use.md](docs/vault-direct-use.md), [docs/vault-recovery.md](docs/vault-recovery.md), and [docs/vault-agent-policy.md](docs/vault-agent-policy.md).
 
 ## Updates
 
@@ -81,7 +82,7 @@ MegaBrain installs stable Git tags, never a moving `main` branch. During normal 
 Compatible updates report:
 
 ```text
-MegaBrain: updated to v1.1.0.
+MegaBrain: updated to v1.2.0.
 ```
 
 Major or protocol-breaking updates require approval. A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files.

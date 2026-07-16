@@ -2099,6 +2099,49 @@ def command_vault(
         if not isinstance(limit, int) or isinstance(limit, bool):
             raise vault_module.VaultError("INVALID_LIMIT", "Audit limit must be an integer from 1 to 500.")
         return store.audit_list(limit)
+    if action in {
+        "delivery-policy",
+        "grant-direct-use",
+        "revoke-direct-use",
+        "revoke-harness",
+        "delivery-audit",
+    }:
+        import vault_delivery
+
+        if action == "delivery-policy":
+            return vault_delivery.set_resource_policy(
+                store,
+                master_key,
+                payload.get("resource"),
+                payload.get("policy"),
+            )
+        if action == "grant-direct-use":
+            return vault_delivery.register_direct_use_capability(
+                store,
+                master_key,
+                payload.get("resource"),
+                capability_id=payload.get("capability_id"),
+                adapter_id=payload.get("adapter_id"),
+                host=payload.get("host"),
+                operation=payload.get("operation"),
+                fields=payload.get("fields"),
+                timeout_seconds=payload.get("timeout_seconds", 10),
+            )
+        if action == "revoke-direct-use":
+            return vault_delivery.revoke_direct_use_capability(
+                store,
+                master_key,
+                payload.get("resource"),
+                payload.get("capability_id"),
+            )
+        if action == "revoke-harness":
+            return vault_delivery.revoke_harness_key(
+                store,
+                payload.get("issuer_instance"),
+                payload.get("key_id"),
+            )
+        limit = payload.get("limit", 100)
+        return vault_delivery.delivery_audit_list(store, limit)
     raise vault_module.VaultError("VAULT_ACTION_UNSUPPORTED", "The requested Vault action is unsupported.")
 
 
@@ -2233,6 +2276,7 @@ def build_parser() -> argparse.ArgumentParser:
             "setup", "status", "unlock", "lock", "put", "metadata", "reveal", "attach",
             "export", "restore", "grant", "revoke", "rotate-passphrase", "rotate-recovery",
             "delete", "audit", "doctor",
+            "delivery-policy", "grant-direct-use", "revoke-direct-use", "revoke-harness", "delivery-audit",
         ),
     )
     vault.add_argument("--stdin", action="store_true")

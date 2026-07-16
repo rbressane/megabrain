@@ -61,7 +61,10 @@ def passphrase(terminal: Terminal, *, confirm: bool = False) -> str:
 
 def safe_receipt(action: str, result: dict[str, Any], terminal: Terminal) -> None:
     details = []
-    for key in ("ready", "created", "unlocked", "locked", "rotated", "deleted", "restored", "recovery_file", "path"):
+    for key in (
+        "ready", "created", "unlocked", "locked", "rotated", "deleted", "restored",
+        "revoked", "policy", "capability_id", "recovery_file", "path",
+    ):
         if key in result:
             details.append(f"{key}={result[key]}")
     suffix = f" ({', '.join(details)})" if details else ""
@@ -167,6 +170,45 @@ def local_payload(action: str, terminal: Terminal) -> dict[str, Any]:
         return {"passphrase": passphrase(terminal), "resource": resource}
     if action == "audit":
         return {"passphrase": passphrase(terminal), "limit": 100}
+    if action == "delivery-policy":
+        return {
+            "passphrase": passphrase(terminal),
+            "resource": required(terminal, "Logical resource ID: "),
+            "policy": required(
+                terminal,
+                "Policy (metadata_only/local_secure_ui/private_dm_opt_in/direct_use_only/never_reveal): ",
+            ),
+        }
+    if action == "grant-direct-use":
+        timeout = required(terminal, "Timeout seconds (1-30): ")
+        try:
+            parsed_timeout = int(timeout)
+        except ValueError as error:
+            raise vault.VaultError("CAPABILITY_TIMEOUT_INVALID", "The direct-use timeout must be an integer.") from error
+        return {
+            "passphrase": passphrase(terminal),
+            "resource": required(terminal, "Credential resource ID: "),
+            "capability_id": required(terminal, "Capability ID: "),
+            "adapter_id": required(terminal, "Trusted adapter ID: "),
+            "host": required(terminal, "Exact allowed host: "),
+            "operation": required(terminal, "Exact allowed operation: "),
+            "fields": [name.strip() for name in required(terminal, "Exact fields (comma separated): ").split(",")],
+            "timeout_seconds": parsed_timeout,
+        }
+    if action == "revoke-direct-use":
+        return {
+            "passphrase": passphrase(terminal),
+            "resource": required(terminal, "Credential resource ID: "),
+            "capability_id": required(terminal, "Capability ID: "),
+        }
+    if action == "revoke-harness":
+        return {
+            "passphrase": passphrase(terminal),
+            "issuer_instance": required(terminal, "Harness issuer instance: "),
+            "key_id": required(terminal, "Harness key ID: "),
+        }
+    if action == "delivery-audit":
+        return {"passphrase": passphrase(terminal), "limit": 100}
     return {}
 
 
@@ -177,7 +219,7 @@ def run_local_action(root: Path, action: str, terminal: Terminal) -> dict[str, A
     if action == "reveal":
         for name, value in result["fields"].items():
             terminal.show(f"{name}: {value}")
-    elif action == "audit":
+    elif action in {"audit", "delivery-audit"}:
         terminal.show(json.dumps(result, ensure_ascii=True, sort_keys=True, indent=2))
     else:
         safe_receipt(action, result, terminal)
@@ -191,6 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "setup", "confirm", "status", "unlock", "lock", "put", "reveal", "attach", "export",
             "restore", "grant", "revoke", "rotate-passphrase", "rotate-recovery", "delete", "audit", "doctor",
+            "delivery-policy", "grant-direct-use", "revoke-direct-use", "revoke-harness", "delivery-audit",
         ),
     )
     return parser

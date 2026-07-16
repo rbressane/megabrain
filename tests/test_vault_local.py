@@ -140,6 +140,19 @@ class VaultLocalControlTests(unittest.TestCase):
             )
             vault_local.run_local_action(self.root, "put", put_terminal)
             self.assertNotIn(self.secret, "\n".join(put_terminal.output))
+            with self.assertRaises(vault.VaultError) as policy_denied:
+                megabrain.command_vault(
+                    self.root,
+                    "delivery-policy",
+                    {"resource": resource, "policy": "private_dm_opt_in"},
+                )
+            self.assertEqual(policy_denied.exception.code, "LOCAL_ACTION_REQUIRED")
+            policy_terminal = FakeTerminal(
+                [resource, "private_dm_opt_in"],
+                [self.passphrase],
+            )
+            policy = vault_local.run_local_action(self.root, "delivery-policy", policy_terminal)
+            self.assertEqual(policy["policy"], "private_dm_opt_in")
             with self.assertRaises(vault.VaultError) as denied:
                 megabrain.command_vault(
                     self.root,
@@ -155,6 +168,9 @@ class VaultLocalControlTests(unittest.TestCase):
             result = vault_local.run_local_action(self.root, "reveal", reveal_terminal)
             self.assertEqual(result["fields"]["document_number"], self.secret)
             self.assertIn(self.secret, "\n".join(reveal_terminal.output))
+            audit_terminal = FakeTerminal(secrets=[self.passphrase])
+            vault_local.run_local_action(self.root, "delivery-audit", audit_terminal)
+            self.assertNotIn(self.secret, "\n".join(audit_terminal.output))
 
 
 if __name__ == "__main__":
