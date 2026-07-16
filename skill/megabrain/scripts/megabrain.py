@@ -1146,7 +1146,8 @@ def indexed_memories(
             scores = {
                 record_id: score
                 for record_id, score in connection.execute(
-                    f"SELECT record_id,SUM(weight) FROM postings WHERE token IN ({placeholders}) GROUP BY record_id",
+                    # The formatted fragment contains only generated question marks; values remain bound parameters.
+                    f"SELECT record_id,SUM(weight) FROM postings WHERE token IN ({placeholders}) GROUP BY record_id",  # nosec B608
                     sorted(task_tokens),
                 )
             }
@@ -1158,7 +1159,8 @@ def indexed_memories(
         if candidate_ids:
             placeholders = ",".join("?" for _ in candidate_ids)
             for row in connection.execute(
-                f"SELECT id,path,meta_json,summary FROM records WHERE id IN ({placeholders})",
+                # The formatted fragment contains only generated question marks; values remain bound parameters.
+                f"SELECT id,path,meta_json,summary FROM records WHERE id IN ({placeholders})",  # nosec B608
                 sorted(candidate_ids),
             ):
                 candidates.append((scores.get(row[0], 0), row_record(root, row)))
@@ -1816,7 +1818,20 @@ def write_recovery_file(path: Path, recovery_key: str) -> None:
         raise vault_module.VaultError("RECOVERY_FILE_FAILED", "The recovery file could not be created.") from error
 
 
-def start_vault_broker(root: Path, store: vault_module.VaultStore, master_key: bytes, timeout: int) -> dict[str, Any]:
+BROKER_PROCESSES: set[int] = set()
+
+
+def reap_broker_processes() -> None:
+    for process_id in list(BROKER_PROCESSES):
+        try:
+            completed, _ = os.waitpid(process_id, os.WNOHANG)
+        except ChildProcessError:
+            completed = process_id
+        if completed:
+            BROKER_PROCESSES.discard(process_id)
+
+
+def start_vault_broker(store: vault_module.VaultStore, master_key: bytes, timeout: int) -> dict[str, Any]:
     socket_path = store.paths.runtime / "broker.sock"
     if socket_path.exists():
         try:
@@ -1824,21 +1839,23 @@ def start_vault_broker(root: Path, store: vault_module.VaultStore, master_key: b
             return {"ok": True, "unlocked": True, "already_unlocked": True}
         except vault_module.VaultError:
             pass
-    environment = dict(os.environ)
-    environment["MEGABRAIN_ROOT"] = str(root)
-    process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "vault", "_serve", "--stdin"],
-        cwd=root,
-        env=environment,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        start_new_session=True,
-    )
-    assert process.stdin is not None
-    process.stdin.write(json.dumps({"master_key": vault_module.b64(master_key), "idle_timeout": timeout}))
-    process.stdin.close()
+    process_id = os.fork()
+    if process_id == 0:
+        try:
+            os.setsid()
+            null_descriptor = os.open(os.devnull, os.O_RDWR)
+            try:
+                for descriptor in (0, 1, 2):
+                    os.dup2(null_descriptor, descriptor)
+            finally:
+                if null_descriptor > 2:
+                    os.close(null_descriptor)
+            vault_module.serve_broker(store, master_key, timeout)
+        except BaseException:
+            pass
+        finally:
+            os._exit(0)
+    BROKER_PROCESSES.add(process_id)
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         if socket_path.exists():
@@ -1847,56 +1864,70 @@ def start_vault_broker(root: Path, store: vault_module.VaultStore, master_key: b
                 return {"ok": True, "unlocked": True, "idle_timeout": timeout}
             except vault_module.VaultError:
                 pass
-        if process.poll() is not None:
+        reap_broker_processes()
+        if process_id not in BROKER_PROCESSES:
             break
         time.sleep(0.05)
     raise vault_module.VaultError("BROKER_START_FAILED", "The local Vault broker did not start.")
 
 
-def command_vault(root: Path, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+AGENT_SAFE_VAULT_ACTIONS = {"status", "doctor", "metadata", "lock"}
+
+
+def command_vault(
+    root: Path,
+    action: str,
+    payload: dict[str, Any],
+    *,
+    trusted_local: bool = False,
+) -> dict[str, Any]:
     require_compatible_runtime(root, writing=action not in {"status", "doctor", "metadata", "reveal", "audit"})
     vault_module.configure_dependency(Path.home())
+    if not trusted_local and action not in AGENT_SAFE_VAULT_ACTIONS:
+        raise vault_module.VaultError(
+            "LOCAL_ACTION_REQUIRED",
+            "Complete this Vault action in the local owner control plane; never send protected input through chat or ordinary tools.",
+        )
     if action == "setup":
-        if not payload.get("confirm_recovery_saved", False):
-            vault_module.ensure_dependency(Path.home())
-        brain_id = vault_brain_id(root, create=not payload.get("confirm_recovery_saved", False))
-        if brain_id is None:
-            raise vault_module.VaultError("BRAIN_ID_REQUIRED", "Assign a stable brain identifier before Vault setup.")
-        store = vault_module.VaultStore(vault_module.paths_for(Path.home(), brain_id))
-        if payload.get("confirm_recovery_saved") is True:
-            store.confirm_setup()
-            return {"ok": True, "ready": True, "recovery_key_displayed": False}
-        passphrase = payload.get("passphrase")
-        if not isinstance(passphrase, str):
-            raise vault_module.VaultError("PASSPHRASE_REQUIRED", "Provide the Vault passphrase through standard input.")
-        recovery_path = payload.get("recovery_path")
+        confirming = payload.get("confirm_recovery_saved") is True
         selected_recovery: Path | None = None
-        if recovery_path is not None:
+        if not confirming:
+            passphrase = payload.get("passphrase")
+            if not isinstance(passphrase, str):
+                raise vault_module.VaultError(
+                    "PASSPHRASE_REQUIRED",
+                    "Enter the Vault passphrase in the local owner control plane.",
+                )
+            recovery_path = payload.get("recovery_path")
             if not isinstance(recovery_path, str) or not recovery_path:
-                raise vault_module.VaultError("INVALID_RECOVERY_PATH", "Recovery path must be an explicit path string.")
+                raise vault_module.VaultError(
+                    "RECOVERY_PATH_REQUIRED",
+                    "Vault setup requires an explicit new recovery-file destination in the local owner control plane.",
+                )
             selected_recovery = Path(recovery_path).expanduser().resolve()
             if selected_recovery.exists():
                 raise vault_module.VaultError("RECOVERY_FILE_EXISTS", "The selected recovery file already exists.")
+            vault_module.ensure_dependency(Path.home())
+        brain_id = vault_brain_id(root, create=not confirming)
+        if brain_id is None:
+            raise vault_module.VaultError("BRAIN_ID_REQUIRED", "Assign a stable brain identifier before Vault setup.")
+        store = vault_module.VaultStore(vault_module.paths_for(Path.home(), brain_id))
+        if confirming:
+            store.confirm_setup()
+            return {"ok": True, "ready": True, "recovery_key_displayed": False}
+        assert selected_recovery is not None
         store, recovery_key = vault_module.VaultStore.setup(store.paths, brain_id, passphrase)
-        if selected_recovery is not None:
-            try:
-                write_recovery_file(selected_recovery, recovery_key)
-            except Exception:
-                shutil.rmtree(store.paths.root, ignore_errors=True)
-                raise
-            return {
-                "ok": True,
-                "created": True,
-                "ready": False,
-                "confirmation_required": True,
-                "recovery_file": str(selected_recovery),
-            }
+        try:
+            write_recovery_file(selected_recovery, recovery_key)
+        except Exception:
+            shutil.rmtree(store.paths.root, ignore_errors=True)
+            raise
         return {
             "ok": True,
             "created": True,
             "ready": False,
             "confirmation_required": True,
-            "recovery_key": recovery_key,
+            "recovery_file": str(selected_recovery),
         }
 
     brain_id = vault_brain_id(root)
@@ -1909,14 +1940,10 @@ def command_vault(root: Path, action: str, payload: dict[str, Any]) -> dict[str,
         return store.status()
     if action == "doctor":
         return vault_module.doctor(store)
-    if action == "_serve":
-        encoded = payload.get("master_key")
-        if not isinstance(encoded, str):
-            raise vault_module.VaultError("UNLOCK_MATERIAL_REQUIRED", "Broker unlock material is missing.")
-        vault_module.serve_broker(store, vault_module.unb64(encoded), int(payload.get("idle_timeout", 300)))
-        return {"ok": True, "locked": True}
     if action == "lock":
-        return vault_module.lock_broker(store)
+        result = vault_module.lock_broker(store)
+        reap_broker_processes()
+        return result
     if action == "metadata":
         identity = load_identity(root)
         request = vault_module.signed_request(
@@ -1953,27 +1980,17 @@ def command_vault(root: Path, action: str, payload: dict[str, Any]) -> dict[str,
         timeout = payload.get("idle_timeout", 300)
         if not isinstance(timeout, int):
             raise vault_module.VaultError("INVALID_TIMEOUT", "Vault idle timeout must be an integer.")
-        return start_vault_broker(root, store, master_key, timeout)
+        return start_vault_broker(store, master_key, timeout)
     if action == "put":
         item = payload.get("item")
         if not isinstance(item, dict):
             raise vault_module.VaultError("INVALID_ITEM", "Vault put requires an item object.")
         return store.put(master_key, item)
     if action == "reveal":
-        context = payload.get("context")
         purpose = payload.get("purpose")
         digest: bytes | None = None
         try:
             digest = store.resource_digest(master_key, payload.get("resource"))
-            if (
-                payload.get("owner_confirmed") is not True
-                or not isinstance(context, dict)
-                or context.get("kind") != "private"
-            ):
-                raise vault_module.VaultError(
-                    "OWNER_CONFIRMATION_REQUIRED",
-                    "Owner reveal requires explicit confirmation of a private output context.",
-                )
             if not isinstance(purpose, str) or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", purpose) is None:
                 raise vault_module.VaultError("PURPOSE_REQUIRED", "Vault reveal requires a structured purpose code.")
             result = store.reveal(master_key, payload.get("resource"), payload.get("fields", []))
@@ -1991,7 +2008,7 @@ def command_vault(root: Path, action: str, payload: dict[str, Any]) -> dict[str,
                 "reveal",
                 digest,
                 "allowed",
-                "OWNER_CONFIRMED_PRIVATE_CONTEXT",
+                "OWNER_LOCAL_CONTROL_PLANE",
                 None,
             )
         return result
@@ -2215,7 +2232,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "setup", "status", "unlock", "lock", "put", "metadata", "reveal", "attach",
             "export", "restore", "grant", "revoke", "rotate-passphrase", "rotate-recovery",
-            "delete", "audit", "doctor", "_serve",
+            "delete", "audit", "doctor",
         ),
     )
     vault.add_argument("--stdin", action="store_true")

@@ -421,5 +421,41 @@ class VaultTests(unittest.TestCase):
         self.assertFalse(socket_path.exists())
 
 
+class VaultRuntimePathTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def test_long_socket_fallback_rejects_precreated_symlink(self) -> None:
+        temporary_root = Path(self.temp.name) / "synthetic-tmp"
+        temporary_root.mkdir()
+        target = Path(self.temp.name) / "unrelated-target"
+        target.mkdir(mode=0o755)
+        marker = target / "marker.txt"
+        marker.write_text("unchanged", encoding="utf-8")
+        predictable = temporary_root / f"megabrain-vault-{os.getuid()}"
+        predictable.symlink_to(target, target_is_directory=True)
+        long_runtime = Path(self.temp.name) / ("long-runtime-segment-" * 8)
+        with self.assertRaises(vault.VaultError) as rejected:
+            vault.broker_socket_path(long_runtime, temporary_root=temporary_root)
+        self.assertEqual(rejected.exception.code, "VAULT_RUNTIME_PATH_UNSAFE")
+        self.assertTrue(predictable.is_symlink())
+        self.assertEqual(marker.read_text(encoding="utf-8"), "unchanged")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+
+    def test_long_socket_fallback_rejects_unsafe_existing_mode(self) -> None:
+        temporary_root = Path(self.temp.name) / "synthetic-tmp"
+        temporary_root.mkdir()
+        predictable = temporary_root / f"megabrain-vault-{os.getuid()}"
+        predictable.mkdir(mode=0o755)
+        long_runtime = Path(self.temp.name) / ("long-runtime-segment-" * 8)
+        with self.assertRaises(vault.VaultError) as rejected:
+            vault.broker_socket_path(long_runtime, temporary_root=temporary_root)
+        self.assertEqual(rejected.exception.code, "VAULT_RUNTIME_PATH_UNSAFE")
+        self.assertEqual(predictable.stat().st_mode & 0o777, 0o755)
+
+
 if __name__ == "__main__":
     unittest.main()

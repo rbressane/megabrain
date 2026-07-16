@@ -488,6 +488,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
     def test_vault_cli_is_separate_from_git_browser_and_requires_private_policy(self) -> None:
         clone = self.network.clone("vault-agent", "codex")
+        home = self.network.homes["vault-agent"]
         passphrase = "generated synthetic passphrase with enough length"
         secret = "SYN-" + uuid.uuid4().hex
         item = {
@@ -496,41 +497,63 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             "label": "Synthetic identity document",
             "fields": {"document_number": secret, "expires_on": "2036-01-01"},
         }
-        setup = self.network.command(
-            "vault-agent", "vault", {"passphrase": passphrase}, "setup", "--stdin"
+        agent_setup = self.network.command(
+            "vault-agent", "vault", {"passphrase": passphrase}, "setup", "--stdin", expected=2
         )
-        recovery = setup["recovery_key"]
+        self.assertEqual(agent_setup["error"]["code"], "LOCAL_ACTION_REQUIRED")
+        self.assertNotIn(passphrase, json.dumps(agent_setup))
+        recovery_path = home / "megabrain-recovery.txt"
+        local_environment = {"HOME": str(home), "MEGABRAIN_ROOT": str(clone)}
+        with mock.patch.dict(os.environ, local_environment):
+            setup = megabrain_runtime.command_vault(
+                clone,
+                "setup",
+                {"passphrase": passphrase, "recovery_path": str(recovery_path)},
+                trusted_local=True,
+            )
         self.assertTrue(setup["confirmation_required"])
-        confirmed = self.network.command(
-            "vault-agent", "vault", {"confirm_recovery_saved": True}, "setup", "--stdin"
-        )
+        self.assertNotIn("recovery_key", setup)
+        self.assertEqual(recovery_path.stat().st_mode & 0o777, 0o600)
+        with mock.patch.dict(os.environ, local_environment):
+            confirmed = megabrain_runtime.command_vault(
+                clone, "setup", {"confirm_recovery_saved": True}, trusted_local=True
+            )
         self.assertTrue(confirmed["ready"])
         self.assertNotIn("recovery_key", confirmed)
         manifest = json.loads((clone / "megabrain.json").read_text(encoding="utf-8"))
         self.assertIn("brain_id", manifest)
-        vault_root = self.network.homes["vault-agent"] / ".megabrain" / "vaults" / manifest["brain_id"]
+        vault_root = home / ".megabrain" / "vaults" / manifest["brain_id"]
         self.assertTrue((vault_root / "vault.sqlite3").exists())
         if secret.encode() in (vault_root / "vault.sqlite3").read_bytes():
             self.fail("a generated synthetic secret appeared in database bytes")
-        self.network.command(
-            "vault-agent", "vault", {"passphrase": passphrase, "item": item}, "put", "--stdin"
+        agent_put = self.network.command(
+            "vault-agent", "vault", {"passphrase": passphrase, "item": item}, "put", "--stdin", expected=2
         )
-        self.network.command(
-            "vault-agent",
-            "vault",
-            {
-                "passphrase": passphrase,
-                "scopes": ["vault.metadata", "identity.metadata", "vault.reveal", "identity.reveal"],
-                "resource_classes": ["identity"],
-            },
-            "grant",
-            "--stdin",
-        )
+        self.assertEqual(agent_put["error"]["code"], "LOCAL_ACTION_REQUIRED")
+        self.assertNotIn(secret, json.dumps(agent_put))
+        with mock.patch.dict(os.environ, local_environment):
+            megabrain_runtime.command_vault(
+                clone, "put", {"passphrase": passphrase, "item": item}, trusted_local=True
+            )
+            megabrain_runtime.command_vault(
+                clone,
+                "grant",
+                {
+                    "passphrase": passphrase,
+                    "scopes": ["vault.metadata", "identity.metadata", "vault.reveal", "identity.reveal"],
+                    "resource_classes": ["identity"],
+                },
+                trusted_local=True,
+            )
         (vault_root / "runtime" / "broker.sock").write_text("stale", encoding="utf-8")
         try:
-            self.network.command(
-                "vault-agent", "vault", {"passphrase": passphrase, "idle_timeout": 10}, "unlock", "--stdin"
-            )
+            with mock.patch.dict(os.environ, local_environment):
+                megabrain_runtime.command_vault(
+                    clone,
+                    "unlock",
+                    {"passphrase": passphrase, "idle_timeout": 10},
+                    trusted_local=True,
+                )
             metadata = self.network.command(
                 "vault-agent",
                 "vault",
@@ -554,35 +577,30 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                 "--stdin",
                 expected=2,
             )
-            self.assertEqual(denied["error"]["code"], "OWNER_CONFIRMATION_REQUIRED")
-            revealed = self.network.command(
-                "vault-agent",
-                "vault",
-                {
-                    "passphrase": passphrase,
-                    "resource": item["logical_id"],
-                    "fields": ["document_number"],
-                    "purpose": "user-request",
-                    "context": {"kind": "private"},
-                    "owner_confirmed": True,
-                },
-                "reveal",
-                "--stdin",
-            )
+            self.assertEqual(denied["error"]["code"], "LOCAL_ACTION_REQUIRED")
+            self.assertNotIn(secret, json.dumps(denied))
+            with mock.patch.dict(os.environ, local_environment):
+                revealed = megabrain_runtime.command_vault(
+                    clone,
+                    "reveal",
+                    {
+                        "passphrase": passphrase,
+                        "resource": item["logical_id"],
+                        "fields": ["document_number"],
+                        "purpose": "user-request",
+                    },
+                    trusted_local=True,
+                )
             if revealed["fields"]["document_number"] != secret:
                 self.fail("revealed field did not match the generated secret")
-            audit = self.network.command(
-                "vault-agent", "vault", {"passphrase": passphrase, "limit": 100}, "audit", "--stdin"
-            )
-            self.assertIn("OWNER_CONFIRMATION_REQUIRED", {event["reason_code"] for event in audit["events"]})
-            rotated_path = self.network.homes["vault-agent"] / "rotated-recovery.txt"
-            rotated = self.network.command(
-                "vault-agent",
-                "vault",
-                {"passphrase": passphrase, "recovery_path": str(rotated_path)},
-                "rotate-recovery",
-                "--stdin",
-            )
+            rotated_path = home / "rotated-recovery.txt"
+            with mock.patch.dict(os.environ, local_environment):
+                rotated = megabrain_runtime.command_vault(
+                    clone,
+                    "rotate-recovery",
+                    {"passphrase": passphrase, "recovery_path": str(rotated_path)},
+                    trusted_local=True,
+                )
             self.assertNotIn("recovery_key", rotated)
             self.assertTrue(rotated_path.exists())
             self.assertEqual(rotated_path.stat().st_mode & 0o777, 0o600)
@@ -591,7 +609,6 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                 self.fail("the local browser exposed a generated synthetic secret")
         finally:
             self.network.command("vault-agent", "vault", {}, "lock", "--stdin")
-        self.assertTrue(recovery.startswith("MBRK1-"))
 
     def test_simultaneous_offline_writes_sync_without_data_loss(self) -> None:
         self.network.clone("agent-a", "codex")

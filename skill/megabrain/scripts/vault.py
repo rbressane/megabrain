@@ -19,6 +19,7 @@ import re
 import shutil
 import socket
 import sqlite3
+import stat
 import struct
 import subprocess
 import sys
@@ -155,8 +156,10 @@ def configure_dependency(home: Path) -> None:
 def ensure_dependency(home: Path) -> None:
     configure_dependency(home)
     try:
-        crypto()
-        return
+        nacl = crypto()
+        origin = getattr(nacl, "__file__", None)
+        if isinstance(origin, str) and Path(origin).is_file():
+            return
     except VaultError as error:
         if error.code != "VAULT_DEPENDENCY_MISSING":
             raise
@@ -246,6 +249,49 @@ def safe_permissions(path: Path, mode: int) -> None:
 def secure_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     safe_permissions(path, 0o700)
+
+
+def secure_owned_directory(path: Path) -> None:
+    """Create or verify a private directory without following a pre-created symlink."""
+    created = False
+    try:
+        os.mkdir(path, 0o700)
+        created = True
+    except FileExistsError:
+        pass
+    except OSError as error:
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path could not be secured.") from error
+    try:
+        before = os.lstat(path)
+    except OSError as error:
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path could not be verified.") from error
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode) or before.st_uid != os.getuid():
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path has unsafe ownership or type.")
+    if not created and stat.S_IMODE(before.st_mode) != 0o700:
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The existing Vault runtime path is not mode 0700.")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path could not be opened safely.") from error
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or opened.st_uid != os.getuid()
+            or opened.st_dev != before.st_dev
+            or opened.st_ino != before.st_ino
+        ):
+            raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path changed during verification.")
+        if created:
+            os.fchmod(descriptor, 0o700)
+            opened = os.fstat(descriptor)
+        if stat.S_IMODE(opened.st_mode) != 0o700:
+            raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime path is not mode 0700.")
+    except OSError as error:
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault runtime permissions could not be secured.") from error
+    finally:
+        os.close(descriptor)
 
 
 def secure_json(path: Path, value: dict[str, Any]) -> None:
@@ -368,17 +414,24 @@ def paths_for(home: Path, brain_id: str) -> VaultPaths:
     )
 
 
-def broker_socket_path(runtime: Path) -> Path:
+# The fixed fallback is verified with lstat, fd checks, current-user ownership, and exact mode.
+def broker_socket_path(runtime: Path, *, temporary_root: Path = Path("/tmp")) -> Path:  # nosec B108
     preferred = runtime / "broker.sock"
     if len(os.fsencode(preferred)) < 100:
         return preferred
-    base = Path("/tmp") / f"megabrain-vault-{os.getuid()}"
-    secure_directory(base)
+    base = temporary_root / f"megabrain-vault-{os.getuid()}"
+    secure_owned_directory(base)
     alias = base / hashlib.sha256(str(runtime).encode()).hexdigest()[:16]
-    if alias.is_symlink() and alias.resolve() != runtime.resolve():
-        alias.unlink()
-    if not alias.exists():
-        alias.symlink_to(runtime, target_is_directory=True)
+    try:
+        alias_state = os.lstat(alias)
+    except FileNotFoundError:
+        try:
+            alias.symlink_to(runtime, target_is_directory=True)
+        except FileExistsError:
+            pass
+        alias_state = os.lstat(alias)
+    if not stat.S_ISLNK(alias_state.st_mode) or alias.resolve() != runtime.resolve():
+        raise VaultError("VAULT_RUNTIME_PATH_UNSAFE", "The Vault socket alias is unsafe.")
     return alias / "broker.sock"
 
 
