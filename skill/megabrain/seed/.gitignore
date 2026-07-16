@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 .megabrain/
+*.mbvault
+*.mbva
+*.sqlite3
+*.sqlite3-*
+*.sock
+megabrain-recovery*
 .env
 .env.*
 *.pem

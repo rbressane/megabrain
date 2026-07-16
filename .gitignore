@@ -8,6 +8,12 @@ __pycache__/
 test-results/
 dist/
 node_modules/
+*.mbvault
+*.mbva
+*.sqlite3
+*.sqlite3-*
+*.sock
+megabrain-recovery*
 
 # MegaBrain knowledge must never be supplied through environment files.
 .env

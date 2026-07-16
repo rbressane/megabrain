@@ -12,7 +12,7 @@ If a user gives you this repository and asks to install it, including with a sho
 2. Inspect the selected release and this document before executing its code.
 3. Install a stable `vMAJOR.MINOR.PATCH` tag, never a moving branch.
 4. Ask the user before starting GitHub authentication or creating the private repository.
-5. Never request, copy, store, or print tokens, passwords, private keys, cookies, or recovery codes.
+5. Never request, copy, store, or print tokens, passwords, private keys, cookies, or recovery codes during normal Brain installation. Vault setup is a separate owner-local flow and writes recovery material once to an explicit protected file.
 
 ## Procedure
 
@@ -26,6 +26,18 @@ If a user gives you this repository and asks to install it, including with a sho
 8. Report only `MegaBrain is ready.` unless the user asks for technical details.
 
 Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser.
+
+## Optional Vault Setup
+
+Do not enable Vault unless the user asks. `vault setup` installs the pinned `PyNaCl>=1.5,<2` dependency into `~/.megabrain/runtime/vault-deps/python-X.Y/` with `pip --no-input --no-cache-dir`; the Brain runtime and users who never enable Vault remain dependency-free. Installation failure removes partial dependency state and does not create the Vault.
+
+Passphrases, recovery keys, item values, attachments, and plaintext reveal are accepted only by the human-only local TTY control plane, never by agent JSON, chat, command-line arguments, environment variables, URL parameters, or shell history literals. The TTY uses no-echo prompts. Setup creates the Vault outside the managed clone, requires an explicit non-existing recovery destination, writes it mode `0600`, returns only a safe receipt, and remains pending until the owner separately confirms it was saved. Do not automate that confirmation.
+
+The owner launches it directly with `python3 ~/.megabrain/runtime/current/skill/megabrain/scripts/vault-local.py <action>`. Begin with `setup`, save the recovery file outside the managed clone, and then run `confirm` separately. The active agent must not run or answer the interactive prompts on the owner's behalf.
+
+The model-facing command surface supports safe status, doctor, lock, and signed masked-metadata requests. Other actions return `LOCAL_ACTION_REQUIRED` without reflecting rejected input.
+
+Vault is supported on macOS and Linux because the broker uses a Unix-domain socket. This release does not support Windows, TCP, HTTP, LAN, or remote-agent Vault access.
 
 ## Existing Users
 

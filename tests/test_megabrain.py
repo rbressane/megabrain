@@ -5,13 +5,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SOURCE_ROOT / "skill" / "megabrain" / "scripts"))
+import megabrain as megabrain_runtime
+
 LEGACY_SEED_WORKFLOW = """name: Validate MegaBrain
 
 on:
@@ -376,17 +381,234 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             "agent-a", "context", {"task": "Which project release channel should we use?"}, "--stdin"
         )
         summaries = {item["summary"] for item in context["memories"]}
-        self.assertIn("Use concise explanations.", summaries)
+        self.assertNotIn("Use concise explanations.", summaries)
         self.assertIn("The release channel is stable.", summaries)
         self.assertIn("The release channel is preview.", summaries)
         self.assertNotIn("The synthetic garden has four plots.", summaries)
         self.assertEqual(len(context["conflicts"]), 1)
         self.assertEqual(len(context["conflicts"][0]["memory_ids"]), 2)
         limited = self.network.command(
-            "agent-a", "context", {"task": "An otherwise unrelated task"}, "--stdin", "--limit", "1"
+            "agent-a", "context", {"task": "Quantum zephyr"}, "--stdin", "--limit", "1"
         )
-        self.assertEqual(len(limited["memories"]), 2)
-        self.assertTrue(all(item["importance"] == "core" for item in limited["memories"]))
+        self.assertEqual(limited["memories"], [])
+        self.assertEqual(limited["limit"], 1)
+
+    def test_retrieval_limit_structured_tasks_collection_and_warm_index(self) -> None:
+        self.network.clone("ranking-agent", "codex")
+        target = "Synthetic X copy uses a spoken direct voice with simple words."
+        self.network.remember(
+            "ranking-agent",
+            kind="preference",
+            subject="person.x_writing_human_voice",
+            summary=target,
+            tags=["human", "voice", "writing", "x"],
+        )
+        explicit = self.network.command(
+            "ranking-agent", "context", {"task": "Write a new X post in the synthetic voice."}, "--stdin"
+        )
+        self.assertIn(target, {item["summary"] for item in explicit["memories"]})
+        for number in range(20):
+            self.network.remember(
+                "ranking-agent",
+                subject=f"core.unrelated_{number}",
+                summary=f"Synthetic unrelated universal-looking rule {number}.",
+                importance="core",
+                tags=["unrelated"],
+            )
+        pricing = set()
+        for number in range(8):
+            summary = f"Synthetic Round 6 pricing family entry {number}."
+            pricing.add(summary)
+            self.network.remember(
+                "ranking-agent",
+                subject=f"round6.pricing.family_{number}",
+                summary=summary,
+                tags=["round6", "pricing", "collection"],
+            )
+        collection = self.network.command(
+            "ranking-agent",
+            "context",
+            {"task": "Return all Round 6 prices", "diagnostic": True},
+            "--stdin",
+        )
+        summaries = {item["summary"] for item in collection["memories"]}
+        self.assertTrue(pricing <= summaries)
+        self.assertEqual(len(collection["memories"]), 8)
+        self.assertEqual(collection["diagnostics"]["index"], "cold")
+        structured = self.network.command(
+            "ranking-agent",
+            "context",
+            {
+                "task": {
+                    "task": "Rewrite the supplied post",
+                    "artifact_type": "x-post",
+                    "domain": "writing",
+                    "intent": "edit",
+                    "audience": "public",
+                },
+                "diagnostic": True,
+            },
+            "--stdin",
+        )
+        self.assertIn(target, {item["summary"] for item in structured["memories"]})
+        self.assertLessEqual(len(structured["memories"]), structured["limit"])
+        self.assertEqual(structured["diagnostics"]["index"], "warm")
+        self.assertIn("remote_synchronization", structured["diagnostics"]["timings_ms"])
+        clone = self.network.clones["ranking-agent"]
+        index = clone / ".megabrain" / "retrieval-index.sqlite3"
+        index.unlink()
+        memory_path = next(
+            path for path in (clone / "brain" / "memories").rglob("*.md") if target in path.read_text(encoding="utf-8")
+        )
+        original = memory_path.read_text(encoding="utf-8")
+        canary = "UNCOMMITTED-SYNTHETIC-CANARY"
+        original_sync = megabrain_runtime.sync_repo
+
+        def sync_then_inject(*args, **kwargs):
+            result = original_sync(*args, **kwargs)
+            memory_path.write_text(original.replace(target, canary), encoding="utf-8")
+            return result
+
+        with mock.patch.object(megabrain_runtime, "sync_repo", side_effect=sync_then_inject):
+            raced = megabrain_runtime.command_context(
+                clone,
+                {"task": "Write a new X post.", "diagnostic": True},
+                12,
+            )
+        self.assertEqual(raced["diagnostics"]["index"], "cold")
+        self.assertIn(target, {item["summary"] for item in raced["memories"]})
+        self.assertNotIn(canary, json.dumps(raced))
+        self.assertNotIn(canary.encode(), index.read_bytes())
+        memory_path.write_text(original, encoding="utf-8")
+        clean = self.network.command(
+            "ranking-agent", "context", {"task": "Write a new X post."}, "--stdin"
+        )
+        self.assertIn(target, {item["summary"] for item in clean["memories"]})
+        self.assertNotIn(canary, json.dumps(clean))
+
+    def test_vault_cli_is_separate_from_git_browser_and_requires_private_policy(self) -> None:
+        clone = self.network.clone("vault-agent", "codex")
+        home = self.network.homes["vault-agent"]
+        passphrase = "generated synthetic passphrase with enough length"
+        secret = "SYN-" + uuid.uuid4().hex
+        item = {
+            "logical_id": "identity://synthetic-subject/passport/example/current",
+            "type": "passport",
+            "label": "Synthetic identity document",
+            "fields": {"document_number": secret, "expires_on": "2036-01-01"},
+        }
+        agent_setup = self.network.command(
+            "vault-agent", "vault", {"passphrase": passphrase}, "setup", "--stdin", expected=2
+        )
+        self.assertEqual(agent_setup["error"]["code"], "LOCAL_ACTION_REQUIRED")
+        self.assertNotIn(passphrase, json.dumps(agent_setup))
+        recovery_path = home / "megabrain-recovery.txt"
+        local_environment = {"HOME": str(home), "MEGABRAIN_ROOT": str(clone)}
+        with mock.patch.dict(os.environ, local_environment):
+            setup = megabrain_runtime.command_vault(
+                clone,
+                "setup",
+                {"passphrase": passphrase, "recovery_path": str(recovery_path)},
+                trusted_local=True,
+            )
+        self.assertTrue(setup["confirmation_required"])
+        self.assertNotIn("recovery_key", setup)
+        self.assertEqual(recovery_path.stat().st_mode & 0o777, 0o600)
+        with mock.patch.dict(os.environ, local_environment):
+            confirmed = megabrain_runtime.command_vault(
+                clone, "setup", {"confirm_recovery_saved": True}, trusted_local=True
+            )
+        self.assertTrue(confirmed["ready"])
+        self.assertNotIn("recovery_key", confirmed)
+        manifest = json.loads((clone / "megabrain.json").read_text(encoding="utf-8"))
+        self.assertIn("brain_id", manifest)
+        vault_root = home / ".megabrain" / "vaults" / manifest["brain_id"]
+        self.assertTrue((vault_root / "vault.sqlite3").exists())
+        if secret.encode() in (vault_root / "vault.sqlite3").read_bytes():
+            self.fail("a generated synthetic secret appeared in database bytes")
+        agent_put = self.network.command(
+            "vault-agent", "vault", {"passphrase": passphrase, "item": item}, "put", "--stdin", expected=2
+        )
+        self.assertEqual(agent_put["error"]["code"], "LOCAL_ACTION_REQUIRED")
+        self.assertNotIn(secret, json.dumps(agent_put))
+        with mock.patch.dict(os.environ, local_environment):
+            megabrain_runtime.command_vault(
+                clone, "put", {"passphrase": passphrase, "item": item}, trusted_local=True
+            )
+            megabrain_runtime.command_vault(
+                clone,
+                "grant",
+                {
+                    "passphrase": passphrase,
+                    "scopes": ["vault.metadata", "identity.metadata", "vault.reveal", "identity.reveal"],
+                    "resource_classes": ["identity"],
+                },
+                trusted_local=True,
+            )
+        (vault_root / "runtime" / "broker.sock").write_text("stale", encoding="utf-8")
+        try:
+            with mock.patch.dict(os.environ, local_environment):
+                megabrain_runtime.command_vault(
+                    clone,
+                    "unlock",
+                    {"passphrase": passphrase, "idle_timeout": 10},
+                    trusted_local=True,
+                )
+            metadata = self.network.command(
+                "vault-agent",
+                "vault",
+                {"resource": item["logical_id"], "purpose": "locate", "context": {"kind": "unknown"}},
+                "metadata",
+                "--stdin",
+            )
+            if secret in json.dumps(metadata):
+                self.fail("masked metadata exposed a generated synthetic secret")
+            denied = self.network.command(
+                "vault-agent",
+                "vault",
+                {
+                    "passphrase": passphrase,
+                    "resource": item["logical_id"],
+                    "fields": ["document_number"],
+                    "purpose": "user-request",
+                    "context": {"kind": "group"},
+                },
+                "reveal",
+                "--stdin",
+                expected=2,
+            )
+            self.assertEqual(denied["error"]["code"], "LOCAL_ACTION_REQUIRED")
+            self.assertNotIn(secret, json.dumps(denied))
+            with mock.patch.dict(os.environ, local_environment):
+                revealed = megabrain_runtime.command_vault(
+                    clone,
+                    "reveal",
+                    {
+                        "passphrase": passphrase,
+                        "resource": item["logical_id"],
+                        "fields": ["document_number"],
+                        "purpose": "user-request",
+                    },
+                    trusted_local=True,
+                )
+            if revealed["fields"]["document_number"] != secret:
+                self.fail("revealed field did not match the generated secret")
+            rotated_path = home / "rotated-recovery.txt"
+            with mock.patch.dict(os.environ, local_environment):
+                rotated = megabrain_runtime.command_vault(
+                    clone,
+                    "rotate-recovery",
+                    {"passphrase": passphrase, "recovery_path": str(rotated_path)},
+                    trusted_local=True,
+                )
+            self.assertNotIn("recovery_key", rotated)
+            self.assertTrue(rotated_path.exists())
+            self.assertEqual(rotated_path.stat().st_mode & 0o777, 0o600)
+            browser = self.network.command("vault-agent", "browse", None, "--no-open")
+            if secret in Path(browser["path"]).read_text(encoding="utf-8"):
+                self.fail("the local browser exposed a generated synthetic secret")
+        finally:
+            self.network.command("vault-agent", "vault", {}, "lock", "--stdin")
 
     def test_simultaneous_offline_writes_sync_without_data_loss(self) -> None:
         self.network.clone("agent-a", "codex")
@@ -420,6 +642,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
     def test_ingestion_is_idempotent_deduplicated_and_untrusted(self) -> None:
         self.network.clone("agent-a", "codex")
+        generated_secret = "sk-" + uuid.uuid4().hex
         self.network.remember(
             "agent-a", subject="existing.fact", summary="A durable existing fact.", tags=["existing"]
         )
@@ -429,6 +652,11 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                 "locator": "synthetic/export.json",
                 "hash": "sha256:" + "a" * 64,
             },
+            "coverage": [
+                {"locator": "synthetic/writable", "access": "writable", "canonical": False, "status": "scanned"},
+                {"locator": "synthetic/reference", "access": "reference-only", "canonical": True, "status": "discovered"},
+                {"locator": "synthetic/excluded", "access": "excluded", "canonical": False, "status": "intentionally-skipped"},
+            ],
             "memories": [
                 {
                     "kind": "fact",
@@ -451,7 +679,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                 {
                     "kind": "resource",
                     "subject": "secret.value",
-                    "summary": "api_key=sk-abcdefghijklmnopqrstuvwxyz123456",
+                    "summary": f"api_key={generated_secret}",
                     "tags": ["secret"],
                 },
             ],
@@ -465,7 +693,10 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             imported["rejected_by_code"],
             {"secret_value_rejected": 1, "untrusted_instruction_rejected": 1},
         )
-        self.assertNotIn("sk-", json.dumps(imported))
+        if generated_secret in json.dumps(imported):
+            self.fail("import output echoed a generated synthetic secret")
+        self.assertEqual(imported["coverage"]["reference_only"], 1)
+        self.assertEqual(imported["coverage"]["canonical_not_scanned"], ["synthetic/reference"])
         unchanged = self.network.command("agent-a", "ingest", payload, "--stdin")
         self.assertEqual(unchanged["status"], "unchanged")
         self.assertEqual(unchanged["import_id"], imported["import_id"])
@@ -484,12 +715,13 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         rejected = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         self.assertEqual(rejected["error"]["code"], "RAW_TRANSCRIPT_REJECTED")
 
-        secret_value = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        secret_value = "sk-" + uuid.uuid4().hex
         payload["summary"] = f"The value is {secret_value}"
         rejected_secret = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         serialized = json.dumps(rejected_secret)
         self.assertEqual(rejected_secret["error"]["code"], "SECRET_VALUE_REJECTED")
-        self.assertNotIn(secret_value, serialized)
+        if secret_value in serialized:
+            self.fail("capture rejection echoed a generated synthetic secret")
 
     def test_validate_finds_duplicate_ids_broken_references_and_committed_secrets(self) -> None:
         clone = self.network.clone("agent-a", "codex")
@@ -510,9 +742,10 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         meta["kind"] = "correction"
         meta["supersedes"] = [str(uuid.uuid4())]
         broken = original.with_name(f"synthetic-{new_id}.md")
+        generated_secret = "synthetic-" + uuid.uuid4().hex
         broken.write_text(
             f"<!-- megabrain-meta\n{json.dumps(meta, indent=2, sort_keys=True)}\n-->\n\n"
-            "# Correction: synthetic topic\n\npassword=synthetic-forbidden-value\n",
+            f"# Correction: synthetic topic\n\npassword={generated_secret}\n",
             encoding="utf-8",
         )
 
@@ -521,9 +754,10 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertTrue(any("duplicate memory id" in message for message in messages))
         self.assertTrue(any("unknown supersedes id" in message for message in messages))
         self.assertTrue(any("possible secret material" in message for message in messages))
-        self.assertNotIn("synthetic-forbidden-value", json.dumps(validation))
+        if generated_secret in json.dumps(validation):
+            self.fail("validation output echoed a generated synthetic secret")
 
-    def test_active_product_has_no_runtime_service_or_package_manifest(self) -> None:
+    def test_active_product_has_no_network_service_and_vault_dependency_is_scoped(self) -> None:
         forbidden = (
             "docker-compose.yml",
             "package.json",
@@ -533,6 +767,8 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             "drizzle.config.ts",
         )
         self.assertEqual([path for path in forbidden if (SOURCE_ROOT / path).exists()], [])
+        requirements = (SOURCE_ROOT / "skill" / "megabrain" / "requirements-vault.txt").read_text(encoding="utf-8")
+        self.assertEqual(requirements.strip(), "PyNaCl>=1.5.0,<2.0.0")
         skill = (SOURCE_ROOT / "skill" / "megabrain" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Do not capture raw conversation, temporary debugging state", skill)
 

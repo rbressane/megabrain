@@ -196,6 +196,11 @@ def brain_metadata(root: Path) -> dict[str, Any]:
         or semantic_version(value.get("minimum_runtime")) is None
     ):
         raise BootstrapError("BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid.")
+    if "brain_id" in value:
+        try:
+            uuid.UUID(str(value["brain_id"]))
+        except (ValueError, TypeError, AttributeError) as error:
+            raise BootstrapError("BRAIN_MANIFEST_INVALID", "The brain identifier is invalid.") from error
     return value
 
 
@@ -217,7 +222,10 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
     version = str(metadata["version"])
     if expected_version and version != expected_version.removeprefix("v"):
         raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
-    for relative in ("SKILL.md", "scripts/megabrain.py", "scripts/bootstrap.py", "assets/browser.html"):
+    for relative in (
+        "SKILL.md", "scripts/megabrain.py", "scripts/vault.py", "scripts/vault-local.py", "scripts/bootstrap.py",
+        "assets/browser.html", "requirements-vault.txt",
+    ):
         path = skill / relative
         if not path.is_file():
             raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime is incomplete.")
@@ -417,6 +425,10 @@ def copy_seed(root: Path) -> None:
         destination = root / source.relative_to(seed)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+    manifest_path = root / "megabrain.json"
+    manifest = load_json(manifest_path, "BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid.")
+    manifest["brain_id"] = str(uuid.uuid4())
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def configure_git(root: Path, name: str, identity_id: str | None = None) -> None:
@@ -549,6 +561,9 @@ def ensure_brain_manifest(root: Path) -> bool:
     if not source.exists():
         raise BootstrapError("SEED_MISSING", "The MegaBrain compatibility manifest is missing.")
     shutil.copy2(source, path)
+    manifest = load_json(path, "BRAIN_MANIFEST_INVALID", "The brain compatibility manifest is invalid.")
+    manifest["brain_id"] = str(uuid.uuid4())
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     run(["git", "add", "--", "megabrain.json"], root)
     if run(["git", "commit", "-m", "chore: add brain compatibility manifest"], root).returncode != 0:
         path.unlink(missing_ok=True)
