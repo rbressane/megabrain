@@ -1,0 +1,9 @@
+name: megabrain-vault
+version: 0.1.0
+description: "Attested, owner-approved MegaBrain Vault delivery for trusted Hermes gateway sessions"
+author: MegaBrain contributors
+kind: standalone
+provides_tools:
+  - megabrain_vault
+hooks:
+  - pre_gateway_dispatch

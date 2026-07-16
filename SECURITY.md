@@ -24,6 +24,7 @@ MegaBrain product code is distributed from the public official repository. Norma
 - The model-visible delivery request contains only action, logical resource, selected field names, and structured purpose. Destination IDs, approval/private flags, key IDs, signatures, secret values, and attestation fields are rejected.
 - Harness envelopes use Ed25519, keyed resource/field/destination digests, at most 60-second TTL, random request/approval IDs and nonces, Brain audience, exact agent/session/message context, transactional replay constraints, key rotation/grace/rollback/revocation, and value-free audit events.
 - Broker plaintext is sealed to the paired harness key. The model receives neither plaintext nor sealed ciphertext; a trusted adapter receives only the approved fields and its receipt is rejected if it contains a selected value.
+- The standalone Hermes plugin is hidden unless the host binds an authorized `gateway_user` DM in task-local provenance. It renders the exact one-time approval directly through the trusted DM adapter and completes release from the owner slash command outside the model turn. Hermes session/permanent approval caches and `--yolo` do not bypass this plugin-owned approval.
 
 ## Limits
 

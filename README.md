@@ -73,7 +73,7 @@ The ordinary flow is:
 
 New agents receive no Vault scope. Self-asserted context still fails closed: destination, approval, private flags, signatures, and attestations are not accepted model fields. Model-facing setup, put, unlock, recovery, backup, restore, and owner reveal return `LOCAL_ACTION_REQUIRED`. Only a paired trusted harness may submit an opaque delivery envelope. Revocation blocks future requests but cannot erase information already delivered. Active deletion destroys the wrapped item key and removes local encrypted attachments; it cannot guarantee physical erasure or retire external backups.
 
-See [docs/vault.md](docs/vault.md), [docs/vault-attestation.md](docs/vault-attestation.md), [docs/vault-delivery-policy.md](docs/vault-delivery-policy.md), [docs/vault-direct-use.md](docs/vault-direct-use.md), [docs/vault-recovery.md](docs/vault-recovery.md), and [docs/vault-agent-policy.md](docs/vault-agent-policy.md).
+See [docs/vault.md](docs/vault.md), [docs/vault-attestation.md](docs/vault-attestation.md), [docs/vault-delivery-policy.md](docs/vault-delivery-policy.md), [docs/vault-direct-use.md](docs/vault-direct-use.md), [docs/vault-recovery.md](docs/vault-recovery.md), [docs/vault-agent-policy.md](docs/vault-agent-policy.md), and the separately reviewable [Hermes integration](integrations/hermes/README.md).
 
 ## Updates
 
