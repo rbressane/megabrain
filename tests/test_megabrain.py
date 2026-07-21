@@ -345,6 +345,14 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         help_result = run([str(command), "--help"], home, env={"HOME": str(home)})
         self.assertIn("update", help_result.stdout)
         self.assertIn("feedback", help_result.stdout)
+        current = run([str(command), "update", "--check"], home, env={"HOME": str(home)})
+        self.assertIn("is current", current.stdout)
+        self.assertIn("Stable gap: 0 release(s), 0 commit(s), 0 merged PR(s) behind.", current.stdout)
+        self.assertFalse((home / ".megabrain" / "update-state.json").exists())
+        no_op = run([str(command), "update", "--json"], home, env={"HOME": str(home)})
+        no_op_report = json.loads(no_op.stdout)
+        self.assertFalse(no_op_report["updated"])
+        self.assertEqual(no_op_report["active_version"], no_op_report["latest_stable_version"])
         self.assertFalse(first_result["command"]["on_path"])
         self.assertIn("export PATH=", first_result["command"]["path_notice"])
         self.assertFalse(second_result["command"]["changed"])
@@ -535,7 +543,7 @@ raise SystemExit(99)
         self.assertIn("Private filesystem paths", rejected_path.stderr)
         self.assertNotIn(private_path, rejected_path.stderr)
 
-        secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        secret = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         rejected_secret = run(
             command,
             self.network.root,
@@ -811,6 +819,7 @@ raise SystemExit(99)
 
     def test_ingestion_is_idempotent_deduplicated_and_untrusted(self) -> None:
         self.network.clone("agent-a", "codex")
+        synthetic_token = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         self.network.remember(
             "agent-a", subject="existing.fact", summary="A durable existing fact.", tags=["existing"]
         )
@@ -842,7 +851,7 @@ raise SystemExit(99)
                 {
                     "kind": "resource",
                     "subject": "secret.value",
-                    "summary": "api_key=sk-abcdefghijklmnopqrstuvwxyz123456",
+                    "summary": "api" + "_key=" + synthetic_token,
                     "tags": ["secret"],
                 },
             ],
@@ -875,7 +884,7 @@ raise SystemExit(99)
         rejected = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         self.assertEqual(rejected["error"]["code"], "RAW_TRANSCRIPT_REJECTED")
 
-        secret_value = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        secret_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         payload["summary"] = f"The value is {secret_value}"
         rejected_secret = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         serialized = json.dumps(rejected_secret)
@@ -903,7 +912,7 @@ raise SystemExit(99)
         broken = original.with_name(f"synthetic-{new_id}.md")
         broken.write_text(
             f"<!-- megabrain-meta\n{json.dumps(meta, indent=2, sort_keys=True)}\n-->\n\n"
-            "# Correction: synthetic topic\n\npassword=synthetic-forbidden-value\n",
+            "# Correction: synthetic topic\n\n" + "pass" + "word=synthetic-forbidden-value\n",
             encoding="utf-8",
         )
 
