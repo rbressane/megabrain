@@ -217,7 +217,13 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
     version = str(metadata["version"])
     if expected_version and version != expected_version.removeprefix("v"):
         raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
-    for relative in ("SKILL.md", "scripts/megabrain.py", "scripts/bootstrap.py", "assets/browser.html"):
+    for relative in (
+        "SKILL.md",
+        "scripts/cli.py",
+        "scripts/megabrain.py",
+        "scripts/bootstrap.py",
+        "assets/browser.html",
+    ):
         path = skill / relative
         if not path.is_file():
             raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime is incomplete.")
@@ -262,6 +268,58 @@ def activate_runtime(home: Path, version: str) -> Path:
         raise BootstrapError("RUNTIME_PATH_OCCUPIED", "MegaBrain's runtime location is occupied by another folder.")
     os.replace(temporary, current)
     return current
+
+
+def command_path(home: Path) -> Path:
+    return home / ".local" / "bin" / "megabrain"
+
+
+def command_target(home: Path) -> Path:
+    return current_runtime(home) / "skill" / "megabrain" / "scripts" / "cli.py"
+
+
+def command_is_managed(home: Path, path: Path) -> bool:
+    if not path.is_symlink():
+        return False
+    try:
+        target = path.resolve(strict=False)
+    except OSError:
+        return False
+    return runtime_base(home) in target.parents
+
+
+def install_command(home: Path) -> dict[str, Any]:
+    path = command_path(home)
+    target = command_target(home)
+    if path.is_symlink() or path.exists():
+        if not command_is_managed(home, path):
+            raise BootstrapError(
+                "COMMAND_PATH_OCCUPIED",
+                "A different executable already uses MegaBrain's command path.",
+            )
+        if path.is_symlink() and Path(os.readlink(path)) == target:
+            changed = False
+        else:
+            path.unlink()
+            path.symlink_to(target)
+            changed = True
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(target)
+        changed = True
+    path_entries = {
+        Path(entry).expanduser().resolve()
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry
+    }
+    on_path = path.parent.resolve() in path_entries
+    return {
+        "path": str(path),
+        "installed": True,
+        "changed": changed,
+        "on_path": on_path,
+        "path_notice": None if on_path else 'Run `export PATH="$HOME/.local/bin:$PATH"` before using `megabrain` in this shell.',
+    }
 
 
 def source_remote(requested: str | None) -> str:
@@ -684,6 +742,7 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
     runtime, runtime_meta, distribution = install_runtime(home, args.distribution)
+    command = install_command(home)
     runtime_skill = runtime / "skill" / "megabrain"
     repository, remote, repository_created = resolve_repository(home, args.repository, args.allow_local_remote)
     root, clone_created = ensure_clone(home, harness, remote)
@@ -723,7 +782,7 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
         "repository_created": repository_created, "clone_created": clone_created,
         "manifest_created": manifest_created,
         "identity_created": identity_created, "registered": registered, "runtime_version": runtime_meta["version"],
-        "agent_id": identity["id"], "counts": validation["counts"], "browser": browser,
+        "agent_id": identity["id"], "counts": validation["counts"], "browser": browser, "command": command,
     }
 
 
@@ -764,6 +823,23 @@ def checkout_release(remote: str, tag: str, destination: Path) -> tuple[Path, st
     return destination / "skill" / "megabrain", commit.stdout.strip()
 
 
+def require_brain_compatibility(config: dict[str, Any], version: str, metadata: dict[str, Any]) -> None:
+    selected = semantic_version(version)
+    if selected is None:
+        raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The selected MegaBrain runtime version is invalid.")
+    roots = [Path(str(path)).expanduser().resolve() for path in config.get("clones", {}).values()]
+    for root in roots:
+        brain = brain_metadata(root)
+        if brain["protocol_version"] > metadata["protocol_version"]:
+            raise BootstrapError("PROTOCOL_UPDATE_REQUIRED", "The selected runtime cannot read this brain protocol.")
+        minimum = semantic_version(str(brain["minimum_runtime"]))
+        if minimum is None or selected < minimum:
+            raise BootstrapError(
+                "RUNTIME_TOO_OLD",
+                "The selected runtime is older than a connected brain's minimum safe runtime.",
+            )
+
+
 def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     require_command("git")
     home = args.home.expanduser().resolve()
@@ -784,14 +860,17 @@ def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     try:
         versions = release_versions(remote)
     except BootstrapError as error:
-        save_private_json(state_path, {"checked_at": utc_now(), "status": "offline", "current_version": current_version})
+        if args.automatic:
+            save_private_json(state_path, {"checked_at": utc_now(), "status": "offline", "current_version": current_version})
         if args.automatic or args.check:
             return {"ok": True, "checked": True, "updated": False, "stale": True, "reason": error.code.lower(), "current_version": current_version}
         raise
     requested = semantic_version(args.version) if args.version else None
     if args.version and requested is None:
         raise BootstrapError("INVALID_VERSION", "MegaBrain versions use major.minor.patch format.")
-    selected = requested or (versions[-1][0] if versions else current_tuple)
+    latest_stable_tuple = versions[-1][0] if versions else current_tuple
+    latest_stable = ".".join(map(str, latest_stable_tuple))
+    selected = requested or latest_stable_tuple
     tag_by_version = dict(versions)
     if selected not in tag_by_version:
         if selected == current_tuple and runtime_release(home, current_version).exists():
@@ -802,39 +881,184 @@ def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     else:
         selected_tag = tag_by_version[selected]
         metadata = None
-    latest = ".".join(map(str, selected))
+    target_version = ".".join(map(str, selected))
     if args.check:
-        save_private_json(state_path, {"checked_at": utc_now(), "status": "current" if selected == current_tuple else "available", "current_version": current_version, "latest_version": latest})
-        return {"ok": True, "checked": True, "updated": False, "update_available": selected != current_tuple, "current_version": current_version, "latest_version": latest}
-    if args.automatic and selected[0] != current_tuple[0]:
-        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": latest})
-        return {"ok": True, "checked": True, "updated": False, "approval_required": True, "current_version": current_version, "latest_version": latest}
+        return {
+            "ok": True, "checked": True, "updated": False,
+            "update_available": selected != current_tuple,
+            "current_version": current_version, "latest_version": target_version,
+            "latest_stable_version": latest_stable,
+        }
+    approved = bool(getattr(args, "approve_major", False))
+    if selected[0] != current_tuple[0] and not approved:
+        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": target_version})
+        return {
+            "ok": True, "checked": True, "updated": False, "approval_required": True,
+            "approval_reason": "major_version", "current_version": current_version,
+            "latest_version": target_version, "latest_stable_version": latest_stable,
+        }
     commit = None
-    target = runtime_release(home, latest)
+    target = runtime_release(home, target_version)
     if not target.exists():
         with tempfile.TemporaryDirectory(prefix="megabrain-update-") as temporary:
             checkout, commit = checkout_release(remote, selected_tag, Path(temporary) / "release")
             downloaded = runtime_metadata(checkout)
-            if str(downloaded["version"]) != latest:
+            if str(downloaded["version"]) != target_version:
                 raise BootstrapError("RUNTIME_VERSION_MISMATCH", "The release metadata does not match its version tag.")
-            roots = [Path(str(path)).expanduser().resolve() for path in config.get("clones", {}).values()]
-            for root in roots:
-                brain = brain_metadata(root)
-                if brain["protocol_version"] > downloaded["protocol_version"]:
-                    raise BootstrapError("PROTOCOL_UPDATE_REQUIRED", "The selected runtime cannot read this brain protocol.")
             metadata = copy_runtime_release(checkout, target)
-    metadata = metadata or validate_runtime_release(target, latest)
-    activate_runtime(home, latest)
-    runtime_config.update({"version": latest, "protocol_version": metadata["protocol_version"]})
+    metadata = metadata or validate_runtime_release(target, target_version)
+    require_brain_compatibility(config, target_version, metadata)
+    current_metadata = validate_runtime_release(current_runtime(home), current_version)
+    if metadata["protocol_version"] != current_metadata["protocol_version"] and not approved:
+        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": target_version})
+        return {
+            "ok": True, "checked": True, "updated": False, "approval_required": True,
+            "approval_reason": "protocol_version", "current_version": current_version,
+            "latest_version": target_version, "latest_stable_version": latest_stable,
+        }
+    activate_runtime(home, target_version)
+    runtime_config.update({"version": target_version, "protocol_version": metadata["protocol_version"]})
     config["runtime"] = runtime_config
     save_config(home, config)
-    save_private_json(state_path, {"checked_at": utc_now(), "status": "updated", "current_version": latest, "release_commit": commit})
-    changed = latest != current_version
+    save_private_json(state_path, {"checked_at": utc_now(), "status": "updated", "current_version": target_version, "release_commit": commit})
+    changed = target_version != current_version
     return {
         "ok": True, "checked": True, "updated": changed, "previous_version": current_version,
-        "current_version": latest, "release_commit": commit,
-        "notice": f"MegaBrain: updated to v{latest}." if changed else None,
+        "current_version": target_version, "latest_version": target_version,
+        "latest_stable_version": latest_stable, "release_commit": commit,
+        "notice": f"MegaBrain: updated to v{target_version}." if changed else None,
     }
+
+
+def git_count(repository: Path, *arguments: str) -> int | None:
+    counted = run(["git", "rev-list", "--count", *arguments], repository)
+    if counted.returncode != 0:
+        return None
+    try:
+        return int(counted.stdout.strip())
+    except ValueError:
+        return None
+
+
+def release_distance(
+    repository: Path,
+    tag_versions: dict[tuple[int, int, int], str],
+    from_version: str,
+    to_version: str,
+) -> dict[str, Any]:
+    start = semantic_version(from_version)
+    end = semantic_version(to_version)
+    if start is None or end is None or start not in tag_versions or end not in tag_versions or start > end:
+        return {"available": False}
+    if start == end:
+        return {"available": True, "releases": 0, "commits": 0, "merged_prs": 0, "highlights": []}
+    revision_range = f"{tag_versions[start]}..{tag_versions[end]}"
+    commits = git_count(repository, revision_range)
+    if commits is None:
+        return {"available": False}
+    merged = run(["git", "log", "--merges", "--format=%H%x09%s", revision_range], repository)
+    if merged.returncode != 0:
+        return {"available": False}
+    merged_prs: list[dict[str, Any]] = []
+    for line in merged.stdout.splitlines():
+        commit, separator, subject = line.partition("\t")
+        match = re.match(r"Merge pull request #(\d+)\b", subject)
+        if not separator or not match:
+            continue
+        message = run(["git", "show", "-s", "--format=%B", commit], repository)
+        body_lines = [item.strip() for item in message.stdout.splitlines()[1:] if item.strip()]
+        merged_prs.append({"number": int(match.group(1)), "title": body_lines[0] if body_lines else subject})
+    log = run(["git", "log", "--format=%s", "--no-merges", revision_range], repository)
+    commit_titles = [line.strip() for line in log.stdout.splitlines() if line.strip()] if log.returncode == 0 else []
+    highlights = [*merged_prs, *({"title": title} for title in commit_titles)][:3]
+    return {
+        "available": True,
+        "releases": sum(1 for version in tag_versions if start < version <= end),
+        "commits": commits,
+        "merged_prs": len(merged_prs),
+        "highlights": highlights,
+    }
+
+
+def open_product_work(remote: str) -> dict[str, Any]:
+    repository = github_repository(remote)
+    if not repository or not shutil.which("gh"):
+        return {"available": False}
+    viewed = run(
+        [
+            "gh", "pr", "list", "--repo", repository, "--state", "open", "--limit", "100",
+            "--json", "number,title,isDraft",
+        ]
+    )
+    if viewed.returncode != 0:
+        return {"available": False}
+    try:
+        items = json.loads(viewed.stdout)
+    except json.JSONDecodeError:
+        return {"available": False}
+    if not isinstance(items, list) or not all(
+        isinstance(item, dict)
+        and isinstance(item.get("number"), int)
+        and isinstance(item.get("title"), str)
+        and isinstance(item.get("isDraft"), bool)
+        for item in items
+    ):
+        return {"available": False}
+    previews = [
+        {"number": item["number"], "title": item["title"], "draft": item["isDraft"]}
+        for item in items[:3]
+    ]
+    drafts = sum(1 for item in items if item["isDraft"])
+    return {
+        "available": True, "total": len(items), "draft": drafts,
+        "ready": len(items) - drafts, "previews": previews,
+    }
+
+
+def repository_glance(
+    remote: str,
+    previous_version: str,
+    active_version: str,
+    latest_stable_version: str,
+) -> dict[str, Any]:
+    glance: dict[str, Any] = {
+        "available": False,
+        "included": {"available": False},
+        "stable_gap": {"available": False},
+        "development": {"available": False},
+        "open_work": open_product_work(remote),
+    }
+    with tempfile.TemporaryDirectory(prefix="megabrain-glance-") as temporary:
+        repository = Path(temporary) / "repository"
+        cloned = run(["git", "clone", "--quiet", "--no-checkout", remote, str(repository)])
+        if cloned.returncode != 0:
+            return glance
+        listed = run(["git", "tag", "--list", "v*"], repository)
+        if listed.returncode != 0:
+            return glance
+        tag_versions = {
+            version: tag
+            for tag in listed.stdout.splitlines()
+            if (version := semantic_version(tag)) is not None
+        }
+        previous_tuple = semantic_version(previous_version)
+        active_tuple = semantic_version(active_version)
+        if previous_tuple is not None and active_tuple is not None and previous_tuple > active_tuple:
+            glance["included"] = release_distance(repository, tag_versions, active_version, previous_version)
+            glance["included"]["direction"] = "rollback"
+        else:
+            glance["included"] = release_distance(repository, tag_versions, previous_version, active_version)
+            glance["included"]["direction"] = "forward"
+        glance["stable_gap"] = release_distance(repository, tag_versions, active_version, latest_stable_version)
+        latest = semantic_version(latest_stable_version)
+        if latest in tag_versions:
+            ahead = git_count(repository, f"{tag_versions[latest]}..origin/main")
+            glance["development"] = {"available": ahead is not None, "commits_ahead": ahead}
+        glance["available"] = all(
+            section.get("available", False)
+            for section in (glance["included"], glance["stable_gap"], glance["development"])
+        )
+    return glance
 
 
 def status(args: argparse.Namespace) -> dict[str, Any]:
@@ -927,6 +1151,7 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--check", action="store_true")
     update.add_argument("--automatic", action="store_true", help=argparse.SUPPRESS)
     update.add_argument("--version")
+    update.add_argument("--approve-major", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 

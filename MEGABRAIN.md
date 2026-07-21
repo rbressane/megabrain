@@ -39,3 +39,16 @@ A memory is current when no later entry supersedes its ID and it is not a tombst
 ## Capture Threshold
 
 Capture only information that reduces future re-explanation: durable facts, preferences, decisions, commitments, current project state, recurring pitfalls, and resource locations. Do not capture routine requests, transient progress, raw conversation, temporary errors, or secrets.
+
+## Runtime Updates
+
+`megabrain update` selects only stable semantic-version tags from the official product repository. Runtime download, validation, compatibility checks and atomic activation remain bootstrap responsibilities; the first-class command does not implement a second updater.
+
+The update report distinguishes four states:
+
+- stable releases, commits and merge commits between the active and latest stable tags;
+- releases, commits and merged PRs actually crossed during an activation;
+- commits on `main` after the latest stable tag as development context;
+- open ready and draft PRs as non-installable previews.
+
+Repository metadata is advisory. Its absence cannot invalidate an otherwise successful runtime update. Major or protocol-version changes require explicit owner approval. Recovery to a specific version must still satisfy every connected Brain's protocol and `minimum_runtime` declarations. Runtime updates never edit private memory records or private Brain history.

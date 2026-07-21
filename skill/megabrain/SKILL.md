@@ -15,7 +15,7 @@ Keep filesystem paths, Git operations, harness flags, and helper commands intern
 - **Connect this agent**: run the same bootstrap command with `connect` for the active harness. Reuse the owner's configured private repository.
 - **Open my MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" open --harness <this harness>`.
 - **Check MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" status --harness <this harness>` and summarize only the user-relevant health state.
-- **Update MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" update`. Show its compact notice. Use `update --version X.Y.Z` only for an explicit recovery or rollback request.
+- **Update MegaBrain**: run `megabrain update`. Show its compact report. Use `megabrain update --version X.Y.Z` only for an explicit recovery or rollback request. If a major or protocol-version transition requires approval, show the requested transition and obtain the owner's approval before rerunning with `--approve-major`.
 - **Disconnect this agent**: confirm the user's intent, then run `python3 "$SKILL_DIR/scripts/bootstrap.py" disconnect --harness <this harness>`. The private repository and synchronized local clone are retained.
 
 If setup reports `GITHUB_AUTH_REQUIRED`, ask the owner to approve GitHub authentication, complete `gh auth login`, and retry. Never create a repository unless the user has explicitly requested setup or connection. A successful setup is reported simply as `MegaBrain is ready.`
@@ -79,6 +79,6 @@ Creating, revising, retiring, attaching, policy administration, protocol migrati
 - `browse`: synchronize, generate the ignored local HTML catalog, and open it in the default browser. Use `--no-open` for automation.
 - `validate`: validate structure, schemas, references, duplicate IDs, and memory secret rules.
 - `doctor`: check Python, Git, origin, identity, privacy verification, worktree, and validation health.
-- `bootstrap.py update --check`: check stable releases without installing one. Compatible releases are otherwise checked at most once per day during normal context retrieval.
+- `megabrain update --check`: check stable releases without installing one. Compatible releases are otherwise checked at most once per day during normal context retrieval.
 
 Use JSON on stdin for every command that accepts content. Never place sensitive content in command-line arguments.

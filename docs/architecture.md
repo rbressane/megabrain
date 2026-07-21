@@ -4,9 +4,11 @@ MegaBrain has no running service. It consists of a versioned local runtime and i
 
 ## Runtime
 
-The official product repository publishes stable Git tags. Setup copies a selected release under `~/.megabrain/runtime/releases/<version>` and atomically points `~/.megabrain/runtime/current` at it. Harness skill links point through `current`, so a validated release switch takes effect without editing a live runtime. Failed downloads or validation leave the current release active.
+The official product repository publishes stable Git tags. Setup copies a selected release under `~/.megabrain/runtime/releases/<version>` and atomically points `~/.megabrain/runtime/current` at it. Harness skill links and `~/.local/bin/megabrain` point through `current`, so a validated release switch takes effect without editing a live runtime. Failed downloads, validation or compatibility checks leave the current release active.
 
-The runtime checks for compatible releases at most once per day during normal context retrieval. It never follows `main`. Major updates require approval, and an explicit version can be activated for recovery.
+The runtime checks for compatible releases at most once per day during normal context retrieval. `megabrain update --check` performs the same release check immediately without activation, while `megabrain update` activates the latest compatible stable tag. It never follows `main`. Major and protocol-version changes require approval, and an explicit compatible version can be activated for recovery.
+
+The command's repository glance uses Git tag history for stable release, commit and merge-commit distances. It uses the GitHub CLI opportunistically for current open PR metadata. That metadata is advisory and failures never change the updater's success state. JSON reports use the versioned `megabrain.update.v1` schema.
 
 ## Private Brain
 

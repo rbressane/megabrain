@@ -20,6 +20,9 @@ MegaBrain product code is distributed from the public official repository. Appro
 - Treat `.megabrain/browser/index.html` as private: it is ignored by Git but contains a generated local copy of readable brain content.
 - The bootstrap stores only repository location and managed-clone mappings in the mode-`0600` local `.megabrain/config.json`; it never stores GitHub credentials.
 - Update state contains only version, timestamp, status, and release commit information. Failed validation leaves the previous runtime active.
+- The first-class updater installs only stable tags. Open PRs and `main` are reported as previews and are never activated.
+- Repository-glance failures and GitHub CLI stderr are reduced to a generic unavailable state; credential-bearing output and authenticated remote URLs are never echoed.
+- Setup installs only a MegaBrain-managed `~/.local/bin/megabrain` symlink and refuses to overwrite an unrelated command. It never edits shell profiles automatically.
 - Revoke a compromised environment through its GitHub credential. Agent registry entries do not enforce access.
 
 ## Limits

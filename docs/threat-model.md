@@ -18,6 +18,8 @@ The brain owner and reviewed owner-local controls are trusted. An unrestricted p
 - Silent corruption: schema validation, Git history, provenance, and conflict surfacing.
 - Stale knowledge: explicit correction and tombstone records.
 - Compromised product release: stable official tags, local validation before atomic activation, retained prior releases, and no runtime code in the private data clone.
+- Repository metadata exposure: update reporting suppresses command stderr, never emits credential-bearing remotes, and treats GitHub PR metadata as optional preview information.
+- Command-path collision: setup refuses to replace a `megabrain` executable that it cannot identify as product-managed.
 
 ## Accepted Risks
 
