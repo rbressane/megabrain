@@ -221,6 +221,14 @@
       white-space: nowrap;
     }
 
+    .snapshot-note {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.55;
+      margin: -10px 0 18px;
+      max-width: 860px;
+    }
+
     .toolbar {
       align-items: center;
       display: grid;
@@ -599,6 +607,8 @@
         <div class="page-meta" id="generated-at"></div>
       </div>
 
+      <p class="snapshot-note" id="snapshot-note"></p>
+
       <div class="toolbar" id="memory-toolbar">
         <input class="control search" id="search" type="search" placeholder="Search memories" autocomplete="off" aria-label="Search memories">
         <select class="control" id="filter-kind" aria-label="Filter by kind"><option value="">All kinds</option></select>
@@ -821,15 +831,23 @@
     document.getElementById("count-conflicts").textContent = DATA.stats.conflicts;
     document.getElementById("count-agents").textContent = DATA.stats.agents;
     document.getElementById("count-imports").textContent = DATA.stats.imports;
-    document.getElementById("generated-at").textContent = `Generated ${formatDate(DATA.generated_at)}`;
+    const freshness = DATA.freshness || {};
+    const generatedAt = formatDate(freshness.generated_at || DATA.generated_at);
+    const newestMemoryAt = freshness.newest_memory_at
+      ? formatDate(freshness.newest_memory_at)
+      : "No memories yet";
+    document.getElementById("generated-at").textContent = `Snapshot ${generatedAt} · Newest memory ${newestMemoryAt}`;
+    document.getElementById("snapshot-note").textContent =
+      "This is a private local snapshot, not a live page. Say “Synchronize and open my MegaBrain” to synchronize, validate, and regenerate it.";
 
     const syncState = document.getElementById("sync-state");
-    if (DATA.sync.stale) {
+    if (freshness.stale || DATA.sync.stale) {
       syncState.classList.add("stale");
-      document.getElementById("sync-label").textContent = "Local state may be stale";
-      syncState.title = `Synchronization incomplete: ${DATA.sync.reason || "unknown reason"}`;
+      document.getElementById("sync-label").textContent = "Snapshot may be stale";
+      syncState.title = `Synchronization incomplete when generated: ${freshness.reason || DATA.sync.reason || "unknown reason"}`;
     } else {
-      document.getElementById("sync-label").textContent = "Synchronized";
+      document.getElementById("sync-label").textContent = "Synchronized when generated";
+      syncState.title = `Synchronized when generated at ${generatedAt}`;
     }
 
     populateSelect("filter-kind", [...new Set(DATA.memories.map(item => item.kind))].sort());

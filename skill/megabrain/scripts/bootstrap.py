@@ -24,6 +24,11 @@ RUNTIME_SCHEMA = "megabrain.runtime.v1"
 BRAIN_SCHEMA = "megabrain.brain.v1"
 OFFICIAL_DISTRIBUTION = "https://github.com/rbressane/megabrain.git"
 UPDATE_INTERVAL = timedelta(hours=24)
+SETUP_READY_MESSAGE = (
+    "MegaBrain is ready.\n"
+    "Say \"Synchronize and open my MegaBrain\" anytime to synchronize, validate, "
+    "and browse your private Brain locally."
+)
 HARNESS_PATHS = {
     "codex": (".codex/skills/megabrain", ".codex/AGENTS.md"),
     "claude": (".claude/skills/megabrain", ".claude/CLAUDE.md"),
@@ -719,7 +724,7 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
             except json.JSONDecodeError:
                 browser = {"generated": False, "opened": False}
     return {
-        "ok": True, "message": "MegaBrain is ready.", "harness": harness, "repository": repository,
+        "ok": True, "message": SETUP_READY_MESSAGE, "harness": harness, "repository": repository,
         "repository_created": repository_created, "clone_created": clone_created,
         "manifest_created": manifest_created,
         "identity_created": identity_created, "registered": registered, "runtime_version": runtime_meta["version"],
@@ -878,7 +883,8 @@ def open_brain(args: argparse.Namespace) -> dict[str, Any]:
     )
     result["device_boundary"] = (
         "The browser is local to the machine running this agent. "
-        'To browse it on another Mac, connect MegaBrain there and run "Open my MegaBrain."'
+        "Each connected computer or agent has its own local snapshot. "
+        'To refresh this one, say "Synchronize and open my MegaBrain."'
     )
     return result
 
@@ -916,8 +922,13 @@ def build_parser() -> argparse.ArgumentParser:
         action.add_argument("--allow-local-remote", action="store_true", help=argparse.SUPPRESS)
         action.add_argument("--distribution", help=argparse.SUPPRESS)
         action.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)
+    action_help = {
+        "status": "Check MegaBrain health and stable update availability",
+        "open": "Synchronize, validate, regenerate, and open the private local snapshot",
+        "disconnect": "Disconnect this agent while retaining the private repository and clone",
+    }
     for command in ("status", "open", "disconnect"):
-        action = subparsers.add_parser(command)
+        action = subparsers.add_parser(command, help=action_help[command])
         action.add_argument("--harness", choices=sorted(HARNESS_PATHS))
         action.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
         if command == "open":
