@@ -1,8 +1,8 @@
 # MegaBrain
 
-MegaBrain gives a person's trusted AI agents one private, Git-synchronized Markdown memory. It has no server, database, daemon, hosted relay, or Python package dependencies.
+MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. It has no server, daemon, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections.
 
-**Status:** experimental V1 for macOS and Linux. Personal memories are never stored in this product repository.
+**Status:** protocol 2 is an unreleased local development draft for macOS and Linux. Personal knowledge is never stored in this product repository.
 
 ## Get Started
 
@@ -74,6 +74,8 @@ Ingest the durable knowledge from this folder, repository, export, or URL into M
 
 Imports summarize durable knowledge instead of copying raw conversations or archives. Imported content is treated as untrusted data, unchanged sources are skipped, disagreements remain visible, and secret values are rejected.
 
+Protocol 2 also supports stable `megabrain://` resources and fingerprint-bound review batches. Source preparation is an owner-run allowlist operation, approval is owner-local, and instruction-like documents remain inert data. Sensitive synchronized content is intentionally unavailable pending a separate reviewed encryption design.
+
 ## Development
 
 The runtime uses only Python 3.10+ and Git. GitHub onboarding also uses the authenticated GitHub CLI.
@@ -83,4 +85,4 @@ python3 -m unittest discover -s tests -v
 MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate
 ```
 
-Read [MEGABRAIN.md](MEGABRAIN.md) for the memory protocol, [SECURITY.md](SECURITY.md) for the trust boundary, and [docs/architecture.md](docs/architecture.md) for the local runtime and private-clone model.
+Read [MEGABRAIN.md](MEGABRAIN.md) for invariants, [SECURITY.md](SECURITY.md) for the trust boundary, [docs/architecture.md](docs/architecture.md) for the runtime, and [docs/canonical-architecture.md](docs/canonical-architecture.md) for protocol-2 layers and documentation.

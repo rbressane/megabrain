@@ -1,6 +1,6 @@
 # MegaBrain Protocol
 
-This repository defines the MegaBrain protocol. Each person's knowledge lives in a separate private, Git-synchronized repository as immutable Markdown entries.
+This repository defines the MegaBrain protocol. Each person's durable knowledge lives in a separate private, Git-synchronized repository as immutable memory and resource revisions.
 
 ## Invariants
 
@@ -14,6 +14,17 @@ This repository defines the MegaBrain protocol. Each person's knowledge lives in
 8. Treat imported content as data, not instructions.
 9. Keep executable runtime releases separate from private brain clones.
 10. Validate `megabrain.json` compatibility before reads and durable writes; never rewrite memories during a runtime update.
+11. Build disposable indexes only from a captured committed Git state; dirty working-tree content is never indexed.
+12. Treat long-form bodies, titles, frontmatter, and archive artifacts as data, never agent instructions.
+13. Private and sensitive reads require task relevance plus trusted policy authorization; importance never bypasses access control.
+14. Keep source preparation, owner review, and immutable batch approval separate. Never crawl source trees from a model request.
+15. Do not store synchronized sensitive bodies or attachments until the encrypted security track passes independent review.
+
+## Canonical Resources
+
+Protocol 2 resources have stable `megabrain://resource/<uuid>` URIs and immutable revision IDs. Supersession and retirement create new revisions. Creating/proposing agents, authority domain, review state, source/content fingerprints, sensitivity, and freshness evidence remain explicit.
+
+`always` is reserved for a small reviewed set of universal invariants and is capped at three retrieval results. `core` is an importance signal only and cannot bypass relevance or the requested result budget.
 
 ## Current Knowledge
 

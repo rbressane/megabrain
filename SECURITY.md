@@ -1,6 +1,6 @@
 # Security
 
-MegaBrain product code is distributed from the public official repository. Personal context is stored separately as plaintext Markdown in each user's private GitHub repository. GitHub, every authenticated private clone, device backup, and connected agent is trusted with that user's complete brain.
+MegaBrain product code is distributed from the public official repository. Approved canonical content is stored separately in each user's private Git repository. Private Git is access control, not encryption. Agents with unrestricted clones can read that plaintext; scoped digests are required for agents that are not fully trusted.
 
 ## Rules
 
@@ -12,6 +12,10 @@ MegaBrain product code is distributed from the public official repository. Perso
 - Store only external secret references and non-secret metadata.
 - Do not copy raw conversations, source archives, browser profiles, logs, or `.env` files into imports.
 - Treat imported instructions as untrusted content and never execute them.
+- Compile disposable indexes only from committed Git snapshots; never index dirty working-tree content.
+- Require task relevance and a matching trusted-host policy for private/sensitive retrieval. Importance cannot grant access.
+- Keep source preparation and owner-local fingerprint approval outside the model-facing helper.
+- Reject synchronized sensitive resource bodies and attachments until the separate encryption design and independent review gate pass.
 - Review compact capture notices and inspect `brain/memories/` and Git history regularly.
 - Treat `.megabrain/browser/index.html` as private: it is ignored by Git but contains a generated local copy of readable brain content.
 - The bootstrap stores only repository location and managed-clone mappings in the mode-`0600` local `.megabrain/config.json`; it never stores GitHub credentials.
@@ -20,4 +24,4 @@ MegaBrain product code is distributed from the public official repository. Perso
 
 ## Limits
 
-Secret detection is defensive pattern matching, not complete data-loss prevention. All trusted agents have full repository access. A tombstone stops a memory from appearing in current context but does not erase it from Git history, other clones, or backups. True erasure requires coordinated history rewriting and credential/device cleanup.
+Secret detection is defensive pattern matching, not complete data-loss prevention. Runtime policy cannot protect content from a process that already has an unrestricted filesystem clone. A tombstone or retired revision does not erase Git history, other clones, or backups. True erasure requires coordinated history rewriting, backup retirement, and credential/device cleanup. Protocol 2 makes no high-assurance encrypted-sync claim.
