@@ -52,3 +52,9 @@ The update report distinguishes four states:
 - open ready and draft PRs as non-installable previews.
 
 Repository metadata is advisory. Its absence cannot invalidate an otherwise successful runtime update. Major or protocol-version changes require explicit owner approval. Recovery to a specific version must still satisfy every connected Brain's protocol and `minimum_runtime` declarations. Runtime updates never edit private memory records or private Brain history.
+
+## Product Learning Boundary
+
+Durable private learning and reusable product learning are separate outputs. Personal facts, preferences and project state may qualify for private capture but never become public product feedback. A reusable product failure, missing capability, policy decision, acceptance test or documentation gap may become a sanitized Product Bake Candidate but is never written to the private Brain or transmitted automatically.
+
+The canonical renderer accepts structured, sanitized input and produces deterministic Markdown offline. It rejects raw transcripts, secret-like values, private paths and non-product categories without echoing rejected content. Owner review and explicit publication authorization remain mandatory.

@@ -30,3 +30,5 @@ If setup is interrupted after creating the private repository or committing the 
 The same repository setup message connects another agent or computer through the authenticated GitHub account. Installed users can ask to open, check, update, or disconnect MegaBrain naturally.
 
 Compatible stable updates activate automatically at most once per day. `megabrain update --check` checks immediately without mutation and `megabrain update` installs the latest compatible stable tag. Major or protocol-version changes request approval. Disconnect removes managed harness links and instructions while retaining the command, runtime, private repository, and synchronized clone to prevent data loss.
+
+An activated runtime updates command and skill symlinks immediately. New sessions load the updated skill instructions normally. A session that already loaded the previous skill may need to reread it or start a new session before new Product Bake Candidate completion behavior is reliable.

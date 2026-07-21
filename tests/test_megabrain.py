@@ -286,6 +286,34 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         run(["git", "checkout", f"v{current}"], work)
         return work, remote, current
 
+    def product_feedback_payload(self, **overrides: object) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "category": "missing_command",
+            "title": "Add a synthetic status command",
+            "mission": "Give installed users one stable command for synthetic status checks.",
+            "observation": "A supported agent had to repeat three internal helper calls to answer one status question.",
+            "why_product": "The workaround applies to every supported agent and does not depend on private context.",
+            "current_behavior": "Runtime v1.0.0 exposes the internal calls but no first-class status command.",
+            "expected_behavior": "A first-class command returns one concise validated status report.",
+            "reproduction": [
+                "Install a synthetic stable runtime.",
+                "Request product status from a supported agent.",
+                "Observe repeated internal helper calls.",
+            ],
+            "scope": ["Consumer CLI", "Shipped skill instructions", "Synthetic acceptance tests"],
+            "acceptance_criteria": [
+                "The command is available after setup.",
+                "The output contains no private Brain data.",
+            ],
+            "tests": ["Exercise the command with a synthetic empty Brain.", "Verify offline failure is concise."],
+            "documentation": ["Document the command in README.md and INSTALL.md."],
+            "privacy_constraints": ["Use only public product version identifiers."],
+            "release_notes": "Ship in the next compatible minor release with no protocol migration.",
+            "evidence": ["Synthetic runtime v1.0.0", "Public product documentation"],
+        }
+        payload.update(overrides)
+        return payload
+
     def test_clean_repository_install_is_idempotent_and_uninstall_is_scoped(self) -> None:
         clone = self.network.clone("codex")
         self.assertEqual(list((clone / "brain" / "memories").rglob("*.md")), [])
@@ -316,6 +344,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertIn((home / ".megabrain" / "runtime").resolve(), command.resolve().parents)
         help_result = run([str(command), "--help"], home, env={"HOME": str(home)})
         self.assertIn("update", help_result.stdout)
+        self.assertIn("feedback", help_result.stdout)
         self.assertFalse(first_result["command"]["on_path"])
         self.assertIn("export PATH=", first_result["command"]["path_notice"])
         self.assertFalse(second_result["command"]["changed"])
@@ -433,6 +462,103 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                     result = bootstrap_module.open_product_work("synthetic")
         self.assertEqual(result, {"available": False})
         self.assertNotIn("token", json.dumps(result))
+
+    def test_feedback_renderer_is_offline_deterministic_and_writes_only_explicitly(self) -> None:
+        guard_bin = self.network.root / "feedback-guard-bin"
+        guard_bin.mkdir()
+        network_log = self.network.root / "feedback-network.log"
+        guard = """#!/usr/bin/env python3
+import os
+from pathlib import Path
+Path(os.environ["FEEDBACK_NETWORK_LOG"]).write_text("network command invoked\\n", encoding="utf-8")
+raise SystemExit(99)
+"""
+        for name in ("git", "gh"):
+            executable = guard_bin / name
+            executable.write_text(guard, encoding="utf-8")
+            executable.chmod(0o755)
+        environment = {
+            "PATH": str(guard_bin) + os.pathsep + os.environ["PATH"],
+            "FEEDBACK_NETWORK_LOG": str(network_log),
+        }
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+        payload = self.product_feedback_payload()
+
+        first = run(command, self.network.root, stdin=payload, env=environment)
+        second = run(command, self.network.root, stdin=payload, env=environment)
+
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertIn("# MegaBrain Product Bake Candidate", first.stdout)
+        self.assertIn("three internal helper calls", first.stdout)
+        self.assertIn("Never access a private Brain.", first.stdout)
+        self.assertIn("Do not push, publish, merge, tag or release", first.stdout)
+        self.assertFalse(network_log.exists())
+        self.assertEqual(list(self.network.root.glob("*Product*Bake*")), [])
+
+        destination = self.network.root / "explicit-feedback.md"
+        written = run([*command, "--output", str(destination)], self.network.root, stdin=payload, env=environment)
+        self.assertEqual(destination.read_text(encoding="utf-8"), written.stdout)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(network_log.exists())
+
+    def test_feedback_rejects_non_product_transcripts_private_paths_and_secrets_without_echo(self) -> None:
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+
+        for category in ("personal_preference", "private_fact"):
+            with self.subTest(category=category):
+                private_finding = run(
+                    command,
+                    self.network.root,
+                    stdin=self.product_feedback_payload(category=category),
+                    expected=2,
+                )
+                self.assertIn("not product-wide", private_finding.stderr)
+                self.assertNotIn("# MegaBrain Product Bake Candidate", private_finding.stdout)
+
+        transcript = "User: Please store this.\nAssistant: I stored the private value."
+        rejected_transcript = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(observation=transcript),
+            expected=2,
+        )
+        self.assertIn("transcript-shaped", rejected_transcript.stderr)
+        self.assertNotIn(transcript, rejected_transcript.stderr)
+
+        private_path = "/Users/synthetic/private-brain"
+        rejected_path = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(evidence=[private_path]),
+            expected=2,
+        )
+        self.assertIn("Private filesystem paths", rejected_path.stderr)
+        self.assertNotIn(private_path, rejected_path.stderr)
+
+        secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        rejected_secret = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(observation=f"The synthetic value was {secret}"),
+            expected=2,
+        )
+        self.assertIn("secret material", rejected_secret.stderr)
+        self.assertNotIn(secret, rejected_secret.stderr + rejected_secret.stdout)
+
+    def test_feedback_malformed_input_and_output_collisions_are_actionable(self) -> None:
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+        malformed = run(command, self.network.root, stdin={"category": "missing_command"}, expected=2)
+        self.assertIn("Missing required fields", malformed.stderr)
+        existing = self.network.root / "existing-feedback.md"
+        existing.write_text("preserve me\n", encoding="utf-8")
+        refused = run(
+            [*command, "--output", str(existing)],
+            self.network.root,
+            stdin=self.product_feedback_payload(),
+            expected=2,
+        )
+        self.assertIn("already exists", refused.stderr)
+        self.assertEqual(existing.read_text(encoding="utf-8"), "preserve me\n")
 
     def test_three_agents_share_correct_and_forget_immutable_memories(self) -> None:
         self.network.clone("agent-a", "codex")
@@ -800,6 +926,9 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertEqual([path for path in forbidden if (SOURCE_ROOT / path).exists()], [])
         skill = (SOURCE_ROOT / "skill" / "megabrain" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Do not capture raw conversation, temporary debugging state", skill)
+        self.assertIn("Product Feedback Classification", skill)
+        self.assertIn("Remain silent for personal preferences or facts", skill)
+        self.assertIn("Never transmit, publish, open an issue", skill)
 
     def test_browser_projects_all_views_and_escapes_memory_content(self) -> None:
         clone = self.network.clone("agent-a", "codex")

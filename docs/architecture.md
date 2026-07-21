@@ -10,6 +10,12 @@ The runtime checks for compatible releases at most once per day during normal co
 
 The command's repository glance uses Git tag history for stable release, commit and merge-commit distances. It uses the GitHub CLI opportunistically for current open PR metadata. That metadata is advisory and failures never change the updater's success state. JSON reports use the versioned `megabrain.update.v1` schema.
 
+## Product Feedback
+
+Product feedback has no service, telemetry channel or ticket store. The agent classifies a material reusable finding, removes private context, and passes structured JSON to the local `megabrain feedback --stdin` renderer. The renderer validates category, shape and defensive privacy patterns, then fills the shipped canonical Markdown asset deterministically. Standard output is the default and the only optional persistence is a new explicit local output file.
+
+The owner remains the publication boundary. The command cannot open an issue, create a branch or PR, merge, tag, or release. A candidate closes only after an explicitly authorized stable release is installed and retested by a consumer.
+
 ## Private Brain
 
 Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, and private-brain documentation. They do not contain GitHub Actions workflows or the executable product runtime.

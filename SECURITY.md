@@ -23,6 +23,7 @@ MegaBrain product code is distributed from the public official repository. Appro
 - The first-class updater installs only stable tags. Open PRs and `main` are reported as previews and are never activated.
 - Repository-glance failures and GitHub CLI stderr are reduced to a generic unavailable state; credential-bearing output and authenticated remote URLs are never echoed.
 - Setup installs only a MegaBrain-managed `~/.local/bin/megabrain` symlink and refuses to overwrite an unrelated command. It never edits shell profiles automatically.
+- Product feedback is local proposal generation, never telemetry. The renderer performs no network operation, writes nowhere by default, rejects transcript/secret/private-path-shaped input without echo, and cannot publish product work.
 - Revoke a compromised environment through its GitHub credential. Agent registry entries do not enforce access.
 
 ## Limits

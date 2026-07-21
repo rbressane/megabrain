@@ -81,6 +81,18 @@ Major or protocol-version transitions require the owner to review the release an
 
 A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files or private Git history, and the previous runtime remains installed for rollback.
 
+## Product Feedback
+
+MegaBrain-enabled agents distinguish private learning from reusable public-product learning before finishing. When an interaction reveals a material product-wide improvement, the agent can prepare a sanitized **Product Bake Candidate** for the owner to review and forward. Ordinary personal preferences, private facts and transient work remain silent.
+
+The canonical offline renderer is:
+
+```bash
+megabrain feedback --stdin
+```
+
+It accepts structured JSON, rejects transcript/secret/private-path-shaped input without echoing rejected values, performs no network call, and writes only to stdout unless an explicit new local output file is requested. It never creates a GitHub issue, branch, PR or release. See [the product feedback lifecycle and schema](docs/product-feedback-loop.md).
+
 ## Browse And Import
 
 Ask an installed agent to `Open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. The command reports the machine where the browser opened, because the browser is local to the agent host. Markdown remains authoritative and the generated browser is ignored by Git.

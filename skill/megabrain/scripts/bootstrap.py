@@ -223,6 +223,7 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
         "scripts/megabrain.py",
         "scripts/bootstrap.py",
         "assets/browser.html",
+        "assets/product-bake-candidate.md",
     ):
         path = skill / relative
         if not path.is_file():

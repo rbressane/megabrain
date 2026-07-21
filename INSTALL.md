@@ -39,6 +39,7 @@ For an installed agent:
 - `megabrain update` installs the latest compatible stable release.
 - `megabrain update --version 1.0.0` activates a specific compatible release for recovery.
 - `megabrain update --json` returns the stable `megabrain.update.v1` output schema.
+- `megabrain feedback --stdin` renders a privacy-checked Product Bake Candidate offline and writes nowhere by default.
 - `bootstrap.py disconnect --harness <harness>` removes only MegaBrain-managed links and instructions. It retains the runtime, private repository, and local brain clone.
 
 ### One-time transition from v1.0.2

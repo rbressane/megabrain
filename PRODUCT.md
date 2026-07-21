@@ -22,13 +22,14 @@ MegaBrain combines a versioned local runtime with a replicated private canonical
 10. The public product repository is the software source of truth; a user's private repository is their personal-data source of truth.
 11. Runtime updates are versioned, validated, reversible, and never modify memory records.
 12. Stable releases, development branches, and open PR previews are distinct product states; only stable releases are installable.
-13. Long-form resources have stable URIs, immutable revisions, explicit authority, provenance, review state, sensitivity, and freshness.
-14. Indexes and always-on caches are disposable projections of committed canonical data.
-15. Sensitive synchronized assets remain unavailable until their separate security track passes review.
+13. Reusable user-zero findings become sanitized owner-reviewed proposals, never telemetry or automatic publication.
+14. Long-form resources have stable URIs, immutable revisions, explicit authority, provenance, review state, sensitivity, and freshness.
+15. Indexes and always-on caches are disposable projections of committed canonical data.
+16. Sensitive synchronized assets remain unavailable until their separate security track passes review.
 
 ## V1 Acceptance
 
-One copied repository setup message must teach an unfamiliar agent how to install and connect MegaBrain without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories. Setup installs a collision-safe `megabrain` command. Compatible stable updates, explicit compatible rollback, repository-metadata failure and approval-gated breaking updates must all leave memory files untouched.
+One copied repository setup message must teach an unfamiliar agent how to install and connect MegaBrain without requiring a clone path or harness choice. Three independent Codex, Claude, and Hermes clones must share a synthetic fact, preserve concurrent writes, observe a correction, surface conflicts, respect a tombstone, recover from offline writes, and ingest a synthetic source idempotently. The initial repository contains no personal memories. Setup installs a collision-safe `megabrain` command. Compatible stable updates, explicit compatible rollback, repository-metadata failure and approval-gated breaking updates must all leave memory files untouched. Material reusable findings render deterministic privacy-safe Product Bake Candidates offline; private or transient findings remain silent.
 
 ## Non-goals And Gates
 
