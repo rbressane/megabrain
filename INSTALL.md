@@ -25,7 +25,9 @@ If a user gives you this repository and asks to install it, including with a sho
 7. Remove the temporary source checkout after setup succeeds.
 8. Report only `MegaBrain is ready.` unless the user asks for technical details.
 
-Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser.
+Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, installs `~/.local/bin/megabrain`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser. The command resolves through the managed current-runtime link so later activations switch it atomically. Setup refuses to overwrite an unrelated executable.
+
+If `~/.local/bin` is not on `PATH`, setup returns the exact one-line export required for the current shell. It never edits shell startup files.
 
 ## Existing Users
 
@@ -33,7 +35,20 @@ Running setup again is idempotent. If the authenticated GitHub account already h
 
 For an installed agent:
 
-- `bootstrap.py update --check` checks the official stable releases.
-- `bootstrap.py update` installs the latest compatible release.
-- `bootstrap.py update --version 1.0.0` activates a specific compatible release for recovery.
+- `megabrain update --check` checks the official stable releases without mutation.
+- `megabrain update` installs the latest compatible stable release.
+- `megabrain update --version 1.0.0` activates a specific compatible release for recovery.
+- `megabrain update --json` returns the stable `megabrain.update.v1` output schema.
+- `megabrain feedback --stdin` renders a privacy-checked Product Bake Candidate offline and writes nowhere by default.
 - `bootstrap.py disconnect --harness <harness>` removes only MegaBrain-managed links and instructions. It retains the runtime, private repository, and local brain clone.
+
+### One-time transition from v1.0.2
+
+Installations made before the first-class command need one bootstrap transition. The installed agent should run the old update action once, then rerun setup from the newly activated runtime:
+
+```bash
+python3 "$HOME/.megabrain/runtime/current/skill/megabrain/scripts/bootstrap.py" update
+python3 "$HOME/.megabrain/runtime/current/skill/megabrain/scripts/bootstrap.py" setup
+```
+
+After that transition, use `megabrain update`. Keep direct bootstrap update access only for this migration and emergency command recovery.

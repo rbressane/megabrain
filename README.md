@@ -42,6 +42,13 @@ Other natural actions include:
 - `Connect this agent to my MegaBrain`
 - `Disconnect this agent`
 
+The installed command is available directly after setup:
+
+```bash
+megabrain update --check
+megabrain update
+```
+
 To connect another supported agent or computer, give it the same setup message. The installer finds the existing private repository through the authenticated GitHub account.
 
 ## Product And Personal Data
@@ -54,13 +61,37 @@ Each user has a separate private GitHub repository that is the source of truth f
 
 MegaBrain installs stable Git tags, never a moving `main` branch. During normal use it checks at most once per day for compatible releases. A release is downloaded into a new version directory, validated, and activated through an atomic local link; the existing runtime remains active if anything fails.
 
-Compatible updates report:
+Check immediately without changing the active runtime:
 
-```text
-MegaBrain: updated to v1.1.0.
+```bash
+megabrain update --check
 ```
 
-Major or protocol-breaking updates require approval. A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files.
+Install the latest compatible stable release:
+
+```bash
+megabrain update
+```
+
+The compact report separates installable stable releases from development on `main` and open PR previews. Open and draft PRs are never update candidates. `megabrain update --json` provides the versioned `megabrain.update.v1` machine-readable report.
+
+Compatible updates report the version transition, stable release/commit/merged-PR distance, development distance, and available open-work metadata. If repository metadata is unavailable, the validated runtime update still succeeds and is reported first.
+
+Major or protocol-version transitions require the owner to review the release and explicitly approve them. `megabrain update --version X.Y.Z` supports a compatible recovery or rollback; it refuses a runtime older than any connected Brain's declared minimum.
+
+A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files or private Git history, and the previous runtime remains installed for rollback.
+
+## Product Feedback
+
+MegaBrain-enabled agents distinguish private learning from reusable public-product learning before finishing. When an interaction reveals a material product-wide improvement, the agent can prepare a sanitized **Product Bake Candidate** for the owner to review and forward. Ordinary personal preferences, private facts and transient work remain silent.
+
+The canonical offline renderer is:
+
+```bash
+megabrain feedback --stdin
+```
+
+It accepts structured JSON, rejects transcript/secret/private-path-shaped input without echoing rejected values, performs no network call, and writes only to stdout unless an explicit new local output file is requested. It never creates a GitHub issue, branch, PR or release. See [the product feedback lifecycle and schema](docs/product-feedback-loop.md).
 
 ## Browse And Import
 
