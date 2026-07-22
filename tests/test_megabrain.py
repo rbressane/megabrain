@@ -345,14 +345,6 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         help_result = run([str(command), "--help"], home, env={"HOME": str(home)})
         self.assertIn("update", help_result.stdout)
         self.assertIn("feedback", help_result.stdout)
-        current = run([str(command), "update", "--check"], home, env={"HOME": str(home)})
-        self.assertIn("is current", current.stdout)
-        self.assertIn("Stable gap: 0 release(s), 0 commit(s), 0 merged PR(s) behind.", current.stdout)
-        self.assertFalse((home / ".megabrain" / "update-state.json").exists())
-        no_op = run([str(command), "update", "--json"], home, env={"HOME": str(home)})
-        no_op_report = json.loads(no_op.stdout)
-        self.assertFalse(no_op_report["updated"])
-        self.assertEqual(no_op_report["active_version"], no_op_report["latest_stable_version"])
         self.assertFalse(first_result["command"]["on_path"])
         self.assertIn("export PATH=", first_result["command"]["path_notice"])
         self.assertFalse(second_result["command"]["changed"])
@@ -402,6 +394,31 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         error = json.loads(refused.stderr)["error"]
         self.assertEqual(error["code"], "COMMAND_PATH_OCCUPIED")
         self.assertEqual(command.read_text(encoding="utf-8"), "#!/bin/sh\necho unrelated\n")
+
+    def test_first_class_update_is_current_without_mutating_check(self) -> None:
+        distribution, remote, current_version = self.create_runtime_distribution("current-release", [])
+        home = self.network.root / "current-release-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+
+        checked = run([str(command), "update", "--check"], home, env={"HOME": str(home)})
+        self.assertIn(f"MegaBrain v{current_version} is current.", checked.stdout)
+        self.assertIn("Stable gap: 0 release(s), 0 commit(s), 0 merged PR(s) behind.", checked.stdout)
+        self.assertFalse((home / ".megabrain" / "update-state.json").exists())
+
+        no_op = run([str(command), "update", "--json"], home, env={"HOME": str(home)})
+        no_op_report = json.loads(no_op.stdout)
+        self.assertFalse(no_op_report["updated"])
+        self.assertEqual(no_op_report["active_version"], current_version)
+        self.assertEqual(no_op_report["active_version"], no_op_report["latest_stable_version"])
 
     def test_repository_glance_counts_releases_commits_merges_and_open_previews(self) -> None:
         work = self.network.root / "glance-work"
@@ -1411,7 +1428,12 @@ raise SystemExit(1)
         self.assertEqual(json.loads(throttled.stdout)["reason"], "check_not_due")
 
     def test_major_update_requires_explicit_approval(self) -> None:
-        distribution, remote, current = self.create_runtime_distribution("major-release", ["2.0.0"])
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        current_major = int(str(current_metadata["version"]).split(".")[0])
+        next_major = f"{current_major + 1}.0.0"
+        distribution, remote, current = self.create_runtime_distribution("major-release", [next_major])
         home = self.network.root / "major-update-home"
         home.mkdir()
         run(
@@ -1444,13 +1466,18 @@ raise SystemExit(1)
             home,
             env={"HOME": str(home)},
         )
-        self.assertEqual(json.loads(approved.stdout)["active_version"], "2.0.0")
+        self.assertEqual(json.loads(approved.stdout)["active_version"], next_major)
 
     def test_invalid_release_leaves_the_previous_runtime_active(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        invalid_version = f"{major}.{minor + 1}.0"
         distribution, remote, current = self.create_runtime_distribution(
             "invalid-release",
-            ["1.1.0"],
-            invalid_version="1.1.0",
+            [invalid_version],
+            invalid_version=invalid_version,
         )
         home = self.network.root / "invalid-update-home"
         home.mkdir()
@@ -1478,10 +1505,16 @@ raise SystemExit(1)
         self.assertEqual(json.loads(active.read_text(encoding="utf-8"))["version"], current)
 
     def test_protocol_update_requires_explicit_approval(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        next_version = f"{major}.{minor + 1}.0"
+        next_protocol = int(current_metadata["protocol_version"]) + 1
         distribution, remote, current = self.create_runtime_distribution(
             "protocol-release",
-            ["1.1.0"],
-            protocol_versions={"1.1.0": 2},
+            [next_version],
+            protocol_versions={next_version: next_protocol},
         )
         home = self.network.root / "protocol-update-home"
         home.mkdir()
@@ -1509,10 +1542,15 @@ raise SystemExit(1)
             home,
             env={"HOME": str(home)},
         )
-        self.assertEqual(json.loads(approved.stdout)["active_version"], "1.1.0")
+        self.assertEqual(json.loads(approved.stdout)["active_version"], next_version)
 
     def test_rollback_rejects_a_runtime_below_the_brain_minimum(self) -> None:
-        distribution, remote, current = self.create_runtime_distribution("rollback-minimum", ["1.1.0"])
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        next_version = f"{major}.{minor + 1}.0"
+        distribution, remote, current = self.create_runtime_distribution("rollback-minimum", [next_version])
         home = self.network.root / "rollback-minimum-home"
         home.mkdir()
         run(
@@ -1527,7 +1565,7 @@ raise SystemExit(1)
         run([str(command), "update", "--json"], home, env={"HOME": str(home)})
         brain = home / ".megabrain" / "clones" / "codex" / "megabrain.json"
         manifest = json.loads(brain.read_text(encoding="utf-8"))
-        manifest["minimum_runtime"] = "1.1.0"
+        manifest["minimum_runtime"] = next_version
         brain.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
         refused = run(
@@ -1538,7 +1576,7 @@ raise SystemExit(1)
         )
         self.assertEqual(json.loads(refused.stderr)["error"]["code"], "RUNTIME_TOO_OLD")
         config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
-        self.assertEqual(config["runtime"]["version"], "1.1.0")
+        self.assertEqual(config["runtime"]["version"], next_version)
 
     def test_outdated_runtime_can_read_but_refuses_new_writes(self) -> None:
         clone = self.network.clone("compatibility-agent", "codex")
