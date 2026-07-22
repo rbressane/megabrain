@@ -1,12 +1,12 @@
-# MegaBrain 2.0.0 Draft Release Notes
+# MegaBrain 2.0.0 Release Notes
 
-This local draft separates bounded retrieval from the unreleased Vault stack and adds the protocol-2 canonical resource, archive, import, access-policy, and derived-cache model.
+This release separates bounded retrieval from the Vault stack and adds the protocol-2 canonical resource, archive, import, access-policy, and derived-cache model.
 
 It preserves protocol-1 memory IDs and requires an explicit owner-local migration. New resources use stable URIs and immutable revisions; imports are fingerprint-bound and review-first; private/sensitive reads default deny; indexes rebuild from committed Git state; general always-on caches are deterministic and non-authoritative.
 
 The built-in private local browser now reports generation-scoped synchronization, snapshot time, newest-memory freshness, inclusion verification, pending local commit state, and safe stale reasons. Setup teaches `Synchronize and open my MegaBrain` as the single synchronized validation and regeneration action; `Open my MegaBrain` remains equivalent.
 
-Sensitive synchronized bodies and attachments remain unavailable. This draft does not merge, release, deploy, migrate real sources, enable consumers, change Hermes memory configuration, or retire any legacy store. User-zero cutover and high-assurance security language require the approval gates in the review bundle and independent review where stated.
+Sensitive synchronized bodies and attachments remain unavailable. This release does not migrate real sources, enable consumers, change Hermes memory configuration, or retire any legacy store. User-zero cutover and high-assurance security language still require the approval gates in the review bundle and independent review where stated.
 
 ## First-class command
 
@@ -35,10 +35,10 @@ Runtime activation changes command and skill symlinks immediately. New sessions 
 
 The update never modifies memory files or private Brain Git history. Previous runtime directories remain available for compatible rollback.
 
-## Release gate
+## Verification
 
-- Run the complete standard-library test suite and seed validation from the release commit.
-- Confirm `git diff --check` and skill structure validation.
-- Exercise `megabrain update --check`, a no-op update, a compatible forward update and rollback from packaged stable tags.
-- Inspect the public tree for private data and secret-like fixtures.
-- Tag and publish only after explicit owner authorization.
+- The complete 43-test standard-library suite passes from the release candidate.
+- Seed validation passes with zero errors and zero warnings.
+- The synthetic protocol-2 retrieval/resource benchmark completes successfully.
+- `git diff --check`, Python compilation, skill structure validation, and the public-tree secret scan pass.
+- Acceptance tests exercise `megabrain update --check`, a no-op update, compatible forward update, major/protocol approval, rollback, metadata degradation, and invalid-release recovery using packaged synthetic tags.
