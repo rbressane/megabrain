@@ -40,4 +40,4 @@ MegaBrain is canonical for durable reusable knowledge and archived evidence. Pro
 - [Sensitive synchronization gate](sensitive-sync-design.md)
 - [User-zero acceptance](canonical-user-zero-acceptance.md)
 - [Requirements-to-tests matrix](canonical-requirements-to-tests.md)
-- [Draft release notes](release-notes-2.0.0-draft.md)
+- [MegaBrain 2.0.0 release notes](release-notes-2.0.0.md)

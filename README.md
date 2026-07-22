@@ -2,7 +2,7 @@
 
 MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. It has no server, daemon, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections.
 
-**Status:** protocol 2 is an unreleased local development draft for macOS and Linux. Personal knowledge is never stored in this product repository.
+**Status:** protocol 2 is the current stable release for macOS and Linux. Personal knowledge is never stored in this product repository.
 
 ## Get Started
 
