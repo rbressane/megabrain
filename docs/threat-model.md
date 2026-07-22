@@ -11,6 +11,9 @@ The brain owner and reviewed owner-local controls are trusted. An unrestricted p
 - Prompt injection in imports: sources are data; only durable factual summaries may become memories.
 - Source traversal and stale review: an owner-run explicit allowlist rejects symlinks, traversal, confusable paths, malformed metadata, limits violations, and changed post-review fingerprints.
 - Context disclosure: private/sensitive retrieval requires relevance plus exact immutable policy and trusted host context; default deny covers group, channel, API, cron, webhook, delegated, background, and unattended contexts.
+- Local provenance substitution: owner-local reads require the exact installed Codex/Claude helper path, mode-`0600` owner files, configured clone binding, and a matching committed agent record. Model JSON and direct source-tree execution cannot assert trust.
+- Policy bootstrap widening: explicit setup grants only `read`, all collections, and a `private` ceiling to a never-before-policy-bound owner agent. Any existing revision, including revocation, blocks automatic policy creation.
+- Hermes provenance: a stored identity or subprocess environment is insufficient, and setup creates no Hermes read policy. Private reads stay disabled until a reviewed in-process adapter cross-checks task-local post-authorization provenance and the owner DM, then creates an exact reviewed policy.
 - Dirty-index poisoning: memory/resource indexes rebuild only from `git archive HEAD` and are ignored by Git.
 - Archive tampering: non-sensitive objects are content-addressed and complete-object validated through manifests.
 - Concurrent writes: unique immutable files plus fetch/rebase/push retry.

@@ -15,11 +15,12 @@ Bootstrap then:
 3. creates `OWNER/megabrain-data` as a private repository when needed;
 4. seeds an empty, data-only brain with compatibility metadata and no GitHub Actions workflow;
 5. creates the active agent's hidden managed clone and stable identity;
-6. installs the skill link, first-class `megabrain` command and marker-delimited harness instructions;
-7. reports a one-line `PATH` correction when required without editing shell profiles;
-8. validates and synchronizes the result;
-9. opens the local browser on the machine running the agent and reports that host explicitly; and
-10. reports `MegaBrain is ready.` and teaches `Synchronize and open my MegaBrain` as the normal return action.
+6. creates one immutable, read-only, private-ceiling owner policy for an eligible owner-local harness when the agent has no policy history;
+7. installs the skill link, first-class `megabrain` command and marker-delimited harness instructions;
+8. reports a one-line `PATH` correction when required without editing shell profiles;
+9. validates and synchronizes the result;
+10. opens the local browser on the machine running the agent and reports that host explicitly; and
+11. reports `MegaBrain is ready.` and teaches `Synchronize and open my MegaBrain` as the normal return action.
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
@@ -32,5 +33,7 @@ If setup is interrupted after creating the private repository or committing the 
 The same repository setup message connects another agent or computer through the authenticated GitHub account. Installed users can ask to open, check, update, or disconnect MegaBrain naturally.
 
 Compatible stable updates activate automatically at most once per day. `megabrain update --check` checks immediately without mutation and `megabrain update` installs the latest compatible stable tag. Major or protocol-version changes request approval. Disconnect removes managed harness links and instructions while retaining the command, runtime, private repository, and synchronized clone to prevent data loss.
+
+The private-retrieval repair is intentionally not an automatic data migration. After installing a compatible runtime that contains it, the owner reruns setup or connect once. That explicit action upgrades the ignored local identity provenance and creates the conservative policy only for a Codex or Claude agent with no policy history. Existing custom or revoked policies are never replaced. Hermes setup creates no read policy and remains private-read-disabled until its reviewed in-process trusted-provenance integration is installed, bound to the owner DM, and given an exact reviewed policy.
 
 An activated runtime updates command and skill symlinks immediately. New sessions load the updated skill instructions normally. A session that already loaded the previous skill may need to reread it or start a new session before new Product Bake Candidate completion behavior is reliable.
