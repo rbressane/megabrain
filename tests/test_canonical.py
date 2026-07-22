@@ -333,6 +333,50 @@ class CanonicalRepositoryTests(unittest.TestCase):
         )
         self.assertNotIn(private_summary, json.dumps(revoked))
 
+    def test_setup_never_recreates_a_revoked_owner_policy(self) -> None:
+        owner_policy = canonical.current_policies(self.root)[0]
+        canonical_local.set_policy(
+            self.root,
+            {"policy_id": owner_policy["policy_id"]},
+            revoke=True,
+            trusted_local=True,
+        )
+        second_setup = json.loads(
+            self.network.install("canonical-agent", "codex").stdout
+        )
+        self.assertFalse(second_setup["owner_policy_created"])
+        self.assertEqual(len(canonical.load_policies(self.root)), 2)
+        self.assertEqual(canonical.current_policies(self.root), [])
+
+        private_summary = "Synthetic revoked owner policy keeps the ochre anchor private."
+        self.network.remember(
+            "canonical-agent",
+            subject="synthetic.revoked_owner_policy",
+            summary=private_summary,
+            sensitivity="private",
+            tags=["synthetic", "revocation", "ochre"],
+        )
+        denied = self.network.command(
+            "canonical-agent",
+            "context",
+            {"task": "synthetic revoked owner policy ochre"},
+            "--stdin",
+        )
+        self.assertNotIn(private_summary, json.dumps(denied))
+
+    def test_setup_never_recreates_policy_removed_from_current_tree(self) -> None:
+        owner_policy = canonical.current_policies(self.root)[0]
+        path = canonical.policy_path(self.root, owner_policy)
+        run(["git", "rm", "--", str(path.relative_to(self.root))], self.root)
+        run(["git", "commit", "-m", "test: remove policy from current synthetic tree"], self.root)
+        run(["git", "push", "origin", "HEAD:main"], self.root)
+
+        second_setup = json.loads(
+            self.network.install("canonical-agent", "codex").stdout
+        )
+        self.assertFalse(second_setup["owner_policy_created"])
+        self.assertEqual(canonical.load_policies(self.root), [])
+
     def test_content_addressed_attachment_and_sensitive_sync_gate(self) -> None:
         source = self.network.root / "synthetic-evidence.bin"
         source.write_bytes(b"synthetic archived evidence\x00data")

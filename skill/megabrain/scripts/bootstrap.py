@@ -16,6 +16,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+import canonical  # noqa: E402
+
 
 START_MARKER = "<!-- MEGABRAIN:START -->"
 END_MARKER = "<!-- MEGABRAIN:END -->"
@@ -626,16 +631,31 @@ def record_text(meta: dict[str, object], body: str) -> str:
     return f"<!-- megabrain-meta\n{json.dumps(meta, indent=2, sort_keys=True)}\n-->\n\n{body.strip()}\n"
 
 
+def context_provenance(harness: str) -> str:
+    return "owner_local" if harness in {"codex", "claude"} else "trusted_host"
+
+
 def load_or_create_identity(root: Path, harness: str, display_name: str) -> tuple[dict[str, str], bool]:
     path = root / ".megabrain" / "local.json"
     if path.exists():
         identity = load_json(path, "IDENTITY_INVALID", "The local agent identity is invalid.")
         if identity.get("harness") != harness:
             raise BootstrapError("IDENTITY_MISMATCH", "This clone belongs to another agent harness.")
+        expected_provenance = context_provenance(harness)
+        if identity.get("context_provenance") not in {None, expected_provenance}:
+            raise BootstrapError("IDENTITY_INVALID", "The local agent identity provenance is invalid.")
+        if identity.get("context_provenance") is None:
+            identity["context_provenance"] = expected_provenance
+        save_private_json(path, identity)
         return {key: str(value) for key, value in identity.items()}, False
-    identity = {"id": str(uuid.uuid4()), "harness": harness, "display_name": display_name, "created_at": utc_now()}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    identity = {
+        "id": str(uuid.uuid4()),
+        "harness": harness,
+        "display_name": display_name,
+        "created_at": utc_now(),
+        "context_provenance": context_provenance(harness),
+    }
+    save_private_json(path, identity)
     return identity, True
 
 
@@ -671,6 +691,55 @@ def register_agent(root: Path, identity: dict[str, str]) -> bool:
     if not push_with_retry(root):
         print("MegaBrain: agent registered locally; synchronization is pending.", file=sys.stderr)
     return True
+
+
+def owner_read_policy(identity: dict[str, str]) -> dict[str, Any] | None:
+    harness = identity["harness"]
+    if harness not in {"codex", "claude"}:
+        return None
+    return {
+        "agent_id": identity["id"],
+        "effect": "allow",
+        "capabilities": ["read"],
+        "collections": ["*"],
+        "sensitivity_ceiling": "private",
+        "platforms": [harness],
+        "chat_types": ["local"],
+        "source_kinds": ["owner_local"],
+        "owner_dm_only": False,
+    }
+
+
+def ensure_owner_read_policy(root: Path, identity: dict[str, str]) -> bool:
+    if brain_metadata(root)["protocol_version"] < 2:
+        return False
+    payload = owner_read_policy(identity)
+    if payload is None:
+        return False
+    if any(policy["agent_id"] == identity["id"] for policy in canonical.load_policies(root)):
+        return False
+    history = run(
+        ["git", "log", "--format=%H", "--", f"brain/policies/{identity['id']}"],
+        root,
+    )
+    if history.returncode != 0 or history.stdout.strip():
+        return False
+    value, path = canonical.create_policy(
+        root,
+        payload,
+        created_by=identity["id"],
+    )
+    run(["git", "add", "--", str(path.relative_to(root))], root)
+    committed = run(
+        ["git", "commit", "-m", f"policy({identity['harness']}): authorize owner private reads"],
+        root,
+    )
+    if committed.returncode != 0:
+        path.unlink(missing_ok=True)
+        raise BootstrapError("POLICY_COMMIT_FAILED", "The owner read policy could not be committed.")
+    if not push_with_retry(root):
+        print("MegaBrain: owner read policy added locally; synchronization is pending.", file=sys.stderr)
+    return not value["revoked"]
 
 
 def instruction_block(command_path: Path) -> str:
@@ -761,6 +830,7 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
     identity, identity_created = load_or_create_identity(root, harness, display_name)
     configure_git(root, f"MegaBrain {identity['display_name']}", identity["id"])
     registered = register_agent(root, identity)
+    owner_policy_created = ensure_owner_read_policy(root, identity)
     link = install_skill(home, harness, runtime_skill)
     _, instructions_rel = HARNESS_PATHS[harness]
     replace_block(home / instructions_rel, instruction_block(link / "scripts" / "megabrain.py"))
@@ -787,7 +857,8 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
         "ok": True, "message": SETUP_READY_MESSAGE, "harness": harness, "repository": repository,
         "repository_created": repository_created, "clone_created": clone_created,
         "manifest_created": manifest_created,
-        "identity_created": identity_created, "registered": registered, "runtime_version": runtime_meta["version"],
+        "identity_created": identity_created, "registered": registered,
+        "owner_policy_created": owner_policy_created, "runtime_version": runtime_meta["version"],
         "agent_id": identity["id"], "counts": validation["counts"], "browser": browser, "command": command,
     }
 

@@ -705,6 +705,245 @@ raise SystemExit(99)
         self.assertEqual(limited["memories"], [])
         self.assertEqual(limited["limit"], 1)
 
+    def test_setup_provisions_one_idempotent_owner_read_policy(self) -> None:
+        clone = self.network.clone("owner-policy-agent", "codex")
+        identity = json.loads(
+            (clone / ".megabrain" / "local.json").read_text(encoding="utf-8")
+        )
+        policy_paths = list((clone / "brain" / "policies").glob("*/*.json"))
+        self.assertEqual(len(policy_paths), 1)
+        policy = json.loads(policy_paths[0].read_text(encoding="utf-8"))
+        self.assertEqual(policy["agent_id"], identity["id"])
+        self.assertEqual(policy["effect"], "allow")
+        self.assertEqual(policy["capabilities"], ["read"])
+        self.assertEqual(policy["collections"], ["*"])
+        self.assertEqual(policy["sensitivity_ceiling"], "private")
+        self.assertEqual(policy["platforms"], ["codex"])
+        self.assertEqual(policy["chat_types"], ["local"])
+        self.assertEqual(policy["source_kinds"], ["owner_local"])
+        self.assertFalse(policy["owner_dm_only"])
+
+        second = json.loads(
+            self.network.install("owner-policy-agent", "codex").stdout
+        )
+        self.assertFalse(second["owner_policy_created"])
+        self.assertEqual(
+            len(list((clone / "brain" / "policies").glob("*/*.json"))),
+            1,
+        )
+
+    def test_setup_migrates_registered_v2_agent_without_policy_or_provenance(self) -> None:
+        name = "existing-v2-agent"
+        home = self.network.root / f"home-{name}"
+        clone = home / ".megabrain" / "clones" / "codex"
+        clone.parent.mkdir(parents=True)
+        run(["git", "clone", str(self.network.remote), str(clone)], self.network.root)
+        run(["git", "config", "user.name", "Existing V2 Agent"], clone)
+        run(["git", "config", "user.email", "existing-v2@example.invalid"], clone)
+        identity = {
+            "id": str(uuid.uuid4()),
+            "harness": "codex",
+            "display_name": "Existing V2 Agent",
+            "created_at": "2026-07-01T00:00:00Z",
+        }
+        local = clone / ".megabrain" / "local.json"
+        local.parent.mkdir(parents=True)
+        local.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        registry = clone / "brain" / "agents" / f"{identity['id']}.md"
+        registry.write_text(
+            bootstrap_module.record_text(
+                {
+                    "schema": "megabrain.agent.v1",
+                    **identity,
+                },
+                "# Agent: Existing V2 Agent\n\nSynthetic registered v2 provenance fixture.",
+            ),
+            encoding="utf-8",
+        )
+        run(["git", "add", "--", str(registry.relative_to(clone))], clone)
+        run(["git", "commit", "-m", "test: registered v2 agent without policy"], clone)
+        run(["git", "push", "origin", "HEAD:main"], clone)
+        self.network.homes[name] = home
+
+        result = json.loads(self.network.install(name, "codex").stdout)
+        migrated_identity = json.loads(local.read_text(encoding="utf-8"))
+        self.assertFalse(result["identity_created"])
+        self.assertFalse(result["registered"])
+        self.assertTrue(result["owner_policy_created"])
+        self.assertEqual(migrated_identity["id"], identity["id"])
+        self.assertEqual(migrated_identity["context_provenance"], "owner_local")
+        self.assertEqual(local.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(len(list((clone / "brain" / "policies").glob("*/*.json"))), 1)
+
+    def test_installed_owner_local_cli_retrieves_private_but_not_sensitive_memory(self) -> None:
+        clone = self.network.clone("trusted-local-agent", "codex")
+        identity = json.loads(
+            (clone / ".megabrain" / "local.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(identity.get("context_provenance"), "owner_local")
+        private_summary = "Synthetic private recovery uses the amber anchor."
+        sensitive_summary = "Synthetic sensitive recovery uses the violet anchor."
+        self.network.remember(
+            "trusted-local-agent",
+            subject="synthetic.private_recovery",
+            summary=private_summary,
+            sensitivity="private",
+            tags=["synthetic", "recovery", "amber"],
+        )
+        self.network.remember(
+            "trusted-local-agent",
+            subject="synthetic.sensitive_recovery",
+            summary=sensitive_summary,
+            sensitivity="sensitive",
+            tags=["synthetic", "recovery", "violet"],
+        )
+
+        result = self.network.command(
+            "trusted-local-agent",
+            "context",
+            {
+                "task": "What is the synthetic private recovery amber anchor?",
+                "diagnostic": True,
+                "trusted_context": {
+                    "agent_id": str(uuid.uuid4()),
+                    "source_kind": "gateway_user",
+                    "platform": "telegram",
+                    "chat_type": "dm",
+                    "owner_verified": True,
+                },
+            },
+            "--stdin",
+        )
+        summaries = {item["summary"] for item in result["memories"]}
+        self.assertIn(private_summary, summaries)
+        self.assertNotIn(sensitive_summary, summaries)
+        self.assertTrue(result["diagnostics"]["authorization"]["trusted_context"])
+        self.assertGreaterEqual(
+            result["diagnostics"]["authorization"]["authorized_candidate_count"],
+            1,
+        )
+
+    def test_claude_owner_local_cli_uses_its_exact_harness_policy(self) -> None:
+        self.network.clone("trusted-claude-agent", "claude")
+        private_summary = "Synthetic private Claude check uses the teal anchor."
+        self.network.remember(
+            "trusted-claude-agent",
+            subject="synthetic.private_claude",
+            summary=private_summary,
+            sensitivity="private",
+            tags=["synthetic", "claude", "teal"],
+        )
+        result = self.network.command(
+            "trusted-claude-agent",
+            "context",
+            {"task": "synthetic private Claude teal"},
+            "--stdin",
+        )
+        self.assertIn(private_summary, {item["summary"] for item in result["memories"]})
+
+    def test_diagnostics_count_policy_denials_without_private_values(self) -> None:
+        clone = self.network.clone("diagnostic-agent", "codex")
+        private_summary = "Synthetic private diagnostic uses the copper anchor."
+        remembered = self.network.remember(
+            "diagnostic-agent",
+            subject="synthetic.private_diagnostic",
+            summary=private_summary,
+            sensitivity="private",
+            tags=["synthetic", "diagnostic", "copper"],
+        )
+        direct = run(
+            ["python3", str(SCRIPTS / "megabrain.py"), "context", "--stdin"],
+            clone,
+            stdin={"task": "synthetic private diagnostic copper", "diagnostic": True},
+            env={
+                "HOME": str(self.network.homes["diagnostic-agent"]),
+                "MEGABRAIN_ROOT": str(clone),
+            },
+        )
+        result = json.loads(direct.stdout)
+        authorization = result["diagnostics"].get("authorization")
+        self.assertIsInstance(authorization, dict)
+        assert isinstance(authorization, dict)
+        self.assertFalse(authorization["trusted_context"])
+        self.assertGreaterEqual(authorization["candidate_count"], 1)
+        self.assertEqual(authorization["relevant_candidate_count"], 1)
+        self.assertEqual(authorization["authorized_candidate_count"], 0)
+        self.assertEqual(authorization["policy_denied_count"], 1)
+        serialized = json.dumps(result, sort_keys=True)
+        self.assertNotIn(private_summary, serialized)
+        self.assertNotIn(remembered["memory_id"], serialized)
+        self.assertNotIn("synthetic.private_diagnostic", serialized)
+
+    def test_insecure_local_identity_and_unbound_hermes_fail_closed(self) -> None:
+        codex_clone = self.network.clone("insecure-identity-agent", "codex")
+        private_summary = "Synthetic private identity check uses the silver anchor."
+        self.network.remember(
+            "insecure-identity-agent",
+            subject="synthetic.private_identity",
+            summary=private_summary,
+            sensitivity="private",
+            tags=["synthetic", "identity", "silver"],
+        )
+        identity_path = codex_clone / ".megabrain" / "local.json"
+        identity_path.chmod(0o644)
+        try:
+            denied = self.network.command(
+                "insecure-identity-agent",
+                "context",
+                {"task": "synthetic private identity silver", "diagnostic": True},
+                "--stdin",
+            )
+        finally:
+            identity_path.chmod(0o600)
+        self.assertNotIn(private_summary, json.dumps(denied))
+        self.assertFalse(denied["diagnostics"]["authorization"]["trusted_context"])
+
+        config_path = self.network.homes["insecure-identity-agent"] / ".megabrain" / "config.json"
+        config_path.chmod(0o644)
+        try:
+            denied_config = self.network.command(
+                "insecure-identity-agent",
+                "context",
+                {"task": "synthetic private identity silver", "diagnostic": True},
+                "--stdin",
+            )
+        finally:
+            config_path.chmod(0o600)
+        self.assertNotIn(private_summary, json.dumps(denied_config))
+        self.assertFalse(
+            denied_config["diagnostics"]["authorization"]["trusted_context"]
+        )
+
+        hermes_clone = self.network.clone("unbound-hermes-agent", "hermes")
+        hermes_identity = json.loads(
+            (hermes_clone / ".megabrain" / "local.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(hermes_identity["context_provenance"], "trusted_host")
+        hermes_policies = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in (hermes_clone / "brain" / "policies").glob("*/*.json")
+            if path.parent.name == hermes_identity["id"]
+        ]
+        self.assertEqual(hermes_policies, [])
+        hermes_private = "Synthetic private Hermes check uses the indigo anchor."
+        self.network.remember(
+            "unbound-hermes-agent",
+            subject="synthetic.private_hermes",
+            summary=hermes_private,
+            sensitivity="private",
+            tags=["synthetic", "hermes", "indigo"],
+        )
+        hermes_result = self.network.command(
+            "unbound-hermes-agent",
+            "context",
+            {"task": "synthetic private Hermes indigo", "diagnostic": True},
+            "--stdin",
+        )
+        self.assertNotIn(hermes_private, json.dumps(hermes_result))
+        self.assertFalse(
+            hermes_result["diagnostics"]["authorization"]["trusted_context"]
+        )
+
     def test_retrieval_budget_collection_sensitive_policy_and_committed_index(self) -> None:
         clone = self.network.clone("ranking-agent", "codex")
         target = "Synthetic X copy uses a spoken direct voice with simple words."

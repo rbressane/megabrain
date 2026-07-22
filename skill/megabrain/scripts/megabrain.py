@@ -12,6 +12,7 @@ import re
 import shutil
 import sqlite3
 import statistics
+import stat
 import subprocess
 import sys
 import tarfile
@@ -197,6 +198,68 @@ def repo_root() -> Path:
     if (candidate / "brain").is_dir():
         return candidate
     raise BrainError("SETUP_REQUIRED", "MegaBrain has not been set up for this agent yet")
+
+
+def secure_private_file(path: Path) -> bool:
+    try:
+        state = os.lstat(path)
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(state.st_mode)
+        and not stat.S_ISLNK(state.st_mode)
+        and not stat.S_IMODE(state.st_mode) & 0o077
+        and (not hasattr(os, "getuid") or state.st_uid == os.getuid())
+    )
+
+
+def trusted_local_context(root: Path) -> dict[str, Any] | None:
+    invoked = Path(os.path.abspath(__file__))
+    harness = next(
+        (name for name in ("codex", "claude") if f".{name}" in invoked.parts),
+        None,
+    )
+    if harness is None:
+        return None
+    try:
+        expected = Path.home() / f".{harness}" / "skills" / "megabrain" / "scripts" / "megabrain.py"
+        if invoked != expected:
+            return None
+        config_path = Path.home() / ".megabrain" / "config.json"
+        if not secure_private_file(config_path):
+            return None
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        configured = config.get("clones", {}).get(harness) if isinstance(config, dict) else None
+        if not configured or Path(str(configured)).expanduser().resolve() != root.resolve():
+            return None
+        identity_path = local_config_path(root)
+        if not secure_private_file(identity_path):
+            return None
+        identity = load_identity(root)
+        if identity.get("harness") != harness or identity.get("context_provenance") != "owner_local":
+            return None
+        registered = run(
+            ["git", "show", f"HEAD:brain/agents/{identity['id']}.md"],
+            root,
+        )
+        if registered.returncode != 0:
+            return None
+        match = META_PATTERN.match(registered.stdout)
+        meta = json.loads(match.group("meta")) if match else None
+        if not isinstance(meta, dict) or any(
+            meta.get(field) != identity.get(field)
+            for field in ("id", "harness", "display_name", "created_at")
+        ):
+            return None
+    except (BrainError, json.JSONDecodeError, OSError, TypeError, ValueError):
+        return None
+    return {
+        "agent_id": identity["id"],
+        "source_kind": "owner_local",
+        "platform": harness,
+        "chat_type": "local",
+        "owner_verified": True,
+    }
 
 
 def emit(payload: dict[str, Any], *, stream: Any = sys.stdout) -> None:
@@ -1284,11 +1347,20 @@ def command_context(
         allow_rebuild=sync.get("reason") != "dirty_worktree",
     )
     ranking_started = time.perf_counter()
-    allowed = [
-        (score, record)
-        for score, record in candidates
-        if memory_authorized(root, record, score, trusted_context)
-    ]
+    relevant_candidate_count = 0
+    authorized_candidate_count = 0
+    policy_denied_count = 0
+    allowed = []
+    for score, record in candidates:
+        authorized = memory_authorized(root, record, score, trusted_context)
+        if score > 0:
+            relevant_candidate_count += 1
+            if authorized:
+                authorized_candidate_count += 1
+            elif record.meta.get("sensitivity", "general") != "general":
+                policy_denied_count += 1
+        if authorized:
+            allowed.append((score, record))
     ranked = [
         (score, record)
         for score, record in allowed
@@ -1384,6 +1456,13 @@ def command_context(
     if diagnostic:
         result["diagnostics"] = {
             "index": index_state,
+            "authorization": {
+                "trusted_context": trusted_context is not None,
+                "candidate_count": len(candidates),
+                "relevant_candidate_count": relevant_candidate_count,
+                "authorized_candidate_count": authorized_candidate_count,
+                "policy_denied_count": policy_denied_count,
+            },
             "timings_ms": {
                 "remote_synchronization": round(sync_elapsed * 1000, 3),
                 "local_index_refresh": round(index_timings["local_index_refresh"] * 1000, 3),
@@ -2273,7 +2352,12 @@ def main() -> int:
         elif args.command == "context":
             if not 1 <= args.limit <= 100:
                 raise BrainError("INVALID_LIMIT", "limit must be between 1 and 100")
-            result = command_context(root, read_input(), args.limit)
+            result = command_context(
+                root,
+                read_input(),
+                args.limit,
+                trusted_context=trusted_local_context(root),
+            )
         elif args.command == "remember":
             result = command_remember(root, read_input())
         elif args.command == "correct":
