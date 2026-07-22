@@ -1841,6 +1841,35 @@ def command_agents(root: Path) -> dict[str, Any]:
     return {"ok": True, "sync": sync, "agents": agents}
 
 
+def pending_local_commits(root: Path) -> bool | None:
+    pending = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
+    if pending.returncode != 0:
+        return None
+    try:
+        return int(pending.stdout.strip()) > 0
+    except ValueError:
+        return None
+
+
+def safe_browser_sync(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
+    reason = sync.get("reason")
+    if reason is not None and (
+        not isinstance(reason, str)
+        or re.fullmatch(r"[a-z0-9_]+", reason) is None
+    ):
+        reason = "synchronization_incomplete"
+    pending = sync.get("pending_local_commits")
+    if not isinstance(pending, bool):
+        pending = pending_local_commits(root)
+    synchronized = bool(sync.get("synced")) and not bool(sync.get("stale"))
+    return {
+        "synced": synchronized,
+        "stale": not synchronized,
+        "reason": reason if not synchronized else None,
+        "pending_local_commits": pending,
+    }
+
+
 def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
     records = load_memories(root)
     active, conflicts = current_memories(records)
@@ -1910,9 +1939,26 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
             reverse=True,
         )
     ]
+    generated_at = utc_now()
+    newest = max(records, key=lambda item: str(item.meta.get("created_at", "")), default=None)
+    newest_id = str(newest.meta.get("id")) if newest else None
+    newest_memory_at = str(newest.meta.get("created_at")) if newest else None
+    included_ids = {str(memory["id"]) for memory in memories}
+    newest_memory_included = newest_id is None or newest_id in included_ids
+    safe_sync = safe_browser_sync(root, sync)
+    freshness = {
+        "synchronization": "synchronized_when_generated" if safe_sync["synced"] else "incomplete",
+        "generated_at": generated_at,
+        "newest_memory_at": newest_memory_at,
+        "newest_memory_included": newest_memory_included,
+        "pending_local_commits": safe_sync["pending_local_commits"],
+        "stale": safe_sync["stale"],
+        "reason": safe_sync["reason"],
+    }
     return {
-        "generated_at": utc_now(),
-        "sync": sync,
+        "generated_at": generated_at,
+        "freshness": freshness,
+        "sync": safe_sync,
         "stats": {
             "current": len(active),
             "history": len(records) - len(active),
@@ -1943,7 +1989,8 @@ def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
     template = Path(__file__).resolve().parents[1] / "assets" / "browser.html"
     if not template.exists():
         raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
-    serialized = json.dumps(browser_payload(root, sync), ensure_ascii=True, sort_keys=True)
+    payload = browser_payload(root, sync)
+    serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     serialized = (
         serialized.replace("&", "\\u0026")
         .replace("<", "\\u003c")
@@ -1962,7 +2009,8 @@ def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
         "opened": opened,
         "path": str(output),
         "host": os.uname().nodename,
-        "sync": sync,
+        "sync": payload["sync"],
+        "freshness": payload["freshness"],
     }
 
 
@@ -2201,7 +2249,10 @@ def build_parser() -> argparse.ArgumentParser:
     cache_export.add_argument("destination")
     subparsers.add_parser("drift")
     subparsers.add_parser("agents")
-    browse = subparsers.add_parser("browse")
+    browse = subparsers.add_parser(
+        "browse",
+        help="Synchronize, validate, regenerate, and open the private local snapshot",
+    )
     browse.add_argument("--no-open", action="store_true", help="generate the browser without opening it")
     subparsers.add_parser("validate")
     subparsers.add_parser("doctor")

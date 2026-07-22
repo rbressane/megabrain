@@ -40,6 +40,11 @@ jobs:
       - uses: actions/checkout@v5
       - uses: rbressane/megabrain/.github/actions/validate-brain@v1.0.0
 """
+ONBOARDING_MESSAGE = (
+    "MegaBrain is ready.\n"
+    "Say \"Synchronize and open my MegaBrain\" anytime to synchronize, validate, "
+    "and browse your private Brain locally."
+)
 
 
 def run(
@@ -327,7 +332,8 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
         first_result = json.loads(first.stdout)
         second_result = json.loads(second.stdout)
-        self.assertEqual(first_result["message"], "MegaBrain is ready.")
+        self.assertEqual(first_result["message"], ONBOARDING_MESSAGE)
+        self.assertEqual(second_result["message"], ONBOARDING_MESSAGE)
         self.assertFalse(second_result["registered"])
         text = instructions.read_text(encoding="utf-8")
         self.assertEqual(text.count("<!-- MEGABRAIN:START -->"), 1)
@@ -1014,6 +1020,9 @@ raise SystemExit(99)
         self.assertNotIn("__MEGABRAIN_DATA__", html)
         self.assertNotIn('<img src=x onerror="alert(1)">', html)
         self.assertIn("\\u003cimg src=x", html)
+        self.assertIn("Synchronized when generated", html)
+        self.assertNotIn('textContent = "Synchronized";', html)
+        self.assertIn("Synchronize and open my MegaBrain", html)
         for expected in (
             'data-view="current"',
             'data-view="history"',
@@ -1041,7 +1050,100 @@ raise SystemExit(99)
         self.assertTrue(memories[first_conflict["memory_id"]]["conflict"])
         self.assertTrue(memories[second_conflict["memory_id"]]["conflict"])
         self.assertEqual(data["imports"][0]["id"], imported["import_id"])
+        newest_memory_at = max(str(item["created_at"]) for item in data["memories"])
+        self.assertEqual(data["freshness"]["newest_memory_at"], newest_memory_at)
+        self.assertEqual(data["freshness"]["generated_at"], data["generated_at"])
+        self.assertTrue(data["freshness"]["newest_memory_included"])
+        self.assertEqual(data["freshness"]["synchronization"], "synchronized_when_generated")
+        self.assertFalse(data["freshness"]["stale"])
+        self.assertFalse(data["freshness"]["pending_local_commits"])
+        self.assertEqual(generated["freshness"], data["freshness"])
+        receipt = json.dumps(generated["freshness"])
+        self.assertNotIn("browser.synthetic_preference", receipt)
+        self.assertNotIn("Prefer safe text", receipt)
+        self.assertNotIn(str(clone), receipt)
         self.assertEqual(run(["git", "status", "--porcelain"], clone).stdout, "")
+
+    def test_browser_orders_sync_validation_generation_and_open(self) -> None:
+        clone = self.network.clone("agent-a", "codex")
+        events: list[str] = []
+        generated_at = "2026-07-20T12:00:00Z"
+        sync = {
+            "synced": True,
+            "stale": False,
+            "reason": None,
+            "pending_local_commits": False,
+        }
+        payload = {
+            "generated_at": generated_at,
+            "freshness": {
+                "synchronization": "synchronized_when_generated",
+                "generated_at": generated_at,
+                "newest_memory_at": None,
+                "newest_memory_included": True,
+                "pending_local_commits": False,
+                "stale": False,
+                "reason": None,
+            },
+            "sync": sync,
+            "stats": {"current": 0, "history": 0, "conflicts": 0, "agents": 0, "imports": 0},
+            "memories": [],
+            "conflicts": [],
+            "agents": [],
+            "imports": [],
+        }
+
+        def synchronized(*_args: object, **_kwargs: object) -> dict:
+            events.append("sync")
+            return sync
+
+        def validated(*_args: object, **_kwargs: object) -> dict:
+            events.append("validate")
+            return {"ok": True, "errors": []}
+
+        def projected(*_args: object, **_kwargs: object) -> dict:
+            events.append("generate")
+            return payload
+
+        def opened(url: str) -> bool:
+            events.append("open")
+            self.assertTrue(Path(url.removeprefix("file://")).exists())
+            return True
+
+        with (
+            mock.patch.object(megabrain_runtime, "sync_repo", side_effect=synchronized),
+            mock.patch.object(megabrain_runtime, "command_validate", side_effect=validated),
+            mock.patch.object(megabrain_runtime, "browser_payload", side_effect=projected),
+            mock.patch.object(megabrain_runtime.webbrowser, "open", side_effect=opened),
+        ):
+            result = megabrain_runtime.command_browse(clone, no_open=False)
+
+        self.assertEqual(events, ["sync", "validate", "generate", "open"])
+        self.assertTrue(result["opened"])
+        self.assertEqual(result["freshness"], payload["freshness"])
+
+    def test_browser_offline_snapshot_is_explicitly_stale_and_value_free(self) -> None:
+        clone = self.network.clone("agent-a", "codex")
+        remembered = self.network.remember(
+            "agent-a",
+            subject="browser.synthetic_offline",
+            summary="The synthetic offline memory stays private.",
+            tags=["browser", "offline"],
+        )
+        missing_remote = self.network.root / "unavailable.git"
+        run(["git", "remote", "set-url", "origin", str(missing_remote)], clone)
+
+        generated = self.network.command("agent-a", "browse", None, "--no-open")
+
+        self.assertTrue(generated["generated"])
+        self.assertTrue(generated["freshness"]["stale"])
+        self.assertEqual(generated["freshness"]["synchronization"], "incomplete")
+        self.assertEqual(generated["freshness"]["reason"], "remote_unavailable")
+        self.assertTrue(generated["freshness"]["newest_memory_included"])
+        receipt = json.dumps(generated["freshness"])
+        self.assertNotIn(remembered["memory_id"], receipt)
+        self.assertNotIn("browser.synthetic_offline", receipt)
+        self.assertNotIn(str(missing_remote), receipt)
 
     def test_sync_refuses_to_push_a_committed_invalid_record(self) -> None:
         clone = self.network.clone("agent-a", "codex")
@@ -1102,7 +1204,7 @@ raise SystemExit(99)
             "--no-open",
         )
 
-        self.assertEqual(first["message"], "MegaBrain is ready.")
+        self.assertEqual(first["message"], ONBOARDING_MESSAGE)
         self.assertEqual(first["harness"], "codex")
         self.assertTrue(first["clone_created"])
         self.assertTrue(first["identity_created"])
@@ -1246,7 +1348,7 @@ raise SystemExit(1)
         result = json.loads(completed.stdout)
         self.assertTrue(result["repository_created"])
         self.assertEqual(result["repository"], "synthetic-user/megabrain-data")
-        self.assertEqual(result["message"], "MegaBrain is ready.")
+        self.assertEqual(result["message"], ONBOARDING_MESSAGE)
         log = (self.network.root / "gh.log").read_text(encoding="utf-8")
         self.assertIn("repo create synthetic-user/megabrain-data --private", log)
         self.assertNotIn("--public", log)
@@ -1269,7 +1371,7 @@ raise SystemExit(1)
         completed = self.run_interrupted_setup(home, remote)
         result = json.loads(completed.stdout)
 
-        self.assertEqual(result["message"], "MegaBrain is ready.")
+        self.assertEqual(result["message"], ONBOARDING_MESSAGE)
         self.assertTrue((remote / "refs" / "heads" / "main").exists())
         self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
         workflow_history = run(
@@ -1284,7 +1386,7 @@ raise SystemExit(1)
         completed = self.run_interrupted_setup(home, remote)
         result = json.loads(completed.stdout)
 
-        self.assertEqual(result["message"], "MegaBrain is ready.")
+        self.assertEqual(result["message"], ONBOARDING_MESSAGE)
         self.assertTrue((remote / "refs" / "heads" / "main").exists())
         self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
 

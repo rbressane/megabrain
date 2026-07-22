@@ -23,9 +23,9 @@ If a user gives you this repository and asks to install it, including with a sho
 5. If setup returns `GITHUB_AUTH_REQUIRED`, obtain the user's approval, complete `gh auth login`, and retry.
 6. Do not select a repository or clone path for the user. Setup creates or finds the authenticated account's private `megabrain-data` repository automatically.
 7. Remove the temporary source checkout after setup succeeds.
-8. Report only `MegaBrain is ready.` unless the user asks for technical details.
+8. Report the compact completion message: `MegaBrain is ready.` followed by `Say "Synchronize and open my MegaBrain" anytime to synchronize, validate, and browse your private Brain locally.`
 
-Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, installs `~/.local/bin/megabrain`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser. The command resolves through the managed current-runtime link so later activations switch it atomically. Setup refuses to overwrite an unrelated executable.
+Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, installs `~/.local/bin/megabrain`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser. The command resolves through the managed current-runtime link so later activations switch it atomically. Setup refuses to overwrite an unrelated executable. The browser is a private static snapshot; `Synchronize and open my MegaBrain` is the normal return action that synchronizes, validates, regenerates, and opens it.
 
 If `~/.local/bin` is not on `PATH`, setup returns the exact one-line export required for the current shell. It never edits shell startup files.
 

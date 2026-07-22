@@ -16,6 +16,7 @@ That is the complete setup request. An agent opening this repository must treat 
 
 ```text
 MegaBrain is ready.
+Say "Synchronize and open my MegaBrain" anytime to synchronize, validate, and browse your private Brain locally.
 ```
 
 That private repository starts with zero personal memories. You do not choose folders, configure Git, or identify which supported agent you are using.
@@ -36,7 +37,8 @@ MegaBrain: saved 1 durable memory.
 
 Other natural actions include:
 
-- `Open my MegaBrain`
+- `Synchronize and open my MegaBrain`
+- `Open my MegaBrain` (the same refresh workflow)
 - `Check MegaBrain`
 - `Update MegaBrain`
 - `Connect this agent to my MegaBrain`
@@ -95,7 +97,7 @@ It accepts structured JSON, rejects transcript/secret/private-path-shaped input 
 
 ## Browse And Import
 
-Ask an installed agent to `Open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. The command reports the machine where the browser opened, because the browser is local to the agent host. Markdown remains authoritative and the generated browser is ignored by Git.
+Ask an installed agent to `Synchronize and open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git.
 
 To import knowledge, tell an installed agent:
 
