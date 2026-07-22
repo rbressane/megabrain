@@ -17,6 +17,8 @@ from unittest import mock
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = SOURCE_ROOT / "skill" / "megabrain" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+import bootstrap as bootstrap_module  # noqa: E402
+
 SPEC = importlib.util.spec_from_file_location("megabrain_runtime", SCRIPTS / "megabrain.py")
 assert SPEC is not None and SPEC.loader is not None
 megabrain_runtime = importlib.util.module_from_spec(SPEC)
@@ -240,6 +242,83 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
             expected=expected,
         )
 
+    def create_runtime_distribution(
+        self,
+        name: str,
+        versions: list[str],
+        *,
+        invalid_version: str | None = None,
+        protocol_versions: dict[str, int] | None = None,
+    ) -> tuple[Path, Path, str]:
+        work = self.network.root / f"{name}-work"
+        remote = self.network.root / f"{name}.git"
+        shutil.copytree(
+            SOURCE_ROOT,
+            work,
+            ignore=shutil.ignore_patterns(".git", ".context", ".megabrain", "__pycache__", "*.pyc"),
+        )
+        run(["git", "init", "--initial-branch=main"], work)
+        run(["git", "config", "user.name", "MegaBrain Release Tests"], work)
+        run(["git", "config", "user.email", "releases@example.invalid"], work)
+        manifest_path = work / "skill" / "megabrain" / "runtime.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        current = str(manifest["version"])
+        run(["git", "add", "."], work)
+        run(["git", "commit", "-m", f"release: v{current}"], work)
+        run(["git", "tag", f"v{current}"], work)
+        for version in versions:
+            manifest["version"] = version
+            if protocol_versions and version in protocol_versions:
+                manifest["protocol_version"] = protocol_versions[version]
+                helper_path = work / "skill" / "megabrain" / "scripts" / "megabrain.py"
+                helper_text = helper_path.read_text(encoding="utf-8")
+                helper_text = re.sub(
+                    r"^SUPPORTED_PROTOCOL = \d+$",
+                    f"SUPPORTED_PROTOCOL = {protocol_versions[version]}",
+                    helper_text,
+                    flags=re.MULTILINE,
+                )
+                helper_path.write_text(helper_text, encoding="utf-8")
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            if version == invalid_version:
+                (work / "skill" / "megabrain" / "scripts" / "cli.py").unlink()
+            run(["git", "add", "-A"], work)
+            run(["git", "commit", "-m", f"release: v{version}"], work)
+            run(["git", "tag", f"v{version}"], work)
+        run(["git", "init", "--bare", "--initial-branch=main", str(remote)], self.network.root)
+        run(["git", "remote", "add", "release", str(remote)], work)
+        run(["git", "push", "release", "main", "--tags"], work)
+        run(["git", "checkout", f"v{current}"], work)
+        return work, remote, current
+
+    def product_feedback_payload(self, **overrides: object) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "category": "missing_command",
+            "title": "Add a synthetic status command",
+            "mission": "Give installed users one stable command for synthetic status checks.",
+            "observation": "A supported agent had to repeat three internal helper calls to answer one status question.",
+            "why_product": "The workaround applies to every supported agent and does not depend on private context.",
+            "current_behavior": "Runtime v1.0.0 exposes the internal calls but no first-class status command.",
+            "expected_behavior": "A first-class command returns one concise validated status report.",
+            "reproduction": [
+                "Install a synthetic stable runtime.",
+                "Request product status from a supported agent.",
+                "Observe repeated internal helper calls.",
+            ],
+            "scope": ["Consumer CLI", "Shipped skill instructions", "Synthetic acceptance tests"],
+            "acceptance_criteria": [
+                "The command is available after setup.",
+                "The output contains no private Brain data.",
+            ],
+            "tests": ["Exercise the command with a synthetic empty Brain.", "Verify offline failure is concise."],
+            "documentation": ["Document the command in README.md and INSTALL.md."],
+            "privacy_constraints": ["Use only public product version identifiers."],
+            "release_notes": "Ship in the next compatible minor release with no protocol migration.",
+            "evidence": ["Synthetic runtime v1.0.0", "Public product documentation"],
+        }
+        payload.update(overrides)
+        return payload
+
     def test_clean_repository_install_is_idempotent_and_uninstall_is_scoped(self) -> None:
         clone = self.network.clone("codex")
         self.assertEqual(list((clone / "brain" / "memories").rglob("*.md")), [])
@@ -266,6 +345,15 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertTrue((clone / "brain" / "agents" / f"{identity['id']}.md").exists())
         self.assertIn((home / ".megabrain" / "runtime").resolve(), link.resolve().parents)
         self.assertFalse((clone / "skill").exists())
+        command = home / ".local" / "bin" / "megabrain"
+        self.assertTrue(command.is_symlink())
+        self.assertIn((home / ".megabrain" / "runtime").resolve(), command.resolve().parents)
+        help_result = run([str(command), "--help"], home, env={"HOME": str(home)})
+        self.assertIn("update", help_result.stdout)
+        self.assertIn("feedback", help_result.stdout)
+        self.assertFalse(first_result["command"]["on_path"])
+        self.assertIn("export PATH=", first_result["command"]["path_notice"])
+        self.assertFalse(second_result["command"]["changed"])
 
         doctor = self.network.command("codex", "doctor", expected=1)
         disconnected = run(
@@ -290,6 +378,218 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertTrue(doctor["checks"]["remote_access"]["ok"])
         self.assertEqual(doctor["checks"]["privacy"]["status"], "non_github_remote")
         self.assertFalse((clone / ".github" / "workflows" / "validate.yml").exists())
+
+    def test_setup_refuses_to_overwrite_an_unrelated_megabrain_command(self) -> None:
+        home = self.network.root / "command-collision-home"
+        home.mkdir()
+        command = home / ".local" / "bin" / "megabrain"
+        command.parent.mkdir(parents=True)
+        command.write_text("#!/bin/sh\necho unrelated\n", encoding="utf-8")
+        command.chmod(0o755)
+
+        refused = run(
+            [
+                "python3", str(SOURCE_ROOT / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(SOURCE_ROOT), "--no-open",
+            ],
+            SOURCE_ROOT,
+            expected=2,
+        )
+
+        error = json.loads(refused.stderr)["error"]
+        self.assertEqual(error["code"], "COMMAND_PATH_OCCUPIED")
+        self.assertEqual(command.read_text(encoding="utf-8"), "#!/bin/sh\necho unrelated\n")
+
+    def test_first_class_update_is_current_without_mutating_check(self) -> None:
+        distribution, remote, current_version = self.create_runtime_distribution("current-release", [])
+        home = self.network.root / "current-release-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+
+        checked = run([str(command), "update", "--check"], home, env={"HOME": str(home)})
+        self.assertIn(f"MegaBrain v{current_version} is current.", checked.stdout)
+        self.assertIn("Stable gap: 0 release(s), 0 commit(s), 0 merged PR(s) behind.", checked.stdout)
+        self.assertFalse((home / ".megabrain" / "update-state.json").exists())
+
+        no_op = run([str(command), "update", "--json"], home, env={"HOME": str(home)})
+        no_op_report = json.loads(no_op.stdout)
+        self.assertFalse(no_op_report["updated"])
+        self.assertEqual(no_op_report["active_version"], current_version)
+        self.assertEqual(no_op_report["active_version"], no_op_report["latest_stable_version"])
+
+    def test_repository_glance_counts_releases_commits_merges_and_open_previews(self) -> None:
+        work = self.network.root / "glance-work"
+        remote = self.network.root / "glance.git"
+        work.mkdir()
+        run(["git", "init", "--initial-branch=main"], work)
+        run(["git", "config", "user.name", "MegaBrain Glance Tests"], work)
+        run(["git", "config", "user.email", "glance@example.invalid"], work)
+        marker = work / "marker.txt"
+        marker.write_text("stable one\n", encoding="utf-8")
+        run(["git", "add", "marker.txt"], work)
+        run(["git", "commit", "-m", "release: v1.0.0"], work)
+        run(["git", "tag", "v1.0.0"], work)
+
+        run(["git", "checkout", "-b", "synthetic-feature"], work)
+        marker.write_text("stable one\nfeature\n", encoding="utf-8")
+        run(["git", "add", "marker.txt"], work)
+        run(["git", "commit", "-m", "feat: add synthetic glance"], work)
+        run(["git", "checkout", "main"], work)
+        run(
+            [
+                "git", "merge", "--no-ff", "synthetic-feature",
+                "-m", "Merge pull request #41 from synthetic/feature",
+                "-m", "Add synthetic repository glance",
+            ],
+            work,
+        )
+        run(["git", "tag", "v1.1.0"], work)
+        marker.write_text("stable one\nfeature\nstable two\n", encoding="utf-8")
+        run(["git", "add", "marker.txt"], work)
+        run(["git", "commit", "-m", "release: v1.2.0"], work)
+        run(["git", "tag", "v1.2.0"], work)
+        marker.write_text("stable one\nfeature\nstable two\npreview\n", encoding="utf-8")
+        run(["git", "add", "marker.txt"], work)
+        run(["git", "commit", "-m", "feat: preview future work"], work)
+        run(["git", "clone", "--bare", str(work), str(remote)], self.network.root)
+
+        open_work = {
+            "available": True,
+            "total": 2,
+            "draft": 1,
+            "ready": 1,
+            "previews": [
+                {"number": 43, "title": "Draft synthetic work", "draft": True},
+                {"number": 42, "title": "Ready synthetic work", "draft": False},
+            ],
+        }
+        with mock.patch.object(bootstrap_module, "open_product_work", return_value=open_work):
+            glance = bootstrap_module.repository_glance(str(remote), "1.0.0", "1.2.0", "1.2.0")
+
+        self.assertTrue(glance["available"])
+        self.assertEqual(glance["included"]["releases"], 2)
+        self.assertEqual(glance["included"]["commits"], 3)
+        self.assertEqual(glance["included"]["merged_prs"], 1)
+        self.assertEqual(glance["included"]["highlights"][0]["number"], 41)
+        self.assertEqual(glance["development"]["commits_ahead"], 1)
+        self.assertEqual(glance["open_work"], open_work)
+
+    def test_open_work_metadata_failures_are_non_fatal_and_secret_free(self) -> None:
+        with mock.patch.object(bootstrap_module, "github_repository", return_value="synthetic/megabrain"):
+            with mock.patch.object(bootstrap_module.shutil, "which", return_value=None):
+                self.assertEqual(bootstrap_module.open_product_work("synthetic"), {"available": False})
+            malformed = subprocess.CompletedProcess(["gh"], 0, stdout="not-json", stderr="token=synthetic")
+            with mock.patch.object(bootstrap_module.shutil, "which", return_value="/synthetic/gh"):
+                with mock.patch.object(bootstrap_module, "run", return_value=malformed):
+                    result = bootstrap_module.open_product_work("synthetic")
+        self.assertEqual(result, {"available": False})
+        self.assertNotIn("token", json.dumps(result))
+
+    def test_feedback_renderer_is_offline_deterministic_and_writes_only_explicitly(self) -> None:
+        guard_bin = self.network.root / "feedback-guard-bin"
+        guard_bin.mkdir()
+        network_log = self.network.root / "feedback-network.log"
+        guard = """#!/usr/bin/env python3
+import os
+from pathlib import Path
+Path(os.environ["FEEDBACK_NETWORK_LOG"]).write_text("network command invoked\\n", encoding="utf-8")
+raise SystemExit(99)
+"""
+        for name in ("git", "gh"):
+            executable = guard_bin / name
+            executable.write_text(guard, encoding="utf-8")
+            executable.chmod(0o755)
+        environment = {
+            "PATH": str(guard_bin) + os.pathsep + os.environ["PATH"],
+            "FEEDBACK_NETWORK_LOG": str(network_log),
+        }
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+        payload = self.product_feedback_payload()
+
+        first = run(command, self.network.root, stdin=payload, env=environment)
+        second = run(command, self.network.root, stdin=payload, env=environment)
+
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertIn("# MegaBrain Product Bake Candidate", first.stdout)
+        self.assertIn("three internal helper calls", first.stdout)
+        self.assertIn("Never access a private Brain.", first.stdout)
+        self.assertIn("Do not push, publish, merge, tag or release", first.stdout)
+        self.assertFalse(network_log.exists())
+        self.assertEqual(list(self.network.root.glob("*Product*Bake*")), [])
+
+        destination = self.network.root / "explicit-feedback.md"
+        written = run([*command, "--output", str(destination)], self.network.root, stdin=payload, env=environment)
+        self.assertEqual(destination.read_text(encoding="utf-8"), written.stdout)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(network_log.exists())
+
+    def test_feedback_rejects_non_product_transcripts_private_paths_and_secrets_without_echo(self) -> None:
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+
+        for category in ("personal_preference", "private_fact"):
+            with self.subTest(category=category):
+                private_finding = run(
+                    command,
+                    self.network.root,
+                    stdin=self.product_feedback_payload(category=category),
+                    expected=2,
+                )
+                self.assertIn("not product-wide", private_finding.stderr)
+                self.assertNotIn("# MegaBrain Product Bake Candidate", private_finding.stdout)
+
+        transcript = "User: Please store this.\nAssistant: I stored the private value."
+        rejected_transcript = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(observation=transcript),
+            expected=2,
+        )
+        self.assertIn("transcript-shaped", rejected_transcript.stderr)
+        self.assertNotIn(transcript, rejected_transcript.stderr)
+
+        private_path = "/Users/synthetic/private-brain"
+        rejected_path = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(evidence=[private_path]),
+            expected=2,
+        )
+        self.assertIn("Private filesystem paths", rejected_path.stderr)
+        self.assertNotIn(private_path, rejected_path.stderr)
+
+        secret = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+        rejected_secret = run(
+            command,
+            self.network.root,
+            stdin=self.product_feedback_payload(observation=f"The synthetic value was {secret}"),
+            expected=2,
+        )
+        self.assertIn("secret material", rejected_secret.stderr)
+        self.assertNotIn(secret, rejected_secret.stderr + rejected_secret.stdout)
+
+    def test_feedback_malformed_input_and_output_collisions_are_actionable(self) -> None:
+        command = ["python3", str(SOURCE_ROOT / "skill" / "megabrain" / "scripts" / "cli.py"), "feedback", "--stdin"]
+        malformed = run(command, self.network.root, stdin={"category": "missing_command"}, expected=2)
+        self.assertIn("Missing required fields", malformed.stderr)
+        existing = self.network.root / "existing-feedback.md"
+        existing.write_text("preserve me\n", encoding="utf-8")
+        refused = run(
+            [*command, "--output", str(existing)],
+            self.network.root,
+            stdin=self.product_feedback_payload(),
+            expected=2,
+        )
+        self.assertIn("already exists", refused.stderr)
+        self.assertEqual(existing.read_text(encoding="utf-8"), "preserve me\n")
 
     def test_three_agents_share_correct_and_forget_immutable_memories(self) -> None:
         self.network.clone("agent-a", "codex")
@@ -542,6 +842,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
 
     def test_ingestion_is_idempotent_deduplicated_and_untrusted(self) -> None:
         self.network.clone("agent-a", "codex")
+        synthetic_token = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         self.network.remember(
             "agent-a", subject="existing.fact", summary="A durable existing fact.", tags=["existing"]
         )
@@ -573,7 +874,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
                 {
                     "kind": "resource",
                     "subject": "secret.value",
-                    "summary": "api_key=sk-abcdefghijklmnopqrstuvwxyz123456",
+                    "summary": "api" + "_key=" + synthetic_token,
                     "tags": ["secret"],
                 },
             ],
@@ -606,7 +907,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         rejected = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         self.assertEqual(rejected["error"]["code"], "RAW_TRANSCRIPT_REJECTED")
 
-        secret_value = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        secret_value = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         payload["summary"] = f"The value is {secret_value}"
         rejected_secret = self.network.command("agent-a", "remember", payload, "--stdin", expected=2)
         serialized = json.dumps(rejected_secret)
@@ -634,7 +935,7 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         broken = original.with_name(f"synthetic-{new_id}.md")
         broken.write_text(
             f"<!-- megabrain-meta\n{json.dumps(meta, indent=2, sort_keys=True)}\n-->\n\n"
-            "# Correction: synthetic topic\n\npassword=synthetic-forbidden-value\n",
+            "# Correction: synthetic topic\n\n" + "pass" + "word=synthetic-forbidden-value\n",
             encoding="utf-8",
         )
 
@@ -657,6 +958,9 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         self.assertEqual([path for path in forbidden if (SOURCE_ROOT / path).exists()], [])
         skill = (SOURCE_ROOT / "skill" / "megabrain" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Do not capture raw conversation, temporary debugging state", skill)
+        self.assertIn("Product Feedback Classification", skill)
+        self.assertIn("Remain silent for personal preferences or facts", skill)
+        self.assertIn("Never transmit, publish, open an issue", skill)
 
     def test_browser_projects_all_views_and_escapes_memory_content(self) -> None:
         clone = self.network.clone("agent-a", "codex")
@@ -1166,6 +1470,7 @@ raise SystemExit(1)
         self.assertEqual(json.loads(installed.stdout)["runtime_version"], current_version)
         clone = home / ".megabrain" / "clones" / "codex"
         helper = home / ".codex" / "skills" / "megabrain" / "scripts" / "megabrain.py"
+        command = home / ".local" / "bin" / "megabrain"
         remembered = run(
             ["python3", str(helper), "remember", "--stdin"],
             home,
@@ -1178,25 +1483,39 @@ raise SystemExit(1)
             env={"HOME": str(home)},
         )
         memory_id = json.loads(remembered.stdout)["memory_id"]
-        bootstrap = home / ".megabrain" / "runtime" / "current" / "skill" / "megabrain" / "scripts" / "bootstrap.py"
+        checked = run(
+            [str(command), "update", "--check", "--json"],
+            home,
+            env={"HOME": str(home)},
+        )
+        check_result = json.loads(checked.stdout)
+        self.assertEqual(check_result["schema"], "megabrain.update.v1")
+        self.assertTrue(check_result["update_available"])
+        self.assertEqual(check_result["repository"]["stable_gap"]["releases"], 1)
+        self.assertEqual(check_result["repository"]["stable_gap"]["commits"], 1)
+        self.assertFalse(check_result["repository"]["open_work"]["available"])
+        self.assertFalse((home / ".megabrain" / "update-state.json").exists())
 
-        updated = run(["python3", str(bootstrap), "update", "--home", str(home)], home)
+        updated = run([str(command), "update", "--json"], home, env={"HOME": str(home)})
         update_result = json.loads(updated.stdout)
         self.assertTrue(update_result["updated"])
-        self.assertEqual(update_result["notice"], f"MegaBrain: updated to v{next_version}.")
+        self.assertEqual(update_result["previous_version"], current_version)
+        self.assertEqual(update_result["active_version"], next_version)
         self.assertEqual(
             json.loads((helper.resolve().parents[1] / "runtime.json").read_text())["version"],
             next_version,
         )
 
         rolled_back = run(
-            ["python3", str(bootstrap), "update", "--home", str(home), "--version", current_version],
+            [str(command), "update", "--version", current_version, "--json"],
             home,
+            env={"HOME": str(home)},
         )
-        self.assertEqual(json.loads(rolled_back.stdout)["current_version"], current_version)
+        self.assertEqual(json.loads(rolled_back.stdout)["active_version"], current_version)
         self.assertTrue(any(memory_id in path.name for path in (clone / "brain" / "memories").rglob("*.md")))
         self.assertFalse((clone / "skill").exists())
 
+        bootstrap = home / ".megabrain" / "runtime" / "current" / "skill" / "megabrain" / "scripts" / "bootstrap.py"
         update_state_path = home / ".megabrain" / "update-state.json"
         update_state_path.unlink()
         automatic = run(
@@ -1209,6 +1528,157 @@ raise SystemExit(1)
             home,
         )
         self.assertEqual(json.loads(throttled.stdout)["reason"], "check_not_due")
+
+    def test_major_update_requires_explicit_approval(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        current_major = int(str(current_metadata["version"]).split(".")[0])
+        next_major = f"{current_major + 1}.0.0"
+        distribution, remote, current = self.create_runtime_distribution("major-release", [next_major])
+        home = self.network.root / "major-update-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+
+        refused = run(
+            [str(command), "update", "--json"],
+            home,
+            expected=3,
+            env={"HOME": str(home)},
+        )
+        result = json.loads(refused.stdout)
+        self.assertTrue(result["approval_required"])
+        self.assertEqual(result["approval_reason"], "major_version")
+        self.assertEqual(result["active_version"], current)
+        self.assertEqual(
+            json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))["runtime"]["version"],
+            current,
+        )
+
+        approved = run(
+            [str(command), "update", "--approve-major", "--json"],
+            home,
+            env={"HOME": str(home)},
+        )
+        self.assertEqual(json.loads(approved.stdout)["active_version"], next_major)
+
+    def test_invalid_release_leaves_the_previous_runtime_active(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        invalid_version = f"{major}.{minor + 1}.0"
+        distribution, remote, current = self.create_runtime_distribution(
+            "invalid-release",
+            [invalid_version],
+            invalid_version=invalid_version,
+        )
+        home = self.network.root / "invalid-update-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+
+        failed = run(
+            [str(command), "update", "--json"],
+            home,
+            expected=2,
+            env={"HOME": str(home)},
+        )
+        error = json.loads(failed.stderr)
+        self.assertEqual(error["error"]["code"], "RUNTIME_INVALID")
+        config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["runtime"]["version"], current)
+        active = home / ".megabrain" / "runtime" / "current" / "skill" / "megabrain" / "runtime.json"
+        self.assertEqual(json.loads(active.read_text(encoding="utf-8"))["version"], current)
+
+    def test_protocol_update_requires_explicit_approval(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        next_version = f"{major}.{minor + 1}.0"
+        next_protocol = int(current_metadata["protocol_version"]) + 1
+        distribution, remote, current = self.create_runtime_distribution(
+            "protocol-release",
+            [next_version],
+            protocol_versions={next_version: next_protocol},
+        )
+        home = self.network.root / "protocol-update-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+
+        refused = run(
+            [str(command), "update", "--json"],
+            home,
+            expected=3,
+            env={"HOME": str(home)},
+        )
+        report = json.loads(refused.stdout)
+        self.assertEqual(report["approval_reason"], "protocol_version")
+        self.assertEqual(report["active_version"], current)
+        approved = run(
+            [str(command), "update", "--approve-major", "--json"],
+            home,
+            env={"HOME": str(home)},
+        )
+        self.assertEqual(json.loads(approved.stdout)["active_version"], next_version)
+
+    def test_rollback_rejects_a_runtime_below_the_brain_minimum(self) -> None:
+        current_metadata = json.loads(
+            (SOURCE_ROOT / "skill" / "megabrain" / "runtime.json").read_text(encoding="utf-8")
+        )
+        major, minor, _ = (int(part) for part in str(current_metadata["version"]).split("."))
+        next_version = f"{major}.{minor + 1}.0"
+        distribution, remote, current = self.create_runtime_distribution("rollback-minimum", [next_version])
+        home = self.network.root / "rollback-minimum-home"
+        home.mkdir()
+        run(
+            [
+                "python3", str(distribution / "install.py"), "setup", "--harness", "codex",
+                "--home", str(home), "--repository", str(self.network.remote), "--allow-local-remote",
+                "--distribution", str(remote), "--no-open",
+            ],
+            distribution,
+        )
+        command = home / ".local" / "bin" / "megabrain"
+        run([str(command), "update", "--json"], home, env={"HOME": str(home)})
+        brain = home / ".megabrain" / "clones" / "codex" / "megabrain.json"
+        manifest = json.loads(brain.read_text(encoding="utf-8"))
+        manifest["minimum_runtime"] = next_version
+        brain.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+        refused = run(
+            [str(command), "update", "--version", current, "--json"],
+            home,
+            expected=2,
+            env={"HOME": str(home)},
+        )
+        self.assertEqual(json.loads(refused.stderr)["error"]["code"], "RUNTIME_TOO_OLD")
+        config = json.loads((home / ".megabrain" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["runtime"]["version"], next_version)
 
     def test_outdated_runtime_can_read_but_refuses_new_writes(self) -> None:
         clone = self.network.clone("compatibility-agent", "codex")
