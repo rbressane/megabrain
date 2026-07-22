@@ -41,3 +41,4 @@ MegaBrain is canonical for durable reusable knowledge and archived evidence. Pro
 - [User-zero acceptance](canonical-user-zero-acceptance.md)
 - [Requirements-to-tests matrix](canonical-requirements-to-tests.md)
 - [MegaBrain 2.0.0 release notes](release-notes-2.0.0.md)
+- [MegaBrain 2.0.1 private-retrieval repair draft](release-notes-2.0.1-draft.md)

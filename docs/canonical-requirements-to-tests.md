@@ -15,6 +15,11 @@
 | Traversal, symlink, Unicode/confusable, frontmatter, count/expanded limits | separate owner allowlist preparer | `test_preparer_rejects_symlink_confusables_bad_frontmatter_and_secret_without_echo` |
 | Instruction text remains inert data | resource-only instruction candidate and read label | reviewed import test |
 | Scoped agent/channel capabilities and revocation | immutable policy revisions | scoped policy test |
+| Existing v2 owner with no policy can recover private retrieval explicitly | setup provenance migration plus one conservative immutable policy | `test_setup_migrates_registered_v2_agent_without_policy_or_provenance`; `test_installed_owner_local_cli_retrieves_private_but_not_sensitive_memory`; `test_claude_owner_local_cli_uses_its_exact_harness_policy` |
+| Setup is idempotent; revocation/deletion history is sticky | current-policy and Git-history guards | `test_setup_provisions_one_idempotent_owner_read_policy`; `test_setup_never_recreates_a_revoked_owner_policy`; `test_setup_never_recreates_policy_removed_from_current_tree` |
+| Model input and unsafe local state cannot assert trust | installed-path, mode, clone, identity, and committed-agent checks | private retrieval test with forged input; `test_insecure_local_identity_and_unbound_hermes_fail_closed` |
+| Zero-result diagnostics reveal no private values | value-free authorization counters | `test_diagnostics_count_policy_denials_without_private_values` |
+| Hermes without trusted in-process provenance remains denied and unprovisioned | `trusted_host` provenance gate; no setup policy | `test_insecure_local_identity_and_unbound_hermes_fail_closed` |
 | Derived cache has no write-back; watcher state external | deterministic cache and external state ledger | `test_derived_cache_external_intake_state_and_drift_are_non_authoritative` |
 | Explicit resumable migration and rollback boundary | v1→v2 commit and guarded Git revert | `test_explicit_v1_migration_and_git_revert_rollback_preserve_memory` |
 | Normal-language user-zero questions | memory/resource acceptance fixture | user-zero question test plus eight-price retrieval test |
