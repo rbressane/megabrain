@@ -2345,6 +2345,11 @@ def main() -> int:
     try:
         runtime_update = automatic_runtime_update() if args.command == "context" else None
         root = repo_root()
+        trusted_context = (
+            trusted_local_context(root)
+            if args.command in {"context", "resources", "resource-read"}
+            else None
+        )
         if args.command == "sync":
             require_compatible_runtime(root, writing=True)
             sync = sync_repo(root)
@@ -2356,7 +2361,7 @@ def main() -> int:
                 root,
                 read_input(),
                 args.limit,
-                trusted_context=trusted_local_context(root),
+                trusted_context=trusted_context,
             )
         elif args.command == "remember":
             result = command_remember(root, read_input())
@@ -2367,9 +2372,17 @@ def main() -> int:
         elif args.command == "ingest":
             result = command_ingest(root, read_input())
         elif args.command == "resources":
-            result = command_resource_list(root, read_input(required=False))
+            result = command_resource_list(
+                root,
+                read_input(required=False),
+                trusted_context=trusted_context,
+            )
         elif args.command == "resource-read":
-            result = command_resource_read(root, args.reference)
+            result = command_resource_read(
+                root,
+                args.reference,
+                trusted_context=trusted_context,
+            )
         elif args.command == "import-stage":
             result = command_import_stage(root, read_input())
         elif args.command == "coverage":

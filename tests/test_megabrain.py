@@ -18,6 +18,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = SOURCE_ROOT / "skill" / "megabrain" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import bootstrap as bootstrap_module  # noqa: E402
+import canonical as canonical_module  # noqa: E402
 
 SPEC = importlib.util.spec_from_file_location("megabrain_runtime", SCRIPTS / "megabrain.py")
 assert SPEC is not None and SPEC.loader is not None
@@ -732,6 +733,215 @@ raise SystemExit(99)
             1,
         )
 
+    def test_owner_policy_push_race_does_not_override_concurrent_revocation(self) -> None:
+        clone = self.network.clone("policy-race-agent")
+        concurrent = self.network.clone("policy-race-revoker")
+        identity = {
+            "id": str(uuid.uuid4()),
+            "harness": "codex",
+            "display_name": "Policy Race Agent",
+            "created_at": "2026-08-10T00:00:00Z",
+            "context_provenance": "owner_local",
+        }
+        payload = bootstrap_module.owner_read_policy(identity)
+        assert payload is not None
+        original_run = bootstrap_module.run
+        injected = False
+
+        def run_with_concurrent_revocation(command, cwd, **kwargs):
+            nonlocal injected
+            if not injected and cwd == clone and command[:2] == ["git", "push"]:
+                injected = True
+                allowed, allowed_path = canonical_module.create_policy(
+                    concurrent,
+                    payload,
+                    created_by=identity["id"],
+                )
+                _, revoked_path = canonical_module.create_policy(
+                    concurrent,
+                    payload,
+                    created_by=identity["id"],
+                    previous=allowed,
+                    revoked=True,
+                )
+                run(
+                    [
+                        "git",
+                        "add",
+                        "--",
+                        str(allowed_path.relative_to(concurrent)),
+                        str(revoked_path.relative_to(concurrent)),
+                    ],
+                    concurrent,
+                )
+                run(["git", "commit", "-m", "policy: revoke synthetic owner access"], concurrent)
+                run(["git", "push", "origin", "HEAD:main"], concurrent)
+            return original_run(command, cwd, **kwargs)
+
+        with mock.patch.object(bootstrap_module, "run", side_effect=run_with_concurrent_revocation):
+            created = bootstrap_module.ensure_owner_read_policy(clone, identity)
+
+        self.assertTrue(injected)
+        self.assertFalse(created)
+        current = [
+            policy
+            for policy in canonical_module.current_policies(clone)
+            if policy["agent_id"] == identity["id"]
+        ]
+        self.assertEqual(current, [])
+
+        audit = self.network.clone("policy-race-audit")
+        remote_current = [
+            policy
+            for policy in canonical_module.current_policies(audit)
+            if policy["agent_id"] == identity["id"]
+        ]
+        self.assertEqual(remote_current, [])
+
+    def test_owner_policy_push_race_reconciliation_failures_disable_local_allow(self) -> None:
+        for failed_step in ("fetch", "history", "rebase"):
+            with self.subTest(failed_step=failed_step):
+                clone = self.network.clone(f"policy-{failed_step}-failure-agent")
+                concurrent = self.network.clone(f"policy-{failed_step}-failure-revoker")
+                identity = {
+                    "id": str(uuid.uuid4()),
+                    "harness": "codex",
+                    "display_name": f"Policy {failed_step.title()} Failure Agent",
+                    "created_at": "2026-08-10T00:00:00Z",
+                    "context_provenance": "owner_local",
+                }
+                payload = bootstrap_module.owner_read_policy(identity)
+                assert payload is not None
+                original_run = bootstrap_module.run
+                concurrent_injected = False
+                failure_injected = False
+
+                def run_with_failed_reconciliation(command, cwd, **kwargs):
+                    nonlocal concurrent_injected, failure_injected
+                    if (
+                        not concurrent_injected
+                        and cwd == clone
+                        and command[:2] == ["git", "push"]
+                    ):
+                        concurrent_injected = True
+                        allowed, allowed_path = canonical_module.create_policy(
+                            concurrent,
+                            payload,
+                            created_by=identity["id"],
+                        )
+                        _, revoked_path = canonical_module.create_policy(
+                            concurrent,
+                            payload,
+                            created_by=identity["id"],
+                            previous=allowed,
+                            revoked=True,
+                        )
+                        run(
+                            [
+                                "git",
+                                "add",
+                                "--",
+                                str(allowed_path.relative_to(concurrent)),
+                                str(revoked_path.relative_to(concurrent)),
+                            ],
+                            concurrent,
+                        )
+                        run(
+                            ["git", "commit", "-m", f"policy: revoke before failed {failed_step}"],
+                            concurrent,
+                        )
+                        run(["git", "push", "origin", "HEAD:main"], concurrent)
+                    should_fail = (
+                        failed_step == "fetch" and command[:2] == ["git", "fetch"]
+                    ) or (
+                        failed_step == "history"
+                        and command[:3] == ["git", "log", "--format=%H"]
+                        and "origin/main" in command
+                    ) or (
+                        failed_step == "rebase"
+                        and command == ["git", "rebase", "origin/main"]
+                    )
+                    if concurrent_injected and not failure_injected and cwd == clone and should_fail:
+                        failure_injected = True
+                        return subprocess.CompletedProcess(
+                            command,
+                            1,
+                            stdout="",
+                            stderr=f"synthetic {failed_step} failure",
+                        )
+                    if (
+                        failed_step == "rebase"
+                        and failure_injected
+                        and cwd == clone
+                        and command == ["git", "rebase", "--abort"]
+                    ):
+                        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                    return original_run(command, cwd, **kwargs)
+
+                with mock.patch.object(
+                    bootstrap_module,
+                    "run",
+                    side_effect=run_with_failed_reconciliation,
+                ):
+                    created = bootstrap_module.ensure_owner_read_policy(clone, identity)
+
+                self.assertTrue(failure_injected)
+                self.assertFalse(created)
+                current = [
+                    policy
+                    for policy in canonical_module.current_policies(clone)
+                    if policy["agent_id"] == identity["id"]
+                ]
+                self.assertEqual(current, [])
+
+    def test_owner_policy_ambiguous_push_success_keeps_its_only_remote_allow(self) -> None:
+        clone = self.network.clone("policy-ambiguous-push-agent")
+        identity = {
+            "id": str(uuid.uuid4()),
+            "harness": "codex",
+            "display_name": "Policy Ambiguous Push Agent",
+            "created_at": "2026-08-10T00:00:00Z",
+            "context_provenance": "owner_local",
+        }
+        original_run = bootstrap_module.run
+        obscured_success = False
+
+        def run_with_obscured_push_success(command, cwd, **kwargs):
+            nonlocal obscured_success
+            if not obscured_success and cwd == clone and command[:2] == ["git", "push"]:
+                pushed = original_run(command, cwd, **kwargs)
+                self.assertEqual(pushed.returncode, 0)
+                obscured_success = True
+                return subprocess.CompletedProcess(
+                    command,
+                    1,
+                    stdout="",
+                    stderr="synthetic acknowledgement loss",
+                )
+            return original_run(command, cwd, **kwargs)
+
+        with mock.patch.object(bootstrap_module, "run", side_effect=run_with_obscured_push_success):
+            created = bootstrap_module.ensure_owner_read_policy(clone, identity)
+
+        self.assertTrue(obscured_success)
+        self.assertTrue(created)
+        local = [
+            policy
+            for policy in canonical_module.load_policies(clone)
+            if policy["agent_id"] == identity["id"]
+        ]
+        self.assertEqual(len(local), 1)
+        self.assertFalse(local[0]["revoked"])
+
+        audit = self.network.clone("policy-ambiguous-push-audit")
+        remote = [
+            policy
+            for policy in canonical_module.load_policies(audit)
+            if policy["agent_id"] == identity["id"]
+        ]
+        self.assertEqual(len(remote), 1)
+        self.assertFalse(remote[0]["revoked"])
+
     def test_setup_migrates_registered_v2_agent_without_policy_or_provenance(self) -> None:
         name = "existing-v2-agent"
         home = self.network.root / f"home-{name}"
@@ -822,6 +1032,103 @@ raise SystemExit(99)
             result["diagnostics"]["authorization"]["authorized_candidate_count"],
             1,
         )
+
+    def test_installed_owner_cli_reads_private_resources_but_source_invocation_fails_closed(self) -> None:
+        clone = self.network.clone("trusted-resource-agent", "codex")
+        identity = json.loads(
+            (clone / ".megabrain" / "local.json").read_text(encoding="utf-8")
+        )
+
+        def create_resource(title: str, sensitivity: str, body: str):
+            return canonical_module.create_resource(
+                clone,
+                {
+                    "resource_type": "runbook",
+                    "title": title,
+                    "owner": "synthetic-owner",
+                    "authority_domain": "synthetic-project",
+                    "sensitivity": sensitivity,
+                    "source_at": "2026-08-01T00:00:00Z",
+                    "verified_at": "2026-08-02T00:00:00Z",
+                    "freshness_at": None,
+                    "source": {
+                        "type": "user-statement",
+                        "locator": f"synthetic://resources/{sensitivity}",
+                        "fingerprint": canonical_module.content_fingerprint(body),
+                    },
+                    "body": body,
+                },
+                created_by=identity["id"],
+            )
+
+        private = create_resource(
+            "Synthetic private amber recovery runbook",
+            "private",
+            "Use the amber recovery sequence.",
+        )
+        sensitive = create_resource(
+            "Synthetic sensitive violet recovery runbook",
+            "sensitive",
+            "",
+        )
+        run(
+            [
+                "git",
+                "add",
+                "--",
+                str(private.path.relative_to(clone)),
+                str(sensitive.path.relative_to(clone)),
+            ],
+            clone,
+        )
+        run(["git", "commit", "-m", "resource: add synthetic protected runbooks"], clone)
+        run(["git", "push", "origin", "HEAD:main"], clone)
+
+        listed = self.network.command(
+            "trusted-resource-agent",
+            "resources",
+            {"query": "synthetic recovery runbook"},
+            "--stdin",
+        )
+        listed_ids = {item["revision_id"] for item in listed["resources"]}
+        self.assertIn(private.meta["revision_id"], listed_ids)
+        self.assertNotIn(sensitive.meta["revision_id"], listed_ids)
+        opened = self.network.command(
+            "trusted-resource-agent",
+            "resource-read",
+            None,
+            private.meta["uri"],
+        )
+        self.assertEqual(opened["content"], "Use the amber recovery sequence.\n")
+        denied_sensitive = self.network.command(
+            "trusted-resource-agent",
+            "resource-read",
+            None,
+            sensitive.meta["uri"],
+            expected=2,
+        )
+        self.assertEqual(denied_sensitive["error"]["code"], "RESOURCE_ACCESS_DENIED")
+
+        source_list = run(
+            ["python3", str(SCRIPTS / "megabrain.py"), "resources", "--stdin"],
+            clone,
+            stdin={"query": "synthetic recovery runbook"},
+            env={
+                "HOME": str(self.network.homes["trusted-resource-agent"]),
+                "MEGABRAIN_ROOT": str(clone),
+            },
+        )
+        self.assertEqual(json.loads(source_list.stdout)["resources"], [])
+        source_read = run(
+            ["python3", str(SCRIPTS / "megabrain.py"), "resource-read", private.meta["uri"]],
+            clone,
+            expected=2,
+            env={
+                "HOME": str(self.network.homes["trusted-resource-agent"]),
+                "MEGABRAIN_ROOT": str(clone),
+            },
+        )
+        self.assertEqual(json.loads(source_read.stderr)["error"]["code"], "RESOURCE_ACCESS_DENIED")
 
     def test_claude_owner_local_cli_uses_its_exact_harness_policy(self) -> None:
         self.network.clone("trusted-claude-agent", "claude")

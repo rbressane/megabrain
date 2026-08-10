@@ -671,6 +671,88 @@ def push_with_retry(root: Path) -> bool:
     return False
 
 
+def neutralize_owner_policy(
+    root: Path,
+    identity: dict[str, str],
+    policy: dict[str, Any],
+) -> None:
+    _, path = canonical.create_policy(
+        root,
+        policy,
+        created_by=identity["id"],
+        previous=policy,
+        revoked=True,
+    )
+    run(["git", "add", "--", str(path.relative_to(root))], root)
+    committed = run(
+        ["git", "commit", "-m", f"policy({identity['harness']}): neutralize provisional owner read"],
+        root,
+    )
+    if committed.returncode != 0:
+        path.unlink(missing_ok=True)
+        raise BootstrapError(
+            "POLICY_COMMIT_FAILED",
+            "The provisional owner read policy could not be neutralized.",
+        )
+
+
+def push_owner_policy_with_retry(
+    root: Path,
+    identity: dict[str, str],
+    policy: dict[str, Any],
+) -> tuple[bool, bool]:
+    active = True
+    policy_directory = f"brain/policies/{identity['id']}"
+    pending = run(["git", "rev-parse", "HEAD"], root)
+    if pending.returncode != 0 or not pending.stdout.strip():
+        neutralize_owner_policy(root, identity, policy)
+        return False, False
+    pending_commit = pending.stdout.strip()
+    for _ in range(3):
+        if run(["git", "push", "origin", "HEAD:main"], root).returncode == 0:
+            return True, active
+        fetched = run(["git", "fetch", "origin", "main"], root)
+        if fetched.returncode != 0:
+            if active:
+                neutralize_owner_policy(root, identity, policy)
+            return False, False
+        remote_history = run(
+            ["git", "log", "--format=%H", "origin/main", "--", policy_directory],
+            root,
+        )
+        if remote_history.returncode != 0:
+            if active:
+                neutralize_owner_policy(root, identity, policy)
+            return False, False
+        remote_commits = set(remote_history.stdout.split())
+        concurrent_policy = active and bool(remote_commits - {pending_commit})
+        if active and pending_commit in remote_commits and not concurrent_policy:
+            return True, True
+        if concurrent_policy:
+            neutralize_owner_policy(root, identity, policy)
+            active = False
+        rebased = run(["git", "rebase", "origin/main"], root)
+        if rebased.returncode != 0:
+            aborted = run(["git", "rebase", "--abort"], root)
+            if aborted.returncode != 0:
+                raise BootstrapError(
+                    "POLICY_RECONCILIATION_FAILED",
+                    "The provisional owner read policy could not be reconciled safely.",
+                )
+            if active:
+                neutralize_owner_policy(root, identity, policy)
+            return False, False
+        if active:
+            pending = run(["git", "rev-parse", "HEAD"], root)
+            if pending.returncode != 0 or not pending.stdout.strip():
+                neutralize_owner_policy(root, identity, policy)
+                return False, False
+            pending_commit = pending.stdout.strip()
+    if active:
+        neutralize_owner_policy(root, identity, policy)
+    return False, False
+
+
 def register_agent(root: Path, identity: dict[str, str]) -> bool:
     registry = root / "brain" / "agents" / f"{identity['id']}.md"
     if registry.exists():
@@ -737,9 +819,13 @@ def ensure_owner_read_policy(root: Path, identity: dict[str, str]) -> bool:
     if committed.returncode != 0:
         path.unlink(missing_ok=True)
         raise BootstrapError("POLICY_COMMIT_FAILED", "The owner read policy could not be committed.")
-    if not push_with_retry(root):
-        print("MegaBrain: owner read policy added locally; synchronization is pending.", file=sys.stderr)
-    return not value["revoked"]
+    synced, active = push_owner_policy_with_retry(root, identity, value)
+    if not synced:
+        print(
+            "MegaBrain: owner read policy synchronization did not complete; automatic access remains disabled.",
+            file=sys.stderr,
+        )
+    return active
 
 
 def instruction_block(command_path: Path) -> str:
