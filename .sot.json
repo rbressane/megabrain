@@ -1,0 +1,11 @@
+{
+  "protocol_version": "1.0",
+  "project_key": "megabrain",
+  "display_name": "MegaBrain",
+  "authority": {
+    "adapter": "markfolio-document",
+    "url": "https://markfolio.round6.co/megabrain-source-of-truth",
+    "document_id": "doc_Rb6yyFSDoVkDNs4l",
+    "external_id": "sot:megabrain"
+  }
+}

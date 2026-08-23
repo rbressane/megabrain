@@ -2,6 +2,10 @@
 
 This is the canonical MegaBrain product and protocol repository. Personal memories live only in separate private user repositories. Read [MEGABRAIN.md](MEGABRAIN.md) before changing the protocol, runtime, or helper.
 
+## Source of Truth
+
+Before material project work, read and follow https://markfolio.round6.co/raw/agent-sot-protocol.md. Resolve [.sot.json](.sot.json), read the bound canonical MegaBrain SOT, and never create a duplicate authority.
+
 ## Commands
 
 - Tests: `python3 -m unittest discover -s tests -v`
