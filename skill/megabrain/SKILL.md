@@ -13,12 +13,12 @@ Keep filesystem paths, Git operations, harness flags, and helper commands intern
 
 - **Set up my MegaBrain**: after the owner approves private GitHub access, run `python3 "$SKILL_DIR/scripts/bootstrap.py" setup --harness <this harness>`. It creates or finds the owner's private repository, provisions the managed clone, connects this agent, validates it, and opens the browser.
 - **Connect this agent**: run the same bootstrap command with `connect` for the active harness. Reuse the owner's configured private repository.
-- **Synchronize and open my MegaBrain** or **Open my MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" open --harness <this harness>`. Both phrases use the same synchronized validation, regeneration, and local-open workflow. Report only the safe freshness receipt and host, not paths or private content.
+- **Synchronize and open my MegaBrain** or **Open my MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" open --harness <this harness>`. Both phrases and the installed `megabrain open` command use the same synchronized validation, regeneration, and local-open workflow. Report only the safe freshness receipt and host, not paths or private content.
 - **Check MegaBrain**: run `python3 "$SKILL_DIR/scripts/bootstrap.py" status --harness <this harness>` and summarize only the user-relevant health state.
 - **Update MegaBrain**: run `megabrain update`. Show its compact report. Use `megabrain update --version X.Y.Z` only for an explicit recovery or rollback request. If a major or protocol-version transition requires approval, show the requested transition and obtain the owner's approval before rerunning with `--approve-major`.
 - **Disconnect this agent**: confirm the user's intent, then run `python3 "$SKILL_DIR/scripts/bootstrap.py" disconnect --harness <this harness>`. The private repository and synchronized local clone are retained.
 
-If setup reports `GITHUB_AUTH_REQUIRED`, ask the owner to approve GitHub authentication, complete `gh auth login`, and retry. Never create a repository unless the user has explicitly requested setup or connection. A successful setup reports `MegaBrain is ready.` and teaches the owner to say `Synchronize and open my MegaBrain` whenever they want to refresh the private local snapshot.
+If setup reports `GITHUB_AUTH_REQUIRED`, ask the owner to approve GitHub authentication, complete `gh auth login`, and retry. Never create a repository unless the user has explicitly requested setup or connection. A successful setup reports `MegaBrain is ready.` and teaches the owner to run `megabrain open` or say `Synchronize and open my MegaBrain` whenever they want to refresh the private local snapshot.
 
 ## Before Every Task
 

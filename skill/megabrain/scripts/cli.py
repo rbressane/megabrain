@@ -12,8 +12,11 @@ from typing import Any
 
 from bootstrap import (
     BootstrapError,
+    HARNESS_PATHS,
     OFFICIAL_DISTRIBUTION,
+    detect_harness,
     load_config,
+    open_brain,
     repository_glance,
     update_runtime,
 )
@@ -58,9 +61,15 @@ PRIVATE_URL_PATTERN = re.compile(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="megabrain",
-        description="Manage the installed MegaBrain runtime and prepare privacy-safe product feedback.",
+        description="Open MegaBrain Home, manage the runtime, and prepare privacy-safe product feedback.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    open_command = subparsers.add_parser(
+        "open",
+        help="synchronize and open your private MegaBrain Home",
+    )
+    open_command.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)
+    open_command.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
     update = subparsers.add_parser("update", help="check or install stable MegaBrain releases")
     update.add_argument("--check", action="store_true", help="check without changing the active runtime")
     update.add_argument("--version", help="activate a specific compatible stable version")
@@ -271,19 +280,61 @@ def format_update(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def emit_error(error: BootstrapError, json_output: bool) -> int:
+def open_report(args: argparse.Namespace) -> dict[str, Any]:
+    home = args.home.expanduser().resolve()
+    config = load_config(home, required=True)
+    clones = config.get("clones", {})
+    harness = None
+    try:
+        detected = detect_harness(None)
+        if clones.get(detected):
+            harness = detected
+    except BootstrapError:
+        pass
+    if harness is None:
+        harness = next((name for name in HARNESS_PATHS if clones.get(name)), None)
+    if harness is None:
+        raise BootstrapError("SETUP_REQUIRED", "MegaBrain is not connected to an agent yet.")
+    return open_brain(
+        argparse.Namespace(home=home, harness=harness, no_open=args.no_open)
+    )
+
+
+def format_open(report: dict[str, Any]) -> str:
+    host = report.get("host") or "this computer"
+    first_line = (
+        f"MegaBrain Home opened on {host}."
+        if report.get("opened")
+        else f"MegaBrain Home is ready on {host}."
+    )
+    freshness = report.get("freshness", {})
+    if freshness.get("stale"):
+        second_line = "Snapshot refreshed from valid local state; synchronization was incomplete."
+    else:
+        second_line = "Snapshot refreshed and synchronized when generated."
+    return f"{first_line}\n{second_line}"
+
+
+def emit_error(error: BootstrapError, json_output: bool, operation: str = "update") -> int:
     payload = {"schema": UPDATE_SCHEMA, "ok": False, "error": {"code": error.code, "message": error.message}}
     if json_output:
         json.dump(payload, sys.stderr, ensure_ascii=True, indent=2, sort_keys=True)
         sys.stderr.write("\n")
     else:
-        sys.stderr.write(f"MegaBrain update failed: {error.message}\n")
+        sys.stderr.write(f"MegaBrain {operation} failed: {error.message}\n")
     return 2
 
 
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    if args.command == "open":
+        try:
+            report = open_report(args)
+        except BootstrapError as error:
+            return emit_error(error, False, "open")
+        sys.stdout.write(format_open(report) + "\n")
+        return 0
     if args.command == "feedback":
         if not args.stdin:
             parser.error("feedback requires --stdin")

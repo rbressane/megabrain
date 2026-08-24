@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T11:51:30Z",
+  "title": "Design System: MegaBrain Home",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Brain Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.008 260)",
+          "oklch(25% 0.008 260)",
+          "oklch(35% 0.008 260)",
+          "oklch(45% 0.008 260)",
+          "oklch(55% 0.008 260)",
+          "oklch(65% 0.008 260)",
+          "oklch(80% 0.008 260)",
+          "oklch(95% 0.008 260)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Knowledge Surface",
+        "tonalRamp": [
+          "oklch(15% 0.01 260)",
+          "oklch(25% 0.01 260)",
+          "oklch(35% 0.01 260)",
+          "oklch(45% 0.01 260)",
+          "oklch(55% 0.01 260)",
+          "oklch(65% 0.01 260)",
+          "oklch(80% 0.01 260)",
+          "oklch(95% 0.01 260)"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised Evidence",
+        "tonalRamp": [
+          "oklch(15% 0.012 260)",
+          "oklch(25% 0.012 260)",
+          "oklch(35% 0.012 260)",
+          "oklch(45% 0.012 260)",
+          "oklch(55% 0.012 260)",
+          "oklch(65% 0.012 260)",
+          "oklch(80% 0.012 260)",
+          "oklch(95% 0.012 260)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Hover Graphite",
+        "tonalRamp": [
+          "oklch(15% 0.014 260)",
+          "oklch(25% 0.014 260)",
+          "oklch(35% 0.014 260)",
+          "oklch(45% 0.014 260)",
+          "oklch(55% 0.014 260)",
+          "oklch(65% 0.014 260)",
+          "oklch(80% 0.014 260)",
+          "oklch(95% 0.014 260)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Graphite Hairline",
+        "tonalRamp": [
+          "oklch(15% 0.012 260)",
+          "oklch(25% 0.012 260)",
+          "oklch(35% 0.012 260)",
+          "oklch(45% 0.012 260)",
+          "oklch(55% 0.012 260)",
+          "oklch(65% 0.012 260)",
+          "oklch(80% 0.012 260)",
+          "oklch(95% 0.012 260)"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Strong Graphite Hairline",
+        "tonalRamp": [
+          "oklch(15% 0.014 260)",
+          "oklch(25% 0.014 260)",
+          "oklch(35% 0.014 260)",
+          "oklch(45% 0.014 260)",
+          "oklch(55% 0.014 260)",
+          "oklch(65% 0.014 260)",
+          "oklch(80% 0.014 260)",
+          "oklch(95% 0.014 260)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Primary Text",
+        "tonalRamp": [
+          "oklch(15% 0.008 255)",
+          "oklch(25% 0.008 255)",
+          "oklch(35% 0.008 255)",
+          "oklch(45% 0.008 255)",
+          "oklch(55% 0.008 255)",
+          "oklch(65% 0.008 255)",
+          "oklch(80% 0.008 255)",
+          "oklch(95% 0.008 255)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Text",
+        "tonalRamp": [
+          "oklch(15% 0.01 255)",
+          "oklch(25% 0.01 255)",
+          "oklch(35% 0.01 255)",
+          "oklch(45% 0.01 255)",
+          "oklch(55% 0.01 255)",
+          "oklch(65% 0.01 255)",
+          "oklch(80% 0.01 255)",
+          "oklch(95% 0.01 255)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "tonalRamp": [
+          "oklch(15% 0.012 255)",
+          "oklch(25% 0.012 255)",
+          "oklch(35% 0.012 255)",
+          "oklch(45% 0.012 255)",
+          "oklch(55% 0.012 255)",
+          "oklch(65% 0.012 255)",
+          "oklch(80% 0.012 255)",
+          "oklch(95% 0.012 255)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Selection Violet",
+        "tonalRamp": [
+          "oklch(15% 0.12 288)",
+          "oklch(25% 0.15 288)",
+          "oklch(35% 0.18 288)",
+          "oklch(45% 0.2 288)",
+          "oklch(55% 0.2 288)",
+          "oklch(65% 0.18 288)",
+          "oklch(80% 0.12 288)",
+          "oklch(95% 0.04 288)"
+        ]
+      },
+      "accent-muted": {
+        "role": "primary",
+        "displayName": "Evidence Violet",
+        "tonalRamp": [
+          "oklch(15% 0.08 288)",
+          "oklch(25% 0.1 288)",
+          "oklch(35% 0.12 288)",
+          "oklch(45% 0.14 288)",
+          "oklch(55% 0.14 288)",
+          "oklch(65% 0.13 288)",
+          "oklch(80% 0.09 288)",
+          "oklch(95% 0.03 288)"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Synchronized Teal",
+        "tonalRamp": [
+          "oklch(15% 0.06 184)",
+          "oklch(25% 0.08 184)",
+          "oklch(35% 0.1 184)",
+          "oklch(45% 0.11 184)",
+          "oklch(55% 0.11 184)",
+          "oklch(65% 0.1 184)",
+          "oklch(80% 0.07 184)",
+          "oklch(95% 0.025 184)"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Stale Amber",
+        "tonalRamp": [
+          "oklch(15% 0.07 75)",
+          "oklch(25% 0.09 75)",
+          "oklch(35% 0.11 75)",
+          "oklch(45% 0.13 75)",
+          "oklch(55% 0.13 75)",
+          "oklch(65% 0.12 75)",
+          "oklch(80% 0.08 75)",
+          "oklch(95% 0.03 75)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Conflict Coral",
+        "tonalRamp": [
+          "oklch(15% 0.1 24)",
+          "oklch(25% 0.13 24)",
+          "oklch(35% 0.16 24)",
+          "oklch(45% 0.19 24)",
+          "oklch(55% 0.2 24)",
+          "oklch(65% 0.18 24)",
+          "oklch(80% 0.11 24)",
+          "oklch(95% 0.035 24)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Inspector Headline",
+        "purpose": "Selected topic, memory, and primary page headings."
+      },
+      "title": {
+        "displayName": "Compact Title",
+        "purpose": "Product identity and compact section emphasis."
+      },
+      "body": {
+        "displayName": "Operational Body",
+        "purpose": "Search, navigation, evidence, and readable memory summaries."
+      },
+      "label": {
+        "displayName": "Metadata Label",
+        "purpose": "Counts, ranks, badges, legends, dates, and snapshot notes."
+      }
+    },
+    "motion": [
+      {
+        "name": "state-response",
+        "value": "160ms ease",
+        "purpose": "Graph opacity, fill, stroke, and label visibility changes. Reduced-motion mode collapses transition duration to 0.01ms."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1050px"
+      },
+      {
+        "name": "mobile-list",
+        "value": "760px"
+      },
+      {
+        "name": "narrow-mobile",
+        "value": "520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Compact global search with an authored icon, quiet shortcut hint, violet caret, and border-led focus.",
+      "html": "<label class=\"ds-search\"><svg class=\"ds-search-icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\"><circle cx=\"8.5\" cy=\"8.5\" r=\"5.5\"></circle><path d=\"m12.5 12.5 4 4\"></path></svg><input type=\"search\" placeholder=\"Search memories…\" aria-label=\"Search memories\"><span class=\"ds-key\" aria-hidden=\"true\">/</span></label>",
+      "css": ".ds-search { align-items: center; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-muted); display: flex; height: 34px; max-width: 420px; padding: 0 9px; } .ds-search:focus-within { border-color: var(--accent); } .ds-search-icon { fill: none; height: 17px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; width: 17px; } .ds-search input { background: transparent; border: 0; caret-color: var(--accent-muted); color: var(--text); font: 13px/1.4 ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; height: 100%; min-width: 0; outline: 0; padding: 0 8px; width: 100%; } .ds-search input::placeholder { color: var(--text-muted); opacity: 1; } .ds-search input:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; } .ds-key { border: 1px solid var(--border-strong); border-radius: 3px; color: var(--text-muted); font: 10px/18px ui-sans-serif, sans-serif; padding: 0 5px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "A compact active destination with raised graphite, one hairline, an authored icon, and a tabular count.",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\"><circle cx=\"5\" cy=\"6\" r=\"2\"></circle><circle cx=\"15\" cy=\"5\" r=\"2\"></circle><circle cx=\"13\" cy=\"15\" r=\"2\"></circle><path d=\"m6.8 5.7 6.2-.5M6.2 7.6l5.6 5.8M14.6 7l-1.1 6\"></path></svg><span>Explore</span><span class=\"ds-nav-count\">13</span></button>",
+      "css": ".ds-nav { align-items: center; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 5px; color: var(--text); display: grid; font: 13px/1.4 ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; grid-template-columns: 22px minmax(0, 1fr) auto; min-height: 36px; padding: 0 9px; text-align: left; width: 166px; } .ds-nav:hover { background: var(--surface-hover); } .ds-nav:active { background: var(--surface); } .ds-nav:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; } .ds-nav-icon { color: var(--accent-muted); fill: none; height: 17px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; width: 17px; } .ds-nav-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Knowledge Graph Selection",
+      "kind": "custom",
+      "refersTo": "graph-node-selected",
+      "description": "The signature graph state: one violet topic selection, visible direct evidence, and receding unrelated knowledge.",
+      "html": "<svg class=\"ds-graph\" viewBox=\"0 0 360 180\" role=\"img\" aria-label=\"Selected Projects topic connected to three memories\"><line class=\"ds-edge ds-edge-active\" x1=\"130\" y1=\"92\" x2=\"236\" y2=\"42\"></line><line class=\"ds-edge ds-edge-active\" x1=\"130\" y1=\"92\" x2=\"260\" y2=\"100\"></line><line class=\"ds-edge ds-edge-dim\" x1=\"130\" y1=\"92\" x2=\"236\" y2=\"148\"></line><g class=\"ds-node ds-topic\" tabindex=\"0\" role=\"button\" aria-label=\"Projects, selected\"><circle cx=\"130\" cy=\"92\" r=\"28\"></circle><text x=\"130\" y=\"136\">Projects</text></g><g class=\"ds-memory\"><circle cx=\"236\" cy=\"42\" r=\"5.5\"></circle><text x=\"248\" y=\"46\">Roadmap</text></g><g class=\"ds-memory\"><circle cx=\"260\" cy=\"100\" r=\"5.5\"></circle><text x=\"272\" y=\"104\">Launch state</text></g><g class=\"ds-memory ds-conflict\"><circle cx=\"236\" cy=\"148\" r=\"7\"></circle><text x=\"250\" y=\"152\">Release channel</text></g></svg>",
+      "css": ".ds-graph { background: var(--canvas); color: var(--text-secondary); display: block; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; height: 180px; width: 360px; } .ds-edge { stroke: #555b65; stroke-dasharray: 2 5; stroke-width: .9; transition: opacity 160ms ease, stroke 160ms ease; } .ds-edge-active { opacity: .95; stroke: var(--accent-muted); stroke-width: 1.35; } .ds-edge-dim { opacity: .28; } .ds-node { cursor: pointer; outline: none; } .ds-node circle { fill: #282442; stroke: var(--accent); stroke-width: 2.4; } .ds-node text { fill: var(--text); font-size: 12px; font-weight: 600; text-anchor: middle; } .ds-node:hover circle { fill: #352f59; stroke: var(--accent-muted); } .ds-node:active circle { fill: #211e37; } .ds-node:focus-visible circle { stroke: var(--accent-muted); stroke-width: 3; } .ds-memory circle { fill: #89919e; stroke: var(--text); stroke-width: 1; } .ds-memory text { fill: var(--text-secondary); font-size: 11px; } .ds-memory.ds-conflict circle { fill: #271719; stroke: var(--danger); stroke-width: 1.5; }"
+    },
+    {
+      "name": "Evidence Row",
+      "kind": "custom",
+      "refersTo": "evidence-row",
+      "description": "A three-part evidence control that keeps state textual as well as chromatic.",
+      "html": "<button class=\"ds-evidence\"><span class=\"ds-evidence-dot\" aria-hidden=\"true\"></span><span class=\"ds-evidence-name\">Launch state</span><span class=\"ds-evidence-state\">Current</span></button>",
+      "css": ".ds-evidence { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; font: 13px/1.4 ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; gap: 8px; grid-template-columns: 8px minmax(0, 1fr) auto; min-height: 42px; padding: 7px 9px; text-align: left; width: 270px; } .ds-evidence:hover { background: var(--surface-raised); color: var(--text); } .ds-evidence:active { background: var(--surface-hover); } .ds-evidence:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; } .ds-evidence-dot { background: var(--accent-muted); border-radius: 50%; height: 6px; width: 6px; } .ds-evidence-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-evidence-state { color: var(--text-muted); font-size: 10px; }"
+    },
+    {
+      "name": "Memory Card",
+      "kind": "card",
+      "refersTo": "memory-card",
+      "description": "A flat evidence record with compact state, summary, provenance, and immutable source access.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-top\"><h3>Project · Launch state</h3><span class=\"ds-badge\">Current</span></div><p>The launch remains approved for the current release window.</p><div class=\"ds-card-meta\"><span><strong>Confidence</strong> Confirmed</span><a href=\"#\">Open Markdown</a></div></article>",
+      "css": ".ds-card { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; max-width: 520px; padding: 14px 16px; } .ds-card:hover { border-color: var(--border-strong); } .ds-card:focus-within { outline: 2px solid var(--accent-muted); outline-offset: 2px; } .ds-card-top { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; } .ds-card h3 { font-size: 13px; font-weight: 650; line-height: 1.4; margin: 0; } .ds-card p { color: var(--text-secondary); font-size: 13px; line-height: 1.58; margin: 10px 0 12px; } .ds-badge { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 3px; color: var(--accent-muted); font-size: 10px; line-height: 18px; min-height: 20px; padding: 0 6px; } .ds-card-meta { border-top: 1px solid var(--border); color: var(--text-muted); display: flex; flex-wrap: wrap; font-size: 10px; gap: 10px; padding-top: 10px; } .ds-card-meta strong { color: var(--text-secondary); font-weight: 550; } .ds-card-meta a { color: var(--accent-muted); margin-left: auto; text-decoration: none; } .ds-card-meta a:hover { text-decoration: underline; text-underline-offset: 3px; } .ds-card-meta a:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; }"
+    },
+    {
+      "name": "Inspector Action",
+      "kind": "button",
+      "refersTo": "inspector-action",
+      "description": "A quiet violet text action that continues the evidence path without competing with the selected record.",
+      "html": "<button class=\"ds-inspector-action\">Open Markdown</button>",
+      "css": ".ds-inspector-action { align-items: center; background: transparent; border: 0; border-radius: 4px; color: var(--accent-muted); display: flex; font: 11px/1.4 ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; min-height: 34px; padding: 0 8px; text-align: left; } .ds-inspector-action:hover { background: var(--surface-raised); } .ds-inspector-action:active { background: var(--surface-hover); } .ds-inspector-action:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; }"
+    },
+    {
+      "name": "Ranked Mobile Topic",
+      "kind": "nav",
+      "refersTo": "mobile-topic",
+      "description": "The narrow-screen replacement for the graph, preserving topic priority, count, selection, and access to evidence.",
+      "html": "<button class=\"ds-mobile-topic\"><span class=\"ds-mobile-rank\">01</span><span>Projects</span><span class=\"ds-mobile-count\">6</span></button>",
+      "css": ".ds-mobile-topic { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; font: 13px/1.4 ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; gap: 10px; grid-template-columns: 26px minmax(0, 1fr) auto; min-height: 48px; padding: 0 14px; text-align: left; width: 100%; } .ds-mobile-topic:hover { background: var(--surface-raised); color: var(--text); } .ds-mobile-topic:active { background: var(--surface-hover); } .ds-mobile-topic:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: -2px; } .ds-mobile-rank { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; } .ds-mobile-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Brain Itself",
+    "overview": "MegaBrain Home is direct visual access to the owner's knowledge, not a dashboard that summarizes it. The graph replaces hero copy, stat cards, and presentation framing: show the whole knowledge shape first, isolate direct relationships on selection, reveal evidence and history in the inspector, then provide a quiet path to immutable Markdown.\n\nThe atmosphere is precise, calm, compact, and confidence-inspiring. Warm graphite chrome recedes around the knowledge map. Violet identifies selection and current attention; coral preserves the visibility of conflict. Every surface should make ownership, provenance, uncertainty, and snapshot freshness legible without forcing the owner to learn repository mechanics.",
+    "keyCharacteristics": [
+      "Graph-first desktop composition with receding navigation and persistent evidence.",
+      "Compact neutral typography, exact spacing, and 1px graphite hairlines.",
+      "A whole shape → evidence → Markdown interaction path.",
+      "Violet selection, coral conflict, and explicit text for every meaningful state.",
+      "A ranked topic list on mobile, not a compressed graph."
+    ],
+    "rules": [
+      {
+        "name": "The Selection Is Signal Rule",
+        "body": "Violet marks the current point of attention and current knowledge. It is not decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Conflict Is Evidence Rule",
+        "body": "Coral is reserved for unresolved conflict and danger states, always paired with explicit text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Density Must Stay Legible Rule",
+        "body": "Compact type may reduce size only when hierarchy, contrast, and line height preserve scanning.",
+        "section": "typography"
+      },
+      {
+        "name": "The Whole Shape First Rule",
+        "body": "Desktop opens on the graph; evidence follows selection in the persistent inspector.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Instrument Rule",
+        "body": "Surfaces stay flat. Use tonal separation and 1px hairlines to establish hierarchy; do not add shadows.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Curve Is Restraint Rule",
+        "body": "Use 3–5px corners for controls and containers; reserve circles for graph and status semantics.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Evidence Path Rule",
+        "body": "Every selection should lead from shape to evidence to immutable Markdown.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do let the knowledge graph dominate the desktop overview and let surrounding chrome recede.",
+      "Do use violet for selection, focus, and current evidence; use coral only for conflict and danger.",
+      "Do preserve provenance, history, uncertainty, and snapshot freshness in plain language.",
+      "Do pair color-coded states with labels, maintain visible keyboard focus, and honor reduced motion.",
+      "Do replace the graph with a ranked topic list on narrow screens while preserving selection and evidence."
+    ],
+    "donts": [
+      "Don't turn MegaBrain Home into a hero page, KPI dashboard, bento grid, or collection of large stat cards.",
+      "Don't add gradients, glassmorphism, glow, neon, shadows, decorative illustration, or presentation theater.",
+      "Don't use an anatomical brain, neural-network cliché, person, or physical knowledge metaphor.",
+      "Don't round every element into pills or soften the compact 3–5px form language.",
+      "Don't hide conflicts, provenance, immutable Markdown access, or the local snapshot boundary.",
+      "Don't imply that a generated local snapshot is continuously synchronized."
+    ]
+  }
+}

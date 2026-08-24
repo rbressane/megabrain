@@ -9,6 +9,14 @@ test-results/
 dist/
 node_modules/
 
+# Impeccable keeps the selected direction; working reviews and rejected comps stay local.
+.impeccable/hook.cache.json
+.impeccable/questions/
+.impeccable/review/
+.impeccable/mocks/decision/*
+!.impeccable/mocks/decision/technical-graph-first.json
+!.impeccable/mocks/decision/technical-graph-first.png
+
 # MegaBrain knowledge must never be supplied through environment files.
 .env
 .env.*

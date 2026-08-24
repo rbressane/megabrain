@@ -31,8 +31,8 @@ OFFICIAL_DISTRIBUTION = "https://github.com/rbressane/megabrain.git"
 UPDATE_INTERVAL = timedelta(hours=24)
 SETUP_READY_MESSAGE = (
     "MegaBrain is ready.\n"
-    "Say \"Synchronize and open my MegaBrain\" anytime to synchronize, validate, "
-    "and browse your private Brain locally."
+    "Run `megabrain open` anytime to synchronize and browse your private Brain.\n"
+    "You can also say \"Synchronize and open my MegaBrain\"."
 )
 HARNESS_PATHS = {
     "codex": (".codex/skills/megabrain", ".codex/AGENTS.md"),

@@ -20,11 +20,11 @@ Bootstrap then:
 8. reports a one-line `PATH` correction when required without editing shell profiles;
 9. validates and synchronizes the result;
 10. opens the local browser on the machine running the agent and reports that host explicitly; and
-11. reports `MegaBrain is ready.` and teaches `Synchronize and open my MegaBrain` as the normal return action.
+11. reports `MegaBrain is ready.` and teaches `megabrain open` as the direct return action, with `Synchronize and open my MegaBrain` as its conversational equivalent.
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
-The local browser is a private generated snapshot, not a continuously live page. On every later `Synchronize and open my MegaBrain` action, the agent synchronizes the active managed clone, validates it, regenerates the snapshot, opens it on that host, and returns a value-free freshness receipt. Another connected computer or agent has its own clone and local snapshot.
+MegaBrain Home is a private generated snapshot, not a continuously live page. On every later `megabrain open` command or `Synchronize and open my MegaBrain` action, MegaBrain synchronizes a managed clone, validates it, regenerates the snapshot, opens it on that host, and returns a value-free freshness receipt. Another connected computer or agent has its own clone and local snapshot.
 
 If setup is interrupted after creating the private repository or committing the local seed, rerunning setup converges on the same private repository. A clean local seed is pushed to an empty remote once authorization is fixed. Setup can safely remove the legacy workflow from an exact, pristine v1.0.0 seed before its first push; any other committed or uncommitted change is left untouched and blocks automatic recovery.
 

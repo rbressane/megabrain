@@ -3,622 +3,422 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
-  <title>MegaBrain</title>
+  <title>MegaBrain Home</title>
   <style>
     :root {
-      --canvas: #f4f5f2;
-      --surface: #ffffff;
-      --surface-muted: #f8f9f7;
-      --border: #d9ddd6;
-      --border-strong: #b8c0b6;
-      --text: #202620;
-      --text-muted: #657064;
-      --accent: #176a4a;
-      --accent-soft: #e4f2eb;
-      --blue: #285f87;
-      --blue-soft: #e8f0f6;
-      --warning: #8a5a12;
-      --warning-soft: #f8edd8;
-      --danger: #a13b37;
-      --danger-soft: #fae9e7;
-      --shadow: 0 1px 2px rgba(25, 35, 28, 0.06);
+      --canvas: #0b0c0e;
+      --surface: #111317;
+      --surface-raised: #17191d;
+      --surface-hover: #1c1f24;
+      --border: #25282e;
+      --border-strong: #343840;
+      --text: #f3f4f6;
+      --text-secondary: #b7bbc3;
+      --text-muted: #8b9099;
+      --accent: #7c6ef6;
+      --accent-muted: #aaa2ff;
+      --success: #69b9af;
+      --warning: #d7a95f;
+      --danger: #f06a6a;
+      --sidebar-width: 184px;
+      --header-height: 52px;
+      --status-height: 36px;
     }
 
-    * {
-      box-sizing: border-box;
-      letter-spacing: 0;
-    }
+    * { box-sizing: border-box; }
 
     html {
       background: var(--canvas);
       color: var(--text);
-      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 15px;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
     }
 
     body {
+      background: var(--canvas);
       margin: 0;
       min-width: 320px;
+      overflow: hidden;
+      scrollbar-color: var(--border-strong) var(--canvas);
+      scrollbar-width: thin;
     }
 
-    button,
-    input,
-    select {
-      color: inherit;
-      font: inherit;
-    }
+    ::selection { background: var(--accent); color: #fff; }
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border: 2px solid var(--canvas); border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: var(--canvas); }
 
-    button,
-    select {
-      cursor: pointer;
-    }
+    button, input, select { color: inherit; font: inherit; }
+    button, select { cursor: pointer; }
+    button:disabled, select:disabled { cursor: not-allowed; opacity: 0.45; }
 
     button:focus-visible,
     input:focus-visible,
     select:focus-visible,
-    a:focus-visible {
-      outline: 3px solid rgba(40, 95, 135, 0.28);
+    a:focus-visible,
+    .memory-card:focus-visible,
+    #page-title:focus-visible,
+    .graph-node:focus-visible {
+      outline: 2px solid var(--accent-muted);
       outline-offset: 2px;
     }
 
-    .app-header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      position: sticky;
-      top: 0;
-      z-index: 10;
+    .icon {
+      fill: none;
+      flex: 0 0 auto;
+      height: 17px;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+      width: 17px;
     }
 
-    .header-inner {
+    .topbar {
       align-items: center;
-      display: flex;
-      gap: 18px;
-      margin: 0 auto;
-      max-width: 1440px;
-      min-height: 64px;
-      padding: 10px 28px;
+      background: #0d0f12;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      gap: 12px;
+      grid-template-columns: var(--sidebar-width) minmax(260px, 620px) minmax(150px, 220px) 1fr;
+      height: var(--header-height);
+      padding: 0 18px 0 0;
+      position: relative;
+      z-index: 20;
     }
 
     .brand {
       align-items: center;
+      align-self: stretch;
+      border-right: 1px solid var(--border);
       display: flex;
-      flex: 0 0 auto;
-      gap: 10px;
-      min-width: 180px;
-    }
-
-    .brand-mark {
-      align-items: center;
-      background: var(--text);
-      border-radius: 6px;
-      color: white;
-      display: inline-flex;
-      font-size: 15px;
-      font-weight: 750;
-      height: 34px;
-      justify-content: center;
-      width: 34px;
-    }
-
-    .brand-name {
-      font-size: 17px;
-      font-weight: 720;
-      line-height: 1.2;
-    }
-
-    .brand-subtitle {
-      color: var(--text-muted);
-      font-size: 12px;
-      line-height: 1.2;
-      margin-top: 2px;
-    }
-
-    .sync-state {
-      align-items: center;
-      color: var(--text-muted);
-      display: flex;
-      flex: 0 0 auto;
-      font-size: 12px;
-      gap: 7px;
-      margin-left: auto;
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+      padding: 0 20px;
       white-space: nowrap;
     }
 
-    .sync-dot {
-      background: var(--accent);
-      border-radius: 50%;
-      height: 8px;
-      width: 8px;
+    .search-shell {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      color: var(--text-muted);
+      display: flex;
+      height: 34px;
+      min-width: 0;
+      padding: 0 9px;
     }
 
-    .sync-state.stale {
-      color: var(--warning);
+    .search-shell:focus-within { border-color: var(--accent); }
+    .search-shell input {
+      background: transparent;
+      border: 0;
+      caret-color: var(--accent-muted);
+      color: var(--text);
+      font-size: 13px;
+      height: 100%;
+      min-width: 0;
+      outline: 0;
+      padding: 0 8px;
+      width: 100%;
     }
 
-    .sync-state.stale .sync-dot {
-      background: var(--warning);
+    .search-shell input::placeholder { color: var(--text-muted); opacity: 1; }
+    .key-hint { border: 1px solid var(--border-strong); border-radius: 3px; color: var(--text-muted); font-size: 10px; line-height: 18px; padding: 0 5px; }
+
+    .top-filter, .control {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      color: var(--text-secondary);
+      height: 34px;
+      min-width: 0;
+      padding: 0 30px 0 10px;
+      width: 100%;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 224px minmax(0, 1fr);
-      margin: 0 auto;
-      max-width: 1440px;
-      min-height: calc(100vh - 65px);
-    }
+    .top-filter:hover, .control:hover { background: var(--surface-hover); border-color: #444851; }
+    .sync-state { align-items: center; color: var(--text-muted); display: flex; font-size: 11px; gap: 7px; justify-self: end; white-space: nowrap; }
+    .sync-dot { background: var(--success); border-radius: 50%; height: 6px; width: 6px; }
+    .sync-state.stale { color: var(--warning); }
+    .sync-state.stale .sync-dot { background: var(--warning); }
 
-    .sidebar {
-      border-right: 1px solid var(--border);
-      padding: 24px 18px;
-    }
-
-    .nav {
-      display: grid;
-      gap: 4px;
-      position: sticky;
-      top: 89px;
-    }
+    .app-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); height: calc(100vh - var(--header-height)); }
+    .sidebar { background: #0d0f12; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; padding: 12px 9px; }
+    .nav { display: grid; gap: 2px; }
 
     .nav-button {
       align-items: center;
       background: transparent;
-      border: 0;
-      border-radius: 6px;
-      display: flex;
-      font-weight: 620;
-      justify-content: space-between;
-      min-height: 40px;
-      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      color: var(--text-muted);
+      display: grid;
+      font-size: 13px;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      min-height: 36px;
+      padding: 0 9px;
       text-align: left;
       width: 100%;
     }
 
-    .nav-button:hover {
-      background: rgba(255, 255, 255, 0.7);
-    }
+    .nav-button:hover { background: var(--surface); color: var(--text-secondary); }
+    .nav-button.active { background: var(--surface-raised); border-color: var(--border); color: var(--text); }
+    .nav-button.active .icon { color: var(--accent-muted); }
+    .nav-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .sidebar-note { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-top: auto; padding: 12px 9px 4px; }
 
-    .nav-button.active {
-      background: var(--surface);
-      box-shadow: var(--shadow);
-      color: var(--accent);
-    }
-
-    .nav-count {
-      color: var(--text-muted);
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      font-weight: 650;
-    }
-
-    .nav-button.active .nav-count {
-      color: var(--accent);
-    }
-
-    main {
-      min-width: 0;
-      padding: 26px 32px 52px;
-    }
-
-    .page-heading {
-      align-items: end;
-      display: flex;
-      gap: 18px;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-
-    .page-heading h1 {
-      font-size: 25px;
-      line-height: 1.2;
-      margin: 0;
-    }
-
-    .page-meta {
-      color: var(--text-muted);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .snapshot-note {
-      color: var(--text-muted);
-      font-size: 12px;
-      line-height: 1.55;
-      margin: -10px 0 18px;
-      max-width: 860px;
-    }
+    .workspace { background: var(--canvas); min-width: 0; overflow: auto; padding: 24px 28px 44px; }
+    .workspace.graph-mode { overflow: hidden; padding: 0; }
+    .page-heading { align-items: end; display: flex; gap: 18px; justify-content: space-between; margin-bottom: 12px; }
+    .page-heading h1 { font-size: 18px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; margin: 0; }
+    .page-meta, .snapshot-note, .results-meta { color: var(--text-muted); font-size: 11px; }
+    .page-meta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .snapshot-note { line-height: 1.55; margin: 0 0 16px; max-width: 80ch; }
 
     .toolbar {
       align-items: center;
+      border-bottom: 1px solid var(--border);
+      border-top: 1px solid var(--border);
       display: grid;
       gap: 8px;
-      grid-template-columns: minmax(190px, 1fr) repeat(6, minmax(110px, auto));
-      margin-bottom: 18px;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      margin: 0 0 14px;
+      padding: 10px 0;
     }
 
-    .control {
+    .results-meta { margin-bottom: 8px; min-height: 16px; }
+    .list, .agent-grid { display: grid; gap: 6px; }
+    .agent-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+    .memory-card, .agent-card, .import-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      height: 40px;
+      border-radius: 5px;
       min-width: 0;
-      padding: 0 11px;
-      width: 100%;
+      padding: 14px 16px;
     }
 
-    .control:hover {
-      border-color: var(--border-strong);
-    }
+    .memory-card:hover, .agent-card:hover, .import-card:hover { border-color: var(--border-strong); }
+    .memory-card.conflict { border-color: rgba(240, 106, 106, 0.55); }
+    .memory-card.targeted { border-color: var(--accent); }
+    .card-topline { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; min-width: 0; }
+    .subject, .agent-name, .import-title { font-size: 13px; font-weight: 650; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+    .badges, .tag-row, .metadata, .import-counts { align-items: center; display: flex; flex-wrap: wrap; gap: 5px 10px; }
 
-    .search {
-      padding-left: 13px;
-    }
-
-    .results-meta {
-      color: var(--text-muted);
-      font-size: 12px;
-      margin-bottom: 10px;
-      min-height: 18px;
-    }
-
-    .list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .memory-card,
-    .agent-card,
-    .import-card {
-      background: var(--surface);
+    .badge, .tag {
+      background: var(--surface-raised);
       border: 1px solid var(--border);
-      border-radius: 7px;
-      box-shadow: var(--shadow);
-      min-width: 0;
-      padding: 16px 18px;
-    }
-
-    .memory-card.conflict {
-      border-left: 4px solid var(--danger);
-      padding-left: 15px;
-    }
-
-    .memory-card.targeted {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 3px rgba(40, 95, 135, 0.12);
-    }
-
-    .card-topline {
-      align-items: flex-start;
-      display: flex;
-      gap: 12px;
-      justify-content: space-between;
-      min-width: 0;
-    }
-
-    .subject {
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.35;
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
-
-    .badges {
-      align-items: center;
-      display: flex;
-      flex: 0 0 auto;
-      flex-wrap: wrap;
-      gap: 5px;
-      justify-content: flex-end;
-    }
-
-    .badge {
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      border-radius: 999px;
+      border-radius: 3px;
       color: var(--text-muted);
       display: inline-flex;
-      font-size: 11px;
-      font-weight: 650;
-      line-height: 20px;
-      min-height: 22px;
-      padding: 0 8px;
+      font-size: 10px;
+      line-height: 18px;
+      min-height: 20px;
+      padding: 0 6px;
       white-space: nowrap;
     }
 
-    .badge.core,
-    .badge.current {
-      background: var(--accent-soft);
-      border-color: #bdd9ca;
-      color: var(--accent);
-    }
+    .badge.current, .badge.core { color: var(--accent-muted); }
+    .badge.conflict, .badge.tombstone { color: var(--danger); }
+    .badge.private, .badge.sensitive { color: #92b8e8; }
+    .summary { color: var(--text-secondary); font-size: 13px; line-height: 1.58; margin: 10px 0 12px; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .tag-row { margin-bottom: 11px; }
+    .metadata { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; padding-top: 10px; }
+    .metadata strong { color: var(--text-secondary); font-weight: 550; }
+    .metadata a, .memory-link, .inspector-link { color: var(--accent-muted); text-decoration: none; }
+    .metadata a:hover, .memory-link:hover, .inspector-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .memory-link { background: transparent; border: 0; font-size: 10px; padding: 0; }
 
-    .badge.private,
-    .badge.sensitive {
-      background: var(--blue-soft);
-      border-color: #c5d7e4;
-      color: var(--blue);
-    }
+    .conflict-heading { border-bottom: 1px solid rgba(240, 106, 106, 0.45); color: var(--danger); font-size: 12px; font-weight: 650; margin: 14px 0 0; overflow-wrap: anywhere; padding: 0 2px 8px; }
+    .conflict-heading:first-child { margin-top: 0; }
+    .agent-detail, .import-detail { color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
+    .import-counts { margin-top: 11px; }
+    .import-count { color: var(--text-muted); font-size: 10px; }
+    .import-count strong { color: var(--text); display: block; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 550; margin-bottom: 1px; }
+    .empty-state { border: 1px dashed var(--border-strong); border-radius: 5px; color: var(--text-muted); font-size: 12px; padding: 36px 16px; text-align: center; }
 
-    .badge.conflict,
-    .badge.tombstone {
-      background: var(--danger-soft);
-      border-color: #efc6c3;
-      color: var(--danger);
-    }
+    .timeline { display: grid; gap: 18px; margin: 0 auto; max-width: 980px; }
+    .timeline-month { display: grid; gap: 12px; grid-template-columns: 110px minmax(0, 1fr); }
+    .timeline-month-label { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 600; padding-top: 14px; text-transform: uppercase; }
+    .timeline-items { border-left: 1px solid var(--border-strong); display: grid; gap: 6px; padding-left: 18px; }
+    .timeline-items .memory-card { position: relative; }
+    .timeline-items .memory-card::before { background: var(--accent); border: 3px solid var(--canvas); border-radius: 50%; content: ""; height: 10px; left: -24px; position: absolute; top: 17px; width: 10px; }
+    .timeline-items .memory-card.historical::before, .timeline-items .memory-card.tombstone::before { background: var(--text-muted); }
 
-    .summary {
-      color: #303830;
-      line-height: 1.55;
-      margin: 11px 0 13px;
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
-    }
+    .graph-shell { display: grid; grid-template-columns: minmax(0, 1fr) 304px; grid-template-rows: minmax(0, 1fr) var(--status-height); height: 100%; min-height: 0; }
+    .graph-canvas { background: var(--canvas); cursor: grab; min-height: 0; overflow: hidden; position: relative; touch-action: none; }
+    .graph-canvas.dragging { cursor: grabbing; }
+    #brain-graph { display: block; height: 100%; min-height: 420px; width: 100%; }
 
-    .tag-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-bottom: 12px;
-    }
+    .graph-edge { stroke: #555b65; stroke-width: 0.9; transition: opacity 160ms ease, stroke 160ms ease; }
+    .graph-edge.shared { opacity: 0.34; stroke-dasharray: 2 5; }
+    .graph-edge.supersedes { marker-end: url(#graph-arrow); opacity: 0.7; stroke: #a7acb5; }
+    .graph-edge.conflict { opacity: 0.8; stroke: var(--danger); stroke-dasharray: 4 4; }
+    .graph-edge.dimmed { opacity: 0.28; }
+    .graph-edge.conflict.dimmed { opacity: 0.82; }
+    .graph-edge.active { opacity: 0.95; stroke: var(--accent-muted); stroke-width: 1.35; }
+    .graph-node { cursor: pointer; outline: none; transition: opacity 160ms ease; }
+    .graph-node circle { fill: #59606b; stroke: #a7acb5; stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
+    .graph-node.topic circle { fill: #181b20; stroke: #8d949f; stroke-width: 1.4; }
+    .graph-node.historical circle, .graph-node.tombstone circle { fill: #3e434c; stroke: #6f7681; }
+    .graph-node.conflict circle { fill: #271719; stroke: var(--danger); stroke-width: 1.5; }
+    .graph-node:hover circle, .graph-node.adjacent circle { fill: #89919e; stroke: var(--text); }
+    .graph-node.selected circle { fill: #282442; stroke: var(--accent); stroke-width: 2.4; }
+    .graph-node.dimmed { opacity: 0.68; }
+    .graph-node.conflict.dimmed { opacity: 1; }
 
-    .tag {
-      background: var(--surface-muted);
-      border-radius: 4px;
-      color: var(--text-muted);
-      font-size: 11px;
-      padding: 3px 6px;
-    }
+    .graph-label { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; pointer-events: none; stroke: var(--canvas); stroke-linejoin: round; stroke-width: 4px; }
+    .topic .graph-label { fill: var(--text); font-size: 12px; font-weight: 600; text-anchor: middle; }
+    .memory-label { opacity: 0.58; transition: opacity 160ms ease; }
+    .dense-graph .memory-label { opacity: 0; }
+    .graph-node.conflict .memory-label { opacity: 1; }
+    .graph-node:hover .memory-label, .graph-node.selected .memory-label, .graph-node.adjacent .memory-label { opacity: 1; }
 
-    .metadata {
-      align-items: center;
-      border-top: 1px solid #eceeeb;
-      color: var(--text-muted);
-      display: flex;
-      flex-wrap: wrap;
-      font-size: 11px;
-      gap: 6px 14px;
-      padding-top: 11px;
-    }
+    .graph-controls { bottom: 14px; display: flex; left: 14px; position: absolute; z-index: 4; }
+    .graph-control { align-items: center; background: #101216; border: 1px solid var(--border-strong); border-right: 0; color: var(--text-muted); display: flex; height: 30px; justify-content: center; padding: 0; width: 32px; }
+    .graph-control:first-child { border-radius: 4px 0 0 4px; }
+    .graph-control:last-child { border-radius: 0 4px 4px 0; border-right: 1px solid var(--border-strong); }
+    .graph-control:hover { background: var(--surface-hover); color: var(--text); }
+    .graph-control .icon { height: 14px; width: 14px; }
 
-    .metadata strong {
-      color: #465046;
-      font-weight: 650;
-    }
+    .graph-inspector { background: #0f1114; border-left: 1px solid var(--border); min-height: 0; overflow: auto; padding: 20px 16px; }
+    .inspector-header { border-bottom: 1px solid var(--border); margin-bottom: 14px; padding-bottom: 14px; }
+    .inspector-title { font-size: 18px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+    .inspector-subtitle { color: var(--text-muted); font-size: 11px; margin-top: 5px; }
+    .inspector-section-title { color: var(--text-secondary); font-size: 11px; font-weight: 600; margin: 18px 0 7px; }
+    .evidence-list { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .evidence-row { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; gap: 8px; grid-template-columns: 8px minmax(0, 1fr) auto; min-height: 42px; padding: 7px 9px; text-align: left; width: 100%; }
+    .evidence-row:last-child { border-bottom: 0; }
+    .evidence-row:hover, .evidence-row.selected { background: var(--surface-raised); color: var(--text); }
+    .evidence-dot { background: #777e89; border-radius: 50%; height: 6px; width: 6px; }
+    .evidence-dot.current { background: var(--accent-muted); }
+    .evidence-dot.conflict { background: var(--danger); }
+    .evidence-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .evidence-state { color: var(--text-muted); font-size: 10px; }
+    .inspector-summary { color: var(--text-secondary); font-size: 12px; line-height: 1.58; margin: 0; overflow-wrap: anywhere; }
+    .inspector-facts { border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; margin: 14px 0; }
+    .inspector-fact { color: var(--text-muted); font-size: 10px; padding: 10px 0; }
+    .inspector-fact strong { color: var(--text-secondary); display: block; font-size: 11px; font-weight: 550; margin-top: 3px; }
+    .inspector-actions { display: grid; gap: 2px; }
+    .inspector-action { align-items: center; background: transparent; border: 0; border-radius: 4px; color: var(--accent-muted); display: flex; font-size: 11px; justify-content: space-between; min-height: 34px; padding: 0 8px; text-align: left; text-decoration: none; width: 100%; }
+    .inspector-action:hover { background: var(--surface-raised); }
 
-    .metadata a,
-    .memory-link {
-      color: var(--blue);
-      text-decoration: none;
-    }
+    .graph-status { align-items: center; background: #0d0f12; border-top: 1px solid var(--border); color: var(--text-muted); display: flex; font-size: 10px; gap: 18px; grid-column: 1 / -1; min-width: 0; padding: 0 14px; }
+    .legend-item { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; }
+    .legend-dot { background: #777e89; border: 1px solid #a7acb5; border-radius: 50%; height: 7px; width: 7px; }
+    .legend-dot.current { background: var(--accent); border-color: var(--accent-muted); }
+    .legend-dot.conflict { background: var(--danger); border-color: #ff9a9a; }
+    .legend-line { border-top: 1px solid #a7acb5; height: 0; width: 22px; }
+    .legend-line.shared { border-top-style: dotted; }
+    .graph-counts { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
 
-    .metadata a:hover,
-    .memory-link:hover {
-      text-decoration: underline;
-    }
+    .mobile-graph-list { display: none; }
+    .mobile-topic { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; gap: 10px; grid-template-columns: 26px minmax(0, 1fr) auto; min-height: 48px; padding: 0 14px; text-align: left; width: 100%; }
+    .mobile-topic:hover, .mobile-topic.selected { background: var(--surface-raised); color: var(--text); }
+    .mobile-rank { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .mobile-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .hidden { display: none !important; }
 
-    .memory-link {
-      background: transparent;
-      border: 0;
-      font-size: 11px;
-      padding: 0;
-    }
-
-    .conflict-heading {
-      border-bottom: 1px solid var(--border-strong);
-      color: var(--danger);
-      font-size: 14px;
-      font-weight: 720;
-      margin: 16px 0 0;
-      overflow-wrap: anywhere;
-      padding: 0 2px 8px;
-    }
-
-    .conflict-heading:first-child {
-      margin-top: 0;
-    }
-
-    .agent-grid {
-      display: grid;
-      gap: 10px;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    }
-
-    .agent-name,
-    .import-title {
-      font-size: 15px;
-      font-weight: 700;
-      margin: 0 0 5px;
-      overflow-wrap: anywhere;
-    }
-
-    .agent-detail,
-    .import-detail {
-      color: var(--text-muted);
-      font-size: 12px;
-      line-height: 1.55;
-      overflow-wrap: anywhere;
-    }
-
-    .import-counts {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      margin-top: 12px;
-    }
-
-    .import-count {
-      color: var(--text-muted);
-      font-size: 11px;
-    }
-
-    .import-count strong {
-      color: var(--text);
-      display: block;
-      font-size: 16px;
-      font-variant-numeric: tabular-nums;
-      margin-bottom: 1px;
-    }
-
-    .empty-state {
-      border: 1px dashed var(--border-strong);
-      border-radius: 7px;
-      color: var(--text-muted);
-      padding: 42px 18px;
-      text-align: center;
-    }
-
-    .hidden {
-      display: none !important;
-    }
-
-    @media (max-width: 1080px) {
-      .toolbar {
-        grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(110px, auto));
-      }
-
-      .toolbar select:nth-of-type(4),
-      .toolbar select:nth-of-type(5) {
-        grid-row: 2;
-      }
+    @media (max-width: 1050px) {
+      :root { --sidebar-width: 164px; }
+      .topbar { grid-template-columns: var(--sidebar-width) minmax(220px, 1fr) 170px auto; }
+      .graph-shell { grid-template-columns: minmax(0, 1fr) 280px; }
+      .graph-status { gap: 12px; }
+      .legend-item:nth-of-type(2), .legend-item:nth-of-type(4) { display: none; }
+      .toolbar { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
     }
 
     @media (max-width: 760px) {
-      .header-inner {
-        padding: 10px 16px;
-      }
-
-      .brand {
-        min-width: 0;
-      }
-
-      .layout {
-        display: block;
-      }
-
-      .sidebar {
-        background: var(--canvas);
-        border-bottom: 1px solid var(--border);
-        border-right: 0;
-        overflow-x: auto;
-        padding: 10px 12px;
-        position: sticky;
-        top: 65px;
-        z-index: 9;
-      }
-
-      .nav {
-        display: flex;
-        gap: 5px;
-        min-width: max-content;
-        position: static;
-      }
-
-      .nav-button {
-        gap: 10px;
-        min-height: 36px;
-        width: auto;
-      }
-
-      main {
-        padding: 22px 16px 42px;
-      }
-
-      .toolbar {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .search {
-        grid-column: 1 / -1;
-      }
-
-      .toolbar select:nth-of-type(4),
-      .toolbar select:nth-of-type(5) {
-        grid-row: auto;
-      }
-
-      .card-topline {
-        display: block;
-      }
-
-      .badges {
-        justify-content: flex-start;
-        margin-top: 8px;
-      }
+      body { overflow: auto; }
+      .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; height: auto; min-height: 52px; padding: 8px 10px; }
+      .brand { border: 0; padding: 0 4px; }
+      .top-filter { display: none; }
+      .sync-state span:not(.sync-dot) { display: none; }
+      .app-shell { display: block; height: auto; }
+      .sidebar { border-bottom: 1px solid var(--border); border-right: 0; display: block; overflow-x: auto; padding: 6px 8px; position: sticky; top: 0; z-index: 15; }
+      .nav { display: flex; min-width: max-content; }
+      .nav-button { gap: 7px; grid-template-columns: 18px auto auto; min-height: 34px; width: auto; }
+      .sidebar-note { display: none; }
+      .workspace, .workspace.graph-mode { min-height: calc(100vh - 100px); overflow: visible; padding: 18px 14px 36px; }
+      .workspace.graph-mode { padding: 0; }
+      .graph-shell { display: block; height: auto; }
+      .graph-canvas { min-height: 0; }
+      #brain-graph, .graph-controls { display: none; }
+      .mobile-graph-list { display: block; }
+      .graph-inspector { border-left: 0; border-top: 1px solid var(--border); max-height: none; padding: 18px 14px; }
+      .graph-status { display: flex; min-height: var(--status-height); overflow-x: auto; }
+      .graph-counts { padding-right: 12px; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .page-heading { align-items: flex-start; display: block; }
+      .page-meta { margin-top: 5px; white-space: normal; }
+      .timeline-month { grid-template-columns: 1fr; }
+      .timeline-month-label { padding: 0; }
     }
 
-    @media (max-width: 460px) {
-      .brand-subtitle,
-      .sync-state span {
-        display: none;
-      }
+    @media (max-width: 520px) {
+      .brand { font-size: 12px; }
+      .key-hint { display: none; }
+      .toolbar { grid-template-columns: 1fr; }
+      .card-topline { display: block; }
+      .badges { margin-top: 8px; }
+      .graph-status .legend-item:nth-of-type(3) { display: none; }
+    }
 
-      .toolbar {
-        grid-template-columns: 1fr;
-      }
-
-      .search {
-        grid-column: auto;
-      }
-
-      .page-heading {
-        align-items: flex-start;
-        display: block;
-      }
-
-      .page-meta {
-        margin-top: 5px;
-      }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
     }
   </style>
 </head>
 <body>
-  <header class="app-header">
-    <div class="header-inner">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">M</div>
-        <div>
-          <div class="brand-name">MegaBrain</div>
-          <div class="brand-subtitle">Local Markdown memory</div>
-        </div>
-      </div>
-      <div class="sync-state" id="sync-state" title="Synchronization status">
-        <span class="sync-dot" aria-hidden="true"></span>
-        <span id="sync-label">Local state</span>
-      </div>
-    </div>
+  <!--
+  THESIS: MegaBrain Home is the Brain itself, not a dashboard about it; the graph replaces hero copy and summary cards.
+  OWN-WORLD: Warm graphite surfaces, quiet hairlines, compact neutral type, violet selection, and coral conflict markers form a precise technical instrument.
+  STORY: The owner sees the whole knowledge shape, selects a topic or memory, inspects current evidence and history, then opens immutable Markdown when needed.
+  FIRST VIEWPORT: A 184px dim rail and 52px utility bar frame a dominant graph canvas with a 304px evidence inspector and compact status legend.
+  FORM: Graph First, first of three technical compositions, user-approved after the direction correction; seed a2f03b90.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+  -->
+  <header class="topbar">
+    <div class="brand">MegaBrain Home</div>
+    <label class="search-shell" for="search">
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m12.5 12.5 4 4"></path></svg>
+      <input id="search" type="search" placeholder="Search memories…" autocomplete="off" aria-label="Search memories">
+      <span class="key-hint" aria-hidden="true">/</span>
+    </label>
+    <select class="top-filter" id="filter-kind" aria-label="Filter by kind"><option value="">All knowledge</option></select>
+    <div class="sync-state" id="sync-state" title="Synchronization status"><span class="sync-dot" aria-hidden="true"></span><span id="sync-label">Local state</span></div>
   </header>
 
-  <div class="layout">
+  <div class="app-shell">
     <aside class="sidebar" aria-label="Brain views">
       <nav class="nav" id="navigation">
-        <button class="nav-button active" data-view="current"><span>Current</span><span class="nav-count" id="count-current">0</span></button>
-        <button class="nav-button" data-view="history"><span>History</span><span class="nav-count" id="count-history">0</span></button>
-        <button class="nav-button" data-view="conflicts"><span>Conflicts</span><span class="nav-count" id="count-conflicts">0</span></button>
-        <button class="nav-button" data-view="agents"><span>Agents</span><span class="nav-count" id="count-agents">0</span></button>
-        <button class="nav-button" data-view="imports"><span>Imports</span><span class="nav-count" id="count-imports">0</span></button>
+        <button class="nav-button active" data-view="overview"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2v7.3a.5.5 0 0 1-.5.5H12v-5H8v5H3.5a.5.5 0 0 1-.5-.5Z"></path></svg><span>Home</span></button>
+        <button class="nav-button" data-view="explore"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="15" cy="5" r="2"></circle><circle cx="13" cy="15" r="2"></circle><path d="m6.8 5.7 6.2-.5M6.2 7.6l5.6 5.8M14.6 7l-1.1 6"></path></svg><span>Explore</span><span class="nav-count" id="count-explore">0</span></button>
+        <button class="nav-button" data-view="timeline"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"></circle><path d="M10 6v4l2.7 1.8"></path></svg><span>Timeline</span><span class="nav-count" id="count-timeline">0</span></button>
+        <button class="nav-button" data-view="conflicts"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 18 17H2Z"></path><path d="M10 7v4.5M10 14.5h.01"></path></svg><span>Conflicts</span><span class="nav-count" id="count-conflicts">0</span></button>
+        <button class="nav-button" data-view="agents"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="6" width="12" height="10" rx="2"></rect><path d="M10 3v3M7 10h.01M13 10h.01M7 13h6"></path></svg><span>Agents</span><span class="nav-count" id="count-agents">0</span></button>
+        <button class="nav-button" data-view="imports"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10M6 8l4 4 4-4"></path><path d="M3 14v3h14v-3"></path></svg><span>Imports</span><span class="nav-count" id="count-imports">0</span></button>
       </nav>
+      <div class="sidebar-note">Private local snapshot<br>Generated on this device</div>
     </aside>
 
-    <main>
-      <div class="page-heading">
-        <h1 id="page-title">Current memories</h1>
-        <div class="page-meta" id="generated-at"></div>
+    <main class="workspace" id="workspace">
+      <div id="page-chrome">
+        <div class="page-heading"><h1 id="page-title" tabindex="-1">Your MegaBrain</h1><div class="page-meta" id="generated-at"></div></div>
+        <p class="snapshot-note" id="snapshot-note"></p>
       </div>
-
-      <p class="snapshot-note" id="snapshot-note"></p>
-
       <div class="toolbar" id="memory-toolbar">
-        <input class="control search" id="search" type="search" placeholder="Search memories" autocomplete="off" aria-label="Search memories">
-        <select class="control" id="filter-kind" aria-label="Filter by kind"><option value="">All kinds</option></select>
         <select class="control" id="filter-importance" aria-label="Filter by importance"><option value="">All importance</option></select>
         <select class="control" id="filter-confidence" aria-label="Filter by confidence"><option value="">All confidence</option></select>
         <select class="control" id="filter-sensitivity" aria-label="Filter by sensitivity"><option value="">All sensitivity</option></select>
         <select class="control" id="filter-agent" aria-label="Filter by agent"><option value="">All agents</option></select>
         <select class="control" id="filter-date" aria-label="Filter by month"><option value="">All dates</option></select>
       </div>
-
       <div class="results-meta" id="results-meta"></div>
       <section class="list" id="content" aria-live="polite"></section>
     </main>
@@ -626,87 +426,54 @@
 
   <script>
     const DATA = __MEGABRAIN_DATA__;
-    const state = { view: "current", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "" };
-    const titles = {
-      current: "Current memories",
-      history: "Memory history",
-      conflicts: "Conflicts",
-      agents: "Registered agents",
-      imports: "Import reports"
-    };
-
+    const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
+    const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"]];
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const titles = { overview: "Your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports" };
+    const topicLayout = [[330, 320], [625, 240], [215, 610], [490, 640], [745, 590], [455, 125], [120, 385], [755, 390]];
+    const workspace = document.getElementById("workspace");
+    const pageChrome = document.getElementById("page-chrome");
     const content = document.getElementById("content");
     const toolbar = document.getElementById("memory-toolbar");
     const resultsMeta = document.getElementById("results-meta");
     const agentNames = Object.fromEntries(DATA.agents.map(agent => [agent.id, agent.display_name]));
 
     function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+      return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     }
-
-    function shortId(value) {
-      return String(value ?? "").slice(0, 8);
-    }
-
+    function shortId(value) { return String(value ?? "").slice(0, 8); }
     function formatDate(value) {
       if (!value) return "Unknown date";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     }
-
-    function label(value) {
-      return String(value ?? "").replaceAll("-", " ").replace(/\b\w/g, match => match.toUpperCase());
+    function label(value) { return String(value ?? "").replaceAll("-", " ").replace(/\b\w/g, match => match.toUpperCase()); }
+    function subjectLabel(value) { return String(value ?? "").replaceAll("_", " ").split(".").map(part => label(part)).join(" · "); }
+    function graphMemoryLabel(value) {
+      const parts = String(value ?? "").replaceAll("_", " ").split(".");
+      const text = label(parts.at(-1) || value);
+      return text.length > 25 ? `${text.slice(0, 23)}…` : text;
     }
-
-    function memoryLink(memoryId, relation) {
-      return `<button class="memory-link" data-memory-id="${escapeHtml(memoryId)}" title="Open memory ${escapeHtml(memoryId)}">${escapeHtml(relation)} ${escapeHtml(shortId(memoryId))}</button>`;
+    function formatMonth(value) {
+      const date = new Date(`${value}-01T00:00:00Z`);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { month: "long", year: "numeric", timeZone: "UTC" });
     }
+    function memoryLink(memoryId, relation) { return `<button class="memory-link" data-memory-id="${escapeHtml(memoryId)}" title="Open memory ${escapeHtml(memoryId)}">${escapeHtml(relation)} ${escapeHtml(shortId(memoryId))}</button>`; }
 
     function memoryCard(memory) {
-      const tags = memory.tags.length
-        ? `<div class="tag-row">${memory.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>`
-        : "";
-      const relations = [
-        ...memory.supersedes.map(id => memoryLink(id, "Replaces")),
-        ...memory.superseded_by.map(id => memoryLink(id, "Replaced by"))
-      ];
+      const tags = memory.tags.length ? `<div class="tag-row">${memory.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>` : "";
+      const relations = [...memory.supersedes.map(id => memoryLink(id, "Replaces")), ...memory.superseded_by.map(id => memoryLink(id, "Replaced by"))];
       const source = memory.source || {};
       const locator = source.locator ? `<span><strong>Source</strong> ${escapeHtml(source.locator)}</span>` : "";
-      const badges = [
-        `<span class="badge ${escapeHtml(memory.status)}">${escapeHtml(label(memory.status))}</span>`,
-        `<span class="badge">${escapeHtml(label(memory.kind))}</span>`,
-        memory.importance === "core" ? `<span class="badge core">Core</span>` : "",
-        memory.sensitivity !== "general" ? `<span class="badge ${escapeHtml(memory.sensitivity)}">${escapeHtml(label(memory.sensitivity))}</span>` : "",
-        memory.conflict ? `<span class="badge conflict">Conflict</span>` : ""
-      ].filter(Boolean).join("");
-      return `
-        <article class="memory-card ${memory.conflict ? "conflict" : ""}" data-memory-card="${escapeHtml(memory.id)}">
-          <div class="card-topline">
-            <h2 class="subject">${escapeHtml(memory.subject)}</h2>
-            <div class="badges">${badges}</div>
-          </div>
-          <div class="summary">${escapeHtml(memory.summary)}</div>
-          ${tags}
-          <div class="metadata">
-            <span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span>
-            <span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span>
-            <span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>
-            ${locator}
-            ${relations.join("")}
-            <a href="../../${encodeURI(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a>
-          </div>
-        </article>`;
+      const badges = [`<span class="badge ${escapeHtml(memory.status)}">${escapeHtml(label(memory.status))}</span>`, `<span class="badge">${escapeHtml(label(memory.kind))}</span>`, memory.importance === "core" ? `<span class="badge core">Core</span>` : "", memory.sensitivity !== "general" ? `<span class="badge ${escapeHtml(memory.sensitivity)}">${escapeHtml(label(memory.sensitivity))}</span>` : "", memory.conflict ? `<span class="badge conflict">Conflict</span>` : ""].filter(Boolean).join("");
+      return `<article class="memory-card ${escapeHtml(memory.status)} ${memory.conflict ? "conflict" : ""}" data-memory-card="${escapeHtml(memory.id)}" tabindex="-1">
+        <div class="card-topline"><h2 class="subject" title="${escapeHtml(memory.subject)}">${escapeHtml(subjectLabel(memory.subject))}</h2><div class="badges">${badges}</div></div>
+        <div class="summary">${escapeHtml(memory.summary)}</div>${tags}
+        <div class="metadata"><span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span><span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span><span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>${locator}${relations.join("")}<a href="../../${encodeURI(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a></div>
+      </article>`;
     }
 
-    function emptyState(message) {
-      return `<div class="empty-state">${escapeHtml(message)}</div>`;
-    }
-
+    function emptyState(message) { return `<div class="empty-state">${escapeHtml(message)}</div>`; }
     function memoryMatches(memory, statuses) {
       const query = state.query.trim().toLowerCase();
       if (!statuses.includes(memory.status)) return false;
@@ -717,14 +484,9 @@
       if (state.agent && memory.created_by !== state.agent) return false;
       if (state.date && !String(memory.created_at).startsWith(state.date)) return false;
       if (!query) return true;
-      const haystack = [memory.subject, memory.summary, memory.kind, ...(memory.tags || [])].join(" ").toLowerCase();
-      return haystack.includes(query);
+      return [memory.subject, memory.summary, memory.kind, ...(memory.tags || [])].join(" ").toLowerCase().includes(query);
     }
-
-    function filteredMemories(statuses) {
-      return DATA.memories.filter(memory => memoryMatches(memory, statuses));
-    }
-
+    function filteredMemories(statuses) { return DATA.memories.filter(memory => memoryMatches(memory, statuses)); }
     function renderMemories(statuses, emptyMessage) {
       const memories = filteredMemories(statuses);
       resultsMeta.textContent = `${memories.length} ${memories.length === 1 ? "memory" : "memories"}`;
@@ -732,157 +494,258 @@
       content.innerHTML = memories.length ? memories.map(memoryCard).join("") : emptyState(emptyMessage);
     }
 
+    function hashText(value) {
+      let hash = 2166136261;
+      for (const character of String(value)) { hash ^= character.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+      return hash >>> 0;
+    }
+
+    function buildGraphModel() {
+      const topics = (DATA.topics || []).slice(0, topicLayout.length);
+      const topicNames = new Set(topics.map(topic => topic.name));
+      const nodes = topics.map((topic, index) => ({ id: `topic:${topic.name}`, type: "topic", label: label(topic.name), count: topic.count, x: topicLayout[index][0], y: topicLayout[index][1] }));
+      const edges = [];
+      const groups = new Map(topics.map(topic => [topic.name, []]));
+      const unlinked = [];
+      const memoryIds = new Set(DATA.memories.map(memory => memory.id));
+      DATA.memories.forEach(memory => {
+        const memberships = (memory.tags || []).filter(tag => topicNames.has(tag));
+        const primary = memberships[0];
+        if (primary) groups.get(primary).push(memory); else unlinked.push(memory);
+        memberships.forEach(tag => edges.push({ source: `topic:${tag}`, target: memory.id, type: "shared" }));
+        (memory.supersedes || []).forEach(id => { if (memoryIds.has(id)) edges.push({ source: memory.id, target: id, type: "supersedes" }); });
+      });
+      DATA.conflicts.forEach(group => {
+        const ids = group.memory_ids.filter(id => memoryIds.has(id));
+        for (let index = 1; index < ids.length; index += 1) edges.push({ source: ids[0], target: ids[index], type: "conflict" });
+      });
+      const placeGroup = (items, anchor, groupIndex) => items.forEach((memory, index) => {
+        const ring = 58 + Math.floor(index / 7) * 32;
+        const angle = ((index * 137.5) + (hashText(memory.id) % 44) + groupIndex * 17) * Math.PI / 180;
+        nodes.push({ id: memory.id, type: "memory", memory, label: graphMemoryLabel(memory.subject), x: Math.max(25, Math.min(875, anchor[0] + Math.cos(angle) * ring)), y: Math.max(25, Math.min(795, anchor[1] + Math.sin(angle) * ring)) });
+      });
+      topics.forEach((topic, index) => placeGroup(groups.get(topic.name), topicLayout[index], index));
+      placeGroup(unlinked, [450, 410], topics.length);
+      return { nodes, edges, topics };
+    }
+
+    function graphNodeMatches(node) {
+      if (node.type === "topic") { const query = state.query.trim().toLowerCase(); return !query || node.label.toLowerCase().includes(query); }
+      return memoryMatches(node.memory, ["current", "historical", "tombstone"]);
+    }
+
+    function graphInspector(model, selected) {
+      if (!selected) return `<div class="inspector-header"><h2 class="inspector-title">Your Brain</h2><div class="inspector-subtitle">Select a topic or memory</div></div>`;
+      if (selected.type === "topic") {
+        const name = selected.id.slice(6);
+        const memories = DATA.memories.filter(memory => (memory.tags || []).includes(name)).sort((a, b) => a.status === b.status ? String(b.created_at).localeCompare(String(a.created_at)) : a.status === "current" ? -1 : 1);
+        const rows = memories.length ? memories.map(memory => `<button class="evidence-row" data-graph-node="${escapeHtml(memory.id)}"><span class="evidence-dot ${memory.conflict ? "conflict" : escapeHtml(memory.status)}" aria-hidden="true"></span><span class="evidence-name">${escapeHtml(graphMemoryLabel(memory.subject))}</span><span class="evidence-state">${escapeHtml(memory.conflict ? "Conflict" : label(memory.status))}</span></button>`).join("") : `<div class="empty-state">No memories in this topic</div>`;
+        return `<div class="inspector-header"><h2 class="inspector-title">${escapeHtml(selected.label)}</h2><div class="inspector-subtitle">${memories.length} ${memories.length === 1 ? "memory" : "memories"} · explicit tag</div></div><div class="inspector-section-title">Current evidence</div><div class="evidence-list">${rows}</div><div class="inspector-actions"><button class="inspector-action" data-explore-topic="${escapeHtml(name)}"><span>Explore this topic</span></button></div>`;
+      }
+      const memory = selected.memory;
+      const source = memory.source || {};
+      const historyCount = (memory.supersedes || []).length + (memory.superseded_by || []).length;
+      const tagRows = (memory.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
+      return `<div class="inspector-header"><h2 class="inspector-title">${escapeHtml(graphMemoryLabel(memory.subject))}</h2><div class="inspector-subtitle">${escapeHtml(subjectLabel(memory.subject))}</div></div>
+        <div class="badges"><span class="badge ${escapeHtml(memory.status)}">${escapeHtml(label(memory.status))}</span><span class="badge">${escapeHtml(label(memory.kind))}</span>${memory.conflict ? `<span class="badge conflict">Conflict</span>` : ""}</div>
+        <div class="inspector-section-title">Evidence</div><p class="inspector-summary">${escapeHtml(memory.summary)}</p>
+        <div class="inspector-facts"><div class="inspector-fact">Confidence<strong>${escapeHtml(label(memory.confidence))}</strong></div><div class="inspector-fact">Updated<strong>${escapeHtml(formatDate(memory.created_at).split(",")[0])}</strong></div><div class="inspector-fact">History<strong>${escapeHtml(historyCount)}</strong></div><div class="inspector-fact">Agent<strong>${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</strong></div></div>
+        ${tagRows ? `<div class="tag-row">${tagRows}</div>` : ""}${source.locator ? `<p class="inspector-subtitle">Source: ${escapeHtml(source.locator)}</p>` : ""}
+        <div class="inspector-actions"><a class="inspector-action" href="../../${encodeURI(memory.path)}"><span>Open Markdown</span></a><button class="inspector-action" data-open-memory="${escapeHtml(memory.id)}"><span>View in ${memory.status === "current" ? "Explore" : "Timeline"}</span></button></div>`;
+    }
+
+    function graphMarkup(model) {
+      if (!model.nodes.length) return emptyState("Your first durable memory will appear here.");
+      const selectedId = state.graphSelected || model.nodes[0].id;
+      state.graphSelected = selectedId;
+      const selected = model.nodes.find(node => node.id === selectedId) || model.nodes[0];
+      const adjacent = new Set([selected.id]);
+      model.edges.forEach(edge => { if (edge.source === selected.id) adjacent.add(edge.target); if (edge.target === selected.id) adjacent.add(edge.source); });
+      const byId = Object.fromEntries(model.nodes.map(node => [node.id, node]));
+      const edges = model.edges.map(edge => {
+        const source = byId[edge.source]; const target = byId[edge.target];
+        if (!source || !target) return "";
+        const active = edge.source === selected.id || edge.target === selected.id;
+        return `<line class="graph-edge ${escapeHtml(edge.type)} ${active ? "active" : "dimmed"}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}"></line>`;
+      }).join("");
+      const nodes = model.nodes.map(node => {
+        const isSelected = node.id === selected.id;
+        const isAdjacent = !isSelected && adjacent.has(node.id);
+        const dimmed = (!isSelected && !isAdjacent) || !graphNodeMatches(node);
+        const memoryClasses = node.type === "memory" ? `${escapeHtml(node.memory.status)} ${node.memory.conflict ? "conflict" : ""}` : "";
+        const radius = node.type === "topic" ? Math.min(34, 20 + node.count * 1.1) : node.memory.conflict ? 7 : node.memory.status === "current" ? 5.5 : 4.5;
+        const labelY = node.type === "topic" ? radius + 18 : 4;
+        const labelX = node.type === "topic" ? 0 : radius + 7;
+        const aria = node.type === "topic" ? `${node.label}, ${node.count} ${node.count === 1 ? "memory" : "memories"}` : `${subjectLabel(node.memory.subject)}, ${label(node.memory.status)}`;
+        return `<g class="graph-node ${escapeHtml(node.type)} ${memoryClasses} ${isSelected ? "selected" : ""} ${isAdjacent ? "adjacent" : ""} ${dimmed ? "dimmed" : ""}" data-graph-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" tabindex="0" role="button" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><circle r="${radius}"></circle><text class="graph-label ${node.type === "memory" ? "memory-label" : ""}" x="${labelX}" y="${labelY}">${escapeHtml(node.label)}</text></g>`;
+      }).join("");
+      return `<svg id="brain-graph" class="${model.nodes.length > 70 ? "dense-graph" : ""}" viewBox="0 0 900 820" role="group" aria-labelledby="graph-title graph-description"><title id="graph-title">MegaBrain knowledge graph</title><desc id="graph-description">Topics connect to memories through explicit tags. Arrows show supersession and coral lines show conflicts.</desc><defs><marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 8 4 0 8Z" fill="#a7acb5"></path></marker></defs><g id="graph-stage" transform="translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})"><g aria-hidden="true">${edges}</g><g>${nodes}</g></g></svg>`;
+    }
+
+    function mobileGraphMarkup(model) {
+      return model.topics.length ? model.topics.map((topic, index) => `<button class="mobile-topic ${state.graphSelected === `topic:${topic.name}` ? "selected" : ""}" data-graph-node="topic:${escapeHtml(topic.name)}"><span class="mobile-rank">${String(index + 1).padStart(2, "0")}</span><span>${escapeHtml(label(topic.name))}</span><span class="mobile-count">${escapeHtml(topic.count)}</span></button>`).join("") : emptyState("No topics yet");
+    }
+
+    function graphControlsMarkup() {
+      return `<div class="graph-controls" aria-label="Graph controls"><button class="graph-control" data-graph-action="zoom-in" aria-label="Zoom in"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"></path></svg></button><button class="graph-control" data-graph-action="zoom-out" aria-label="Zoom out"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"></path></svg></button><button class="graph-control" data-graph-action="reset" aria-label="Reset graph view"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"></circle><path d="M10 2v3M10 15v3M2 10h3M15 10h3"></path></svg></button></div>`;
+    }
+
+    function renderOverview() {
+      const model = buildGraphModel();
+      if (!state.graphSelected && model.nodes.length) state.graphSelected = model.nodes[0].id;
+      const selected = model.nodes.find(node => node.id === state.graphSelected) || model.nodes[0];
+      content.className = "graph-shell";
+      content.innerHTML = `<div class="graph-canvas" id="graph-viewport" role="region" aria-label="Knowledge graph" tabindex="0">${graphMarkup(model)}<div class="mobile-graph-list">${mobileGraphMarkup(model)}</div>${graphControlsMarkup()}</div><aside class="graph-inspector" id="graph-inspector" aria-label="Selected knowledge">${graphInspector(model, selected)}</aside><div class="graph-status" aria-label="Graph legend"><span class="legend-item"><span class="legend-dot current"></span>Current</span><span class="legend-item"><span class="legend-dot"></span>Historical</span><span class="legend-item"><span class="legend-line"></span>Supersedes</span><span class="legend-item"><span class="legend-line shared"></span>Shared tag</span><span class="legend-item"><span class="legend-dot conflict"></span>Conflict</span><span class="graph-counts">${escapeHtml(DATA.memories.length)} records · ${escapeHtml(DATA.stats.subjects || 0)} subjects · ${escapeHtml(DATA.stats.conflicts)} ${DATA.stats.conflicts === 1 ? "conflict" : "conflicts"}</span></div>`;
+      bindGraphControls();
+    }
+
+    function renderTimeline() {
+      const memories = filteredMemories(["current", "historical", "tombstone"]);
+      const groups = new Map();
+      memories.forEach(memory => { const month = String(memory.created_at).slice(0, 7); if (!groups.has(month)) groups.set(month, []); groups.get(month).push(memory); });
+      resultsMeta.textContent = `${memories.length} ${memories.length === 1 ? "record" : "records"}`;
+      content.className = "timeline";
+      content.innerHTML = groups.size ? [...groups.entries()].map(([month, items]) => `<section class="timeline-month"><div class="timeline-month-label">${escapeHtml(formatMonth(month))}</div><div class="timeline-items">${items.map(memory => memoryCard(memory)).join("")}</div></section>`).join("") : emptyState("No memory activity matches these filters.");
+    }
+
     function renderConflicts() {
       const byId = Object.fromEntries(DATA.memories.map(memory => [memory.id, memory]));
-      const groups = DATA.conflicts.filter(conflict => {
-        const memories = conflict.memory_ids.map(id => byId[id]).filter(Boolean);
-        return memories.some(memory => memoryMatches(memory, ["current"]));
-      });
+      const groups = DATA.conflicts.filter(conflict => conflict.memory_ids.map(id => byId[id]).filter(Boolean).some(memory => memoryMatches(memory, ["current"])));
       resultsMeta.textContent = `${groups.length} ${groups.length === 1 ? "conflict" : "conflicts"}`;
       content.className = "list";
-      content.innerHTML = groups.length
-        ? groups.map(group => {
-            const cards = group.memory_ids.map(id => byId[id]).filter(Boolean).map(memoryCard).join("");
-            return `<h2 class="conflict-heading">${escapeHtml(group.subject)}</h2>${cards}`;
-          }).join("")
-        : emptyState("No unresolved conflicts");
+      content.innerHTML = groups.length ? groups.map(group => `<h2 class="conflict-heading">${escapeHtml(group.subject)}</h2>${group.memory_ids.map(id => byId[id]).filter(Boolean).map(memoryCard).join("")}`).join("") : emptyState("No unresolved conflicts");
     }
 
     function renderAgents() {
       resultsMeta.textContent = `${DATA.agents.length} ${DATA.agents.length === 1 ? "agent" : "agents"}`;
       content.className = "agent-grid";
-      content.innerHTML = DATA.agents.length
-        ? DATA.agents.map(agent => `
-            <article class="agent-card">
-              <h2 class="agent-name">${escapeHtml(agent.display_name)}</h2>
-              <div class="agent-detail">${escapeHtml(label(agent.harness))} &middot; ${escapeHtml(shortId(agent.id))}</div>
-              <div class="import-counts">
-                <div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div>
-                <div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div>
-              </div>
-            </article>`).join("")
-        : emptyState("No registered agents");
+      content.innerHTML = DATA.agents.length ? DATA.agents.map(agent => `<article class="agent-card"><h2 class="agent-name">${escapeHtml(agent.display_name)}</h2><div class="agent-detail">${escapeHtml(label(agent.harness))} · ${escapeHtml(shortId(agent.id))}</div><div class="import-counts"><div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div><div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div></div></article>`).join("") : emptyState("No registered agents");
     }
 
     function renderImports() {
       resultsMeta.textContent = `${DATA.imports.length} ${DATA.imports.length === 1 ? "import" : "imports"}`;
       content.className = "list";
-      content.innerHTML = DATA.imports.length
-        ? DATA.imports.map(item => {
-            const counts = item.counts || {};
-            return `
-              <article class="import-card">
-                <h2 class="import-title">${escapeHtml(item.source.locator || shortId(item.id))}</h2>
-                <div class="import-detail">${escapeHtml(label(item.source.type))} &middot; ${escapeHtml(formatDate(item.created_at))} &middot; ${escapeHtml(agentNames[item.created_by] || shortId(item.created_by))}</div>
-                <div class="import-counts">
-                  ${["scanned", "created", "duplicates", "conflicts", "rejected"].map(key => `<div class="import-count"><strong>${escapeHtml(counts[key] || 0)}</strong>${escapeHtml(label(key))}</div>`).join("")}
-                </div>
-                <div class="metadata"><a href="../../${encodeURI(item.path)}" title="Open the immutable Markdown import report">Open Markdown</a></div>
-              </article>`;
-          }).join("")
-        : emptyState("No import reports");
+      content.innerHTML = DATA.imports.length ? DATA.imports.map(item => { const counts = item.counts || {}; return `<article class="import-card"><h2 class="import-title">${escapeHtml(item.source.locator || shortId(item.id))}</h2><div class="import-detail">${escapeHtml(label(item.source.type))} · ${escapeHtml(formatDate(item.created_at))} · ${escapeHtml(agentNames[item.created_by] || shortId(item.created_by))}</div><div class="import-counts">${["scanned", "created", "duplicates", "conflicts", "rejected"].map(key => `<div class="import-count"><strong>${escapeHtml(counts[key] || 0)}</strong>${escapeHtml(label(key))}</div>`).join("")}</div><div class="metadata"><a href="../../${encodeURI(item.path)}" title="Open the immutable Markdown import report">Open Markdown</a></div></article>`; }).join("") : emptyState("No import reports");
     }
 
     function render() {
       document.getElementById("page-title").textContent = titles[state.view];
-      document.querySelectorAll(".nav-button").forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
-      const isMemoryView = ["current", "history", "conflicts"].includes(state.view);
+      document.querySelectorAll(".nav-button").forEach(button => { const active = button.dataset.view === state.view; button.classList.toggle("active", active); if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current"); });
+      const overview = state.view === "overview";
+      const isMemoryView = ["explore", "timeline", "conflicts"].includes(state.view);
+      workspace.classList.toggle("graph-mode", overview);
+      pageChrome.classList.toggle("hidden", overview);
       toolbar.classList.toggle("hidden", !isMemoryView);
-      resultsMeta.classList.remove("hidden");
-      if (state.view === "current") renderMemories(["current"], "No current memories");
-      if (state.view === "history") renderMemories(["historical", "tombstone"], "No memory history");
+      resultsMeta.classList.toggle("hidden", overview);
+      if (overview) renderOverview();
+      if (state.view === "explore") renderMemories(["current"], "No current memories");
+      if (state.view === "timeline") renderTimeline();
       if (state.view === "conflicts") renderConflicts();
       if (state.view === "agents") renderAgents();
       if (state.view === "imports") renderImports();
       bindMemoryLinks();
     }
 
+    function resetFilters() {
+      state.query = "";
+      document.getElementById("search").value = "";
+      for (const [id, key] of filterFields) { state[key] = ""; document.getElementById(id).value = ""; }
+    }
+
+    function focusDestination(memoryId) {
+      requestAnimationFrame(() => {
+        const card = memoryId ? document.querySelector(`[data-memory-card="${CSS.escape(memoryId)}"]`) : null;
+        const destination = card || document.getElementById("page-title");
+        destination.focus({ preventScroll: true });
+        destination.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: card ? "center" : "start" });
+        if (!card) return;
+        card.classList.add("targeted");
+        setTimeout(() => card.classList.remove("targeted"), 1600);
+      });
+    }
+
+    function navigateTo(view, options = {}) {
+      resetFilters(); state.view = view;
+      if (options.query) { state.query = options.query; document.getElementById("search").value = state.query; }
+      if (options.confidence) { state.confidence = options.confidence; document.getElementById("filter-confidence").value = state.confidence; }
+      render(); focusDestination(options.memoryId);
+    }
+
     function bindMemoryLinks() {
-      document.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => {
-        const id = button.dataset.memoryId;
-        const memory = DATA.memories.find(item => item.id === id);
-        if (!memory) return;
-        state.view = memory.status === "current" ? "current" : "history";
-        state.query = "";
-        document.getElementById("search").value = "";
-        render();
-        requestAnimationFrame(() => {
-          const card = document.querySelector(`[data-memory-card="${CSS.escape(id)}"]`);
-          if (!card) return;
-          card.classList.add("targeted");
-          card.scrollIntoView({ behavior: "smooth", block: "center" });
-          setTimeout(() => card.classList.remove("targeted"), 2200);
-        });
+      document.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => { const id = button.dataset.memoryId; const memory = DATA.memories.find(item => item.id === id); if (memory) navigateTo(memory.status === "current" ? "explore" : "timeline", { memoryId: id }); }));
+    }
+
+    function selectGraphNode(nodeId) { state.graphSelected = nodeId; renderOverview(); }
+    function updateGraphTransform() { const stage = document.getElementById("graph-stage"); if (stage) stage.setAttribute("transform", `translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})`); }
+    function changeGraphZoom(amount) { state.graphScale = Math.max(0.65, Math.min(2.2, state.graphScale + amount)); updateGraphTransform(); }
+
+    function bindGraphControls() {
+      document.querySelectorAll("[data-graph-node]").forEach(node => {
+        const choose = () => selectGraphNode(node.dataset.graphNode);
+        node.addEventListener("click", choose);
+        node.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(); } });
+      });
+      document.querySelectorAll("[data-graph-action]").forEach(button => button.addEventListener("click", () => {
+        if (button.dataset.graphAction === "zoom-in") changeGraphZoom(0.15);
+        if (button.dataset.graphAction === "zoom-out") changeGraphZoom(-0.15);
+        if (button.dataset.graphAction === "reset") { state.graphScale = 1; state.graphX = 0; state.graphY = 0; updateGraphTransform(); }
       }));
+      document.querySelectorAll("[data-explore-topic]").forEach(button => button.addEventListener("click", () => navigateTo("explore", { query: button.dataset.exploreTopic || "" })));
+      document.querySelectorAll("[data-open-memory]").forEach(button => button.addEventListener("click", () => { const memory = DATA.memories.find(item => item.id === button.dataset.openMemory); if (memory) navigateTo(memory.status === "current" ? "explore" : "timeline", { memoryId: memory.id }); }));
+      const viewport = document.getElementById("graph-viewport");
+      if (!viewport) return;
+      let drag = null;
+      viewport.addEventListener("pointerdown", event => {
+        if (event.target.closest("[data-graph-node], [data-graph-action], a, button")) return;
+        drag = { x: event.clientX, y: event.clientY, graphX: state.graphX, graphY: state.graphY };
+        viewport.classList.add("dragging"); viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener("pointermove", event => {
+        if (!drag) return;
+        const rect = viewport.getBoundingClientRect();
+        state.graphX = drag.graphX + (event.clientX - drag.x) * (900 / rect.width);
+        state.graphY = drag.graphY + (event.clientY - drag.y) * (820 / rect.height);
+        updateGraphTransform();
+      });
+      const stopDrag = event => { if (!drag) return; drag = null; viewport.classList.remove("dragging"); if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId); };
+      viewport.addEventListener("pointerup", stopDrag); viewport.addEventListener("pointercancel", stopDrag);
+      viewport.addEventListener("wheel", event => { event.preventDefault(); changeGraphZoom(event.deltaY < 0 ? 0.1 : -0.1); }, { passive: false });
     }
 
     function populateSelect(id, values, formatter = label) {
       const select = document.getElementById(id);
-      values.forEach(value => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = formatter(value);
-        select.append(option);
-      });
+      values.forEach(value => { const option = document.createElement("option"); option.value = value; option.textContent = formatter(value); select.append(option); });
     }
 
-    document.getElementById("count-current").textContent = DATA.stats.current;
-    document.getElementById("count-history").textContent = DATA.stats.history;
+    document.getElementById("count-explore").textContent = DATA.stats.current;
+    document.getElementById("count-timeline").textContent = DATA.stats.current + DATA.stats.history;
     document.getElementById("count-conflicts").textContent = DATA.stats.conflicts;
     document.getElementById("count-agents").textContent = DATA.stats.agents;
     document.getElementById("count-imports").textContent = DATA.stats.imports;
     const freshness = DATA.freshness || {};
     const generatedAt = formatDate(freshness.generated_at || DATA.generated_at);
-    const newestMemoryAt = freshness.newest_memory_at
-      ? formatDate(freshness.newest_memory_at)
-      : "No memories yet";
+    const newestMemoryAt = freshness.newest_memory_at ? formatDate(freshness.newest_memory_at) : "No memories yet";
     document.getElementById("generated-at").textContent = `Snapshot ${generatedAt} · Newest memory ${newestMemoryAt}`;
-    document.getElementById("snapshot-note").textContent =
-      "This is a private local snapshot, not a live page. Say “Synchronize and open my MegaBrain” to synchronize, validate, and regenerate it.";
-
+    document.getElementById("snapshot-note").textContent = "This is a private local snapshot, not a live page. Say “Synchronize and open my MegaBrain” to synchronize, validate, and regenerate it.";
     const syncState = document.getElementById("sync-state");
-    if (freshness.stale || DATA.sync.stale) {
-      syncState.classList.add("stale");
-      document.getElementById("sync-label").textContent = "Snapshot may be stale";
-      syncState.title = `Synchronization incomplete when generated: ${freshness.reason || DATA.sync.reason || "unknown reason"}`;
-    } else {
-      document.getElementById("sync-label").textContent = "Synchronized when generated";
-      syncState.title = `Synchronized when generated at ${generatedAt}`;
-    }
+    if (freshness.stale || DATA.sync.stale) { syncState.classList.add("stale"); document.getElementById("sync-label").textContent = "Snapshot may be stale"; syncState.title = `Synchronization incomplete when generated: ${freshness.reason || DATA.sync.reason || "unknown reason"}`; }
+    else { document.getElementById("sync-label").textContent = "Synchronized when generated"; syncState.title = `Synchronized when generated at ${generatedAt}`; }
 
     populateSelect("filter-kind", [...new Set(DATA.memories.map(item => item.kind))].sort());
     populateSelect("filter-importance", [...new Set(DATA.memories.map(item => item.importance))].sort());
     populateSelect("filter-confidence", [...new Set(DATA.memories.map(item => item.confidence))].sort());
     populateSelect("filter-sensitivity", [...new Set(DATA.memories.map(item => item.sensitivity))].sort());
     populateSelect("filter-agent", DATA.agents.map(item => item.id), value => agentNames[value] || shortId(value));
-    populateSelect("filter-date", [...new Set(DATA.memories.map(item => String(item.created_at).slice(0, 7)))].sort().reverse(), value => value);
+    populateSelect("filter-date", [...new Set(DATA.memories.map(item => String(item.created_at).slice(0, 7)))].sort().reverse(), formatMonth);
 
-    document.getElementById("navigation").addEventListener("click", event => {
-      const button = event.target.closest("[data-view]");
-      if (!button) return;
-      state.view = button.dataset.view;
-      render();
+    document.getElementById("navigation").addEventListener("click", event => { const button = event.target.closest("[data-view]"); if (button) navigateTo(button.dataset.view); });
+    document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; render(); });
+    for (const [id, key] of filterFields) document.getElementById(id).addEventListener("change", event => { state[key] = event.target.value; render(); });
+    document.addEventListener("keydown", event => {
+      const target = event.target;
+      const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+      if ((event.key === "/" && !typing) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) { event.preventDefault(); document.getElementById("search").focus(); }
     });
-
-    document.getElementById("search").addEventListener("input", event => {
-      state.query = event.target.value;
-      render();
-    });
-
-    for (const [id, key] of [
-      ["filter-kind", "kind"],
-      ["filter-importance", "importance"],
-      ["filter-confidence", "confidence"],
-      ["filter-sensitivity", "sensitivity"],
-      ["filter-agent", "agent"],
-      ["filter-date", "date"]
-    ]) {
-      document.getElementById(id).addEventListener("change", event => {
-        state[key] = event.target.value;
-        render();
-      });
-    }
-
     render();
   </script>
 </body>

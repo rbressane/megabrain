@@ -2025,6 +2025,12 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
     included_ids = {str(memory["id"]) for memory in memories}
     newest_memory_included = newest_id is None or newest_id in included_ids
     safe_sync = safe_browser_sync(root, sync)
+    topic_counts = Counter(
+        str(tag)
+        for record in active
+        for tag in record.meta.get("tags", [])
+        if isinstance(tag, str) and tag.strip()
+    )
     freshness = {
         "synchronization": "synchronized_when_generated" if safe_sync["synced"] else "incomplete",
         "generated_at": generated_at,
@@ -2041,10 +2047,18 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
         "stats": {
             "current": len(active),
             "history": len(records) - len(active),
+            "subjects": len({str(record.meta.get("subject")) for record in active}),
             "conflicts": len(conflicts),
             "agents": len(agents),
             "imports": len(imports),
         },
+        "topics": [
+            {"name": name, "count": count}
+            for name, count in sorted(
+                topic_counts.items(),
+                key=lambda item: (-item[1], item[0].casefold()),
+            )[:8]
+        ],
         "memories": memories,
         "conflicts": [
             {"subject": subject, "memory_ids": memory_ids}
