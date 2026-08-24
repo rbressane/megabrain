@@ -954,7 +954,46 @@ def configured_root(home: Path, harness: str) -> tuple[dict[str, Any], Path, Pat
     root_value = config.get("clones", {}).get(harness)
     if not root_value:
         raise BootstrapError("SETUP_REQUIRED", "MegaBrain is not connected to this agent.")
-    root = Path(str(root_value)).expanduser().resolve()
+    configured = Path(str(root_value)).expanduser()
+    managed = clone_path(home, harness)
+    try:
+        root = configured.resolve(strict=True)
+        managed_root = managed.resolve(strict=True)
+    except OSError as error:
+        raise BootstrapError(
+            "CLONE_UNAVAILABLE",
+            "MegaBrain's managed clone is unavailable. Run setup or connect again.",
+        ) from error
+    if root != managed_root or managed.is_symlink() or not root.is_dir() or not (root / ".git").exists():
+        raise BootstrapError(
+            "CLONE_INVALID",
+            "MegaBrain's configured clone is not the managed clone. Run setup or connect again.",
+        )
+    expected_remote = config.get("remote")
+    try:
+        actual_remote = run(["git", "remote", "get-url", "origin"], root)
+    except OSError as error:
+        raise BootstrapError(
+            "CLONE_UNAVAILABLE",
+            "MegaBrain's managed clone is unavailable. Run setup or connect again.",
+        ) from error
+    if (
+        not isinstance(expected_remote, str)
+        or not expected_remote
+        or actual_remote.returncode != 0
+        or normalize_remote(actual_remote.stdout.strip()) != normalize_remote(expected_remote)
+    ):
+        raise BootstrapError(
+            "CLONE_REMOTE_MISMATCH",
+            "MegaBrain's managed clone points to a different repository.",
+        )
+    identity = load_json(
+        root / ".megabrain" / "local.json",
+        "IDENTITY_INVALID",
+        "The local agent identity is invalid. Run setup or connect again.",
+    )
+    if identity.get("harness") != harness:
+        raise BootstrapError("IDENTITY_MISMATCH", "This clone belongs to another agent harness.")
     skill = current_runtime(home) / "skill" / "megabrain"
     validate_runtime_release(current_runtime(home))
     return config, root, skill

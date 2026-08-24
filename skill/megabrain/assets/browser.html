@@ -347,7 +347,7 @@
       .workspace, .workspace.graph-mode { min-height: calc(100vh - 100px); overflow: visible; padding: 18px 14px 36px; }
       .workspace.graph-mode { padding: 0; }
       .graph-shell { display: block; height: auto; }
-      .graph-canvas { min-height: 0; }
+      .graph-canvas { cursor: default; min-height: 0; overflow: visible; touch-action: auto; }
       #brain-graph, .graph-controls { display: none; }
       .mobile-graph-list { display: block; }
       .graph-inspector { border-left: 0; border-top: 1px solid var(--border); max-height: none; padding: 18px 14px; }
@@ -429,6 +429,7 @@
     const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
     const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"]];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mobileGraph = window.matchMedia("(max-width: 760px)");
     const titles = { overview: "Your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports" };
     const topicLayout = [[330, 320], [625, 240], [215, 610], [490, 640], [745, 590], [455, 125], [120, 385], [755, 390]];
     const workspace = document.getElementById("workspace");
@@ -507,8 +508,11 @@
       const edges = [];
       const groups = new Map(topics.map(topic => [topic.name, []]));
       const unlinked = [];
-      const memoryIds = new Set(DATA.memories.map(memory => memory.id));
-      DATA.memories.forEach(memory => {
+      const visibleIds = new Set(DATA.graph_memory_ids || DATA.memories.map(memory => memory.id));
+      if (state.graphSelected && !state.graphSelected.startsWith("topic:")) visibleIds.add(state.graphSelected);
+      const graphMemories = DATA.memories.filter(memory => visibleIds.has(memory.id));
+      const memoryIds = new Set(graphMemories.map(memory => memory.id));
+      graphMemories.forEach(memory => {
         const memberships = (memory.tags || []).filter(tag => topicNames.has(tag));
         const primary = memberships[0];
         if (primary) groups.get(primary).push(memory); else unlinked.push(memory);
@@ -526,7 +530,7 @@
       });
       topics.forEach((topic, index) => placeGroup(groups.get(topic.name), topicLayout[index], index));
       placeGroup(unlinked, [450, 410], topics.length);
-      return { nodes, edges, topics };
+      return { nodes, edges, topics, visibleMemoryCount: graphMemories.length };
     }
 
     function graphNodeMatches(node) {
@@ -535,18 +539,18 @@
     }
 
     function graphInspector(model, selected) {
-      if (!selected) return `<div class="inspector-header"><h2 class="inspector-title">Your Brain</h2><div class="inspector-subtitle">Select a topic or memory</div></div>`;
+      if (!selected) return `<div class="inspector-header"><h2 class="inspector-title" tabindex="-1">Your Brain</h2><div class="inspector-subtitle">Select a topic or memory</div></div>`;
       if (selected.type === "topic") {
         const name = selected.id.slice(6);
         const memories = DATA.memories.filter(memory => (memory.tags || []).includes(name)).sort((a, b) => a.status === b.status ? String(b.created_at).localeCompare(String(a.created_at)) : a.status === "current" ? -1 : 1);
-        const rows = memories.length ? memories.map(memory => `<button class="evidence-row" data-graph-node="${escapeHtml(memory.id)}"><span class="evidence-dot ${memory.conflict ? "conflict" : escapeHtml(memory.status)}" aria-hidden="true"></span><span class="evidence-name">${escapeHtml(graphMemoryLabel(memory.subject))}</span><span class="evidence-state">${escapeHtml(memory.conflict ? "Conflict" : label(memory.status))}</span></button>`).join("") : `<div class="empty-state">No memories in this topic</div>`;
-        return `<div class="inspector-header"><h2 class="inspector-title">${escapeHtml(selected.label)}</h2><div class="inspector-subtitle">${memories.length} ${memories.length === 1 ? "memory" : "memories"} · explicit tag</div></div><div class="inspector-section-title">Current evidence</div><div class="evidence-list">${rows}</div><div class="inspector-actions"><button class="inspector-action" data-explore-topic="${escapeHtml(name)}"><span>Explore this topic</span></button></div>`;
+        const rows = memories.length ? memories.map(memory => { const isSelected = state.graphSelected === memory.id; return `<button class="evidence-row ${isSelected ? "selected" : ""}" data-graph-node="${escapeHtml(memory.id)}" aria-pressed="${isSelected}"><span class="evidence-dot ${memory.conflict ? "conflict" : escapeHtml(memory.status)}" aria-hidden="true"></span><span class="evidence-name">${escapeHtml(graphMemoryLabel(memory.subject))}</span><span class="evidence-state">${escapeHtml(memory.conflict ? "Conflict" : label(memory.status))}</span></button>`; }).join("") : `<div class="empty-state">No memories in this topic</div>`;
+        return `<div class="inspector-header"><h2 class="inspector-title" tabindex="-1">${escapeHtml(selected.label)}</h2><div class="inspector-subtitle">${memories.length} ${memories.length === 1 ? "memory" : "memories"} · explicit tag</div></div><div class="inspector-section-title">Current evidence</div><div class="evidence-list">${rows}</div><div class="inspector-actions"><button class="inspector-action" data-explore-topic="${escapeHtml(name)}"><span>Explore this topic</span></button></div>`;
       }
       const memory = selected.memory;
       const source = memory.source || {};
       const historyCount = (memory.supersedes || []).length + (memory.superseded_by || []).length;
       const tagRows = (memory.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
-      return `<div class="inspector-header"><h2 class="inspector-title">${escapeHtml(graphMemoryLabel(memory.subject))}</h2><div class="inspector-subtitle">${escapeHtml(subjectLabel(memory.subject))}</div></div>
+      return `<div class="inspector-header"><h2 class="inspector-title" tabindex="-1">${escapeHtml(graphMemoryLabel(memory.subject))}</h2><div class="inspector-subtitle">${escapeHtml(subjectLabel(memory.subject))}</div></div>
         <div class="badges"><span class="badge ${escapeHtml(memory.status)}">${escapeHtml(label(memory.status))}</span><span class="badge">${escapeHtml(label(memory.kind))}</span>${memory.conflict ? `<span class="badge conflict">Conflict</span>` : ""}</div>
         <div class="inspector-section-title">Evidence</div><p class="inspector-summary">${escapeHtml(memory.summary)}</p>
         <div class="inspector-facts"><div class="inspector-fact">Confidence<strong>${escapeHtml(label(memory.confidence))}</strong></div><div class="inspector-fact">Updated<strong>${escapeHtml(formatDate(memory.created_at).split(",")[0])}</strong></div><div class="inspector-fact">History<strong>${escapeHtml(historyCount)}</strong></div><div class="inspector-fact">Agent<strong>${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</strong></div></div>
@@ -577,13 +581,13 @@
         const labelY = node.type === "topic" ? radius + 18 : 4;
         const labelX = node.type === "topic" ? 0 : radius + 7;
         const aria = node.type === "topic" ? `${node.label}, ${node.count} ${node.count === 1 ? "memory" : "memories"}` : `${subjectLabel(node.memory.subject)}, ${label(node.memory.status)}`;
-        return `<g class="graph-node ${escapeHtml(node.type)} ${memoryClasses} ${isSelected ? "selected" : ""} ${isAdjacent ? "adjacent" : ""} ${dimmed ? "dimmed" : ""}" data-graph-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" tabindex="0" role="button" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><circle r="${radius}"></circle><text class="graph-label ${node.type === "memory" ? "memory-label" : ""}" x="${labelX}" y="${labelY}">${escapeHtml(node.label)}</text></g>`;
+        return `<g class="graph-node ${escapeHtml(node.type)} ${memoryClasses} ${isSelected ? "selected" : ""} ${isAdjacent ? "adjacent" : ""} ${dimmed ? "dimmed" : ""}" data-graph-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" tabindex="${isSelected ? "0" : "-1"}" role="button" aria-pressed="${isSelected}" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><circle r="${radius}"></circle><text class="graph-label ${node.type === "memory" ? "memory-label" : ""}" x="${labelX}" y="${labelY}">${escapeHtml(node.label)}</text></g>`;
       }).join("");
       return `<svg id="brain-graph" class="${model.nodes.length > 70 ? "dense-graph" : ""}" viewBox="0 0 900 820" role="group" aria-labelledby="graph-title graph-description"><title id="graph-title">MegaBrain knowledge graph</title><desc id="graph-description">Topics connect to memories through explicit tags. Arrows show supersession and coral lines show conflicts.</desc><defs><marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 8 4 0 8Z" fill="#a7acb5"></path></marker></defs><g id="graph-stage" transform="translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})"><g aria-hidden="true">${edges}</g><g>${nodes}</g></g></svg>`;
     }
 
     function mobileGraphMarkup(model) {
-      return model.topics.length ? model.topics.map((topic, index) => `<button class="mobile-topic ${state.graphSelected === `topic:${topic.name}` ? "selected" : ""}" data-graph-node="topic:${escapeHtml(topic.name)}"><span class="mobile-rank">${String(index + 1).padStart(2, "0")}</span><span>${escapeHtml(label(topic.name))}</span><span class="mobile-count">${escapeHtml(topic.count)}</span></button>`).join("") : emptyState("No topics yet");
+      return model.topics.length ? model.topics.map((topic, index) => { const isSelected = state.graphSelected === `topic:${topic.name}`; return `<button class="mobile-topic ${isSelected ? "selected" : ""}" data-graph-node="topic:${escapeHtml(topic.name)}" aria-pressed="${isSelected}"><span class="mobile-rank">${String(index + 1).padStart(2, "0")}</span><span>${escapeHtml(label(topic.name))}</span><span class="mobile-count">${escapeHtml(topic.count)}</span></button>`; }).join("") : emptyState("No topics yet");
     }
 
     function graphControlsMarkup() {
@@ -594,8 +598,9 @@
       const model = buildGraphModel();
       if (!state.graphSelected && model.nodes.length) state.graphSelected = model.nodes[0].id;
       const selected = model.nodes.find(node => node.id === state.graphSelected) || model.nodes[0];
+      const graphRecordCount = model.visibleMemoryCount < DATA.memories.length ? `${model.visibleMemoryCount} of ${DATA.memories.length} records` : `${DATA.memories.length} records`;
       content.className = "graph-shell";
-      content.innerHTML = `<div class="graph-canvas" id="graph-viewport" role="region" aria-label="Knowledge graph" tabindex="0">${graphMarkup(model)}<div class="mobile-graph-list">${mobileGraphMarkup(model)}</div>${graphControlsMarkup()}</div><aside class="graph-inspector" id="graph-inspector" aria-label="Selected knowledge">${graphInspector(model, selected)}</aside><div class="graph-status" aria-label="Graph legend"><span class="legend-item"><span class="legend-dot current"></span>Current</span><span class="legend-item"><span class="legend-dot"></span>Historical</span><span class="legend-item"><span class="legend-line"></span>Supersedes</span><span class="legend-item"><span class="legend-line shared"></span>Shared tag</span><span class="legend-item"><span class="legend-dot conflict"></span>Conflict</span><span class="graph-counts">${escapeHtml(DATA.memories.length)} records · ${escapeHtml(DATA.stats.subjects || 0)} subjects · ${escapeHtml(DATA.stats.conflicts)} ${DATA.stats.conflicts === 1 ? "conflict" : "conflicts"}</span></div>`;
+      content.innerHTML = `<div class="graph-canvas" id="graph-viewport" role="region" aria-label="Knowledge graph">${graphMarkup(model)}<div class="mobile-graph-list">${mobileGraphMarkup(model)}</div>${graphControlsMarkup()}</div><aside class="graph-inspector" id="graph-inspector" aria-label="Selected knowledge">${graphInspector(model, selected)}</aside><div class="graph-status" aria-label="Graph legend"><span class="legend-item"><span class="legend-dot current"></span>Current</span><span class="legend-item"><span class="legend-dot"></span>Historical</span><span class="legend-item"><span class="legend-line"></span>Supersedes</span><span class="legend-item"><span class="legend-line shared"></span>Shared tag</span><span class="legend-item"><span class="legend-dot conflict"></span>Conflict</span><span class="graph-counts">${escapeHtml(graphRecordCount)} · ${escapeHtml(DATA.stats.subjects || 0)} subjects · ${escapeHtml(DATA.stats.conflicts)} ${DATA.stats.conflicts === 1 ? "conflict" : "conflicts"}</span></div>`;
       bindGraphControls();
     }
 
@@ -675,15 +680,34 @@
       document.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => { const id = button.dataset.memoryId; const memory = DATA.memories.find(item => item.id === id); if (memory) navigateTo(memory.status === "current" ? "explore" : "timeline", { memoryId: id }); }));
     }
 
-    function selectGraphNode(nodeId) { state.graphSelected = nodeId; renderOverview(); }
+    function focusGraphSelection(nodeId, origin) {
+      requestAnimationFrame(() => {
+        const selectors = { graph: ".graph-node", mobile: ".mobile-topic", evidence: ".evidence-row" };
+        const selector = selectors[origin];
+        const selected = selector ? document.querySelector(`${selector}[data-graph-node="${CSS.escape(nodeId)}"]`) : null;
+        const destination = selected || document.querySelector("#graph-inspector .inspector-title");
+        if (destination) destination.focus({ preventScroll: true });
+      });
+    }
+    function selectGraphNode(nodeId, origin) { state.graphSelected = nodeId; renderOverview(); focusGraphSelection(nodeId, origin); }
     function updateGraphTransform() { const stage = document.getElementById("graph-stage"); if (stage) stage.setAttribute("transform", `translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})`); }
     function changeGraphZoom(amount) { state.graphScale = Math.max(0.65, Math.min(2.2, state.graphScale + amount)); updateGraphTransform(); }
 
     function bindGraphControls() {
       document.querySelectorAll("[data-graph-node]").forEach(node => {
-        const choose = () => selectGraphNode(node.dataset.graphNode);
+        const origin = node.classList.contains("graph-node") ? "graph" : node.classList.contains("mobile-topic") ? "mobile" : "evidence";
+        const choose = () => selectGraphNode(node.dataset.graphNode, origin);
         node.addEventListener("click", choose);
-        node.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(); } });
+        node.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(); return; }
+          if (origin !== "graph" || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+          event.preventDefault();
+          const graphNodes = [...document.querySelectorAll("#brain-graph [data-graph-node]")];
+          const current = graphNodes.indexOf(node);
+          const direction = ["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1;
+          const next = graphNodes[(current + direction + graphNodes.length) % graphNodes.length];
+          if (next) selectGraphNode(next.dataset.graphNode, "graph");
+        });
       });
       document.querySelectorAll("[data-graph-action]").forEach(button => button.addEventListener("click", () => {
         if (button.dataset.graphAction === "zoom-in") changeGraphZoom(0.15);
@@ -696,6 +720,7 @@
       if (!viewport) return;
       let drag = null;
       viewport.addEventListener("pointerdown", event => {
+        if (mobileGraph.matches) return;
         if (event.target.closest("[data-graph-node], [data-graph-action], a, button")) return;
         drag = { x: event.clientX, y: event.clientY, graphX: state.graphX, graphY: state.graphY };
         viewport.classList.add("dragging"); viewport.setPointerCapture(event.pointerId);
@@ -709,7 +734,7 @@
       });
       const stopDrag = event => { if (!drag) return; drag = null; viewport.classList.remove("dragging"); if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId); };
       viewport.addEventListener("pointerup", stopDrag); viewport.addEventListener("pointercancel", stopDrag);
-      viewport.addEventListener("wheel", event => { event.preventDefault(); changeGraphZoom(event.deltaY < 0 ? 0.1 : -0.1); }, { passive: false });
+      viewport.addEventListener("wheel", event => { if (mobileGraph.matches) return; event.preventDefault(); changeGraphZoom(event.deltaY < 0 ? 0.1 : -0.1); }, { passive: false });
     }
 
     function populateSelect(id, values, formatter = label) {

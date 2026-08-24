@@ -1949,6 +1949,59 @@ def safe_browser_sync(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+GRAPH_OVERVIEW_MEMORY_LIMIT = 64
+GRAPH_OVERVIEW_GROUP_LIMIT = 24
+
+
+def graph_overview_memory_ids(
+    memories: list[dict[str, Any]],
+    topics: list[dict[str, Any]],
+) -> list[str]:
+    topic_names = [str(topic.get("name")) for topic in topics if topic.get("name")]
+    topic_set = set(topic_names)
+    group_order: list[str | None] = [*topic_names, None]
+    groups: dict[str | None, list[dict[str, Any]]] = {name: [] for name in group_order}
+    importance_rank = {"always": 0, "core": 1, "normal": 2}
+    status_rank = {"current": 0, "historical": 1, "tombstone": 2}
+    ranked = sorted(memories, key=lambda memory: str(memory.get("id", "")))
+    ranked.sort(key=lambda memory: str(memory.get("created_at", "")), reverse=True)
+    ranked.sort(key=lambda memory: importance_rank.get(str(memory.get("importance")), 3))
+    ranked.sort(key=lambda memory: status_rank.get(str(memory.get("status")), 3))
+    ranked.sort(key=lambda memory: 0 if memory.get("conflict") else 1)
+    for memory in ranked:
+        tags = memory.get("tags", [])
+        primary = next(
+            (str(tag) for tag in tags if isinstance(tag, str) and tag in topic_set),
+            None,
+        ) if isinstance(tags, list) else None
+        groups[primary].append(memory)
+
+    selected: list[str] = []
+    selected_per_group = Counter()
+    group_positions = Counter()
+    while len(selected) < GRAPH_OVERVIEW_MEMORY_LIMIT:
+        progressed = False
+        for group in group_order:
+            if len(selected) >= GRAPH_OVERVIEW_MEMORY_LIMIT:
+                break
+            if (
+                selected_per_group[group] >= GRAPH_OVERVIEW_GROUP_LIMIT
+                or group_positions[group] >= len(groups[group])
+            ):
+                continue
+            memory = groups[group][group_positions[group]]
+            group_positions[group] += 1
+            memory_id = str(memory.get("id", ""))
+            if not memory_id:
+                continue
+            selected.append(memory_id)
+            selected_per_group[group] += 1
+            progressed = True
+        if not progressed:
+            break
+    return selected
+
+
 def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
     records = load_memories(root)
     active, conflicts = current_memories(records)
@@ -2031,6 +2084,13 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
         for tag in record.meta.get("tags", [])
         if isinstance(tag, str) and tag.strip()
     )
+    topics = [
+        {"name": name, "count": count}
+        for name, count in sorted(
+            topic_counts.items(),
+            key=lambda item: (-item[1], item[0].casefold()),
+        )[:8]
+    ]
     freshness = {
         "synchronization": "synchronized_when_generated" if safe_sync["synced"] else "incomplete",
         "generated_at": generated_at,
@@ -2052,13 +2112,8 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
             "agents": len(agents),
             "imports": len(imports),
         },
-        "topics": [
-            {"name": name, "count": count}
-            for name, count in sorted(
-                topic_counts.items(),
-                key=lambda item: (-item[1], item[0].casefold()),
-            )[:8]
-        ],
+        "topics": topics,
+        "graph_memory_ids": graph_overview_memory_ids(memories, topics),
         "memories": memories,
         "conflicts": [
             {"subject": subject, "memory_ids": memory_ids}
