@@ -43,8 +43,8 @@ jobs:
 """
 ONBOARDING_MESSAGE = (
     "MegaBrain is ready.\n"
-    "Say \"Synchronize and open my MegaBrain\" anytime to synchronize, validate, "
-    "and browse your private Brain locally."
+    "Run `megabrain open` anytime to synchronize and browse your private Brain.\n"
+    "You can also say \"Synchronize and open my MegaBrain\"."
 )
 
 
@@ -401,6 +401,100 @@ class MegaBrainAcceptanceTests(unittest.TestCase):
         error = json.loads(refused.stderr)["error"]
         self.assertEqual(error["code"], "COMMAND_PATH_OCCUPIED")
         self.assertEqual(command.read_text(encoding="utf-8"), "#!/bin/sh\necho unrelated\n")
+
+    def test_first_class_open_command_refreshes_home_without_exposing_private_data(self) -> None:
+        self.network.clone("open-command", "codex")
+        home = self.network.homes["open-command"]
+        clone = self.network.clones["open-command"]
+        command = home / ".local" / "bin" / "megabrain"
+
+        help_result = run([str(command), "--help"], home, env={"HOME": str(home)})
+        self.assertIn("open", help_result.stdout)
+
+        opened = run(
+            [str(command), "open", "--no-open"],
+            home,
+            env={"HOME": str(home)},
+        )
+
+        self.assertIn("MegaBrain Home is ready", opened.stdout)
+        self.assertIn("Snapshot refreshed", opened.stdout)
+        self.assertNotIn(str(clone), opened.stdout + opened.stderr)
+        self.assertTrue((clone / ".megabrain" / "browser" / "index.html").exists())
+
+    def test_first_class_open_rejects_a_missing_managed_clone_without_leaking_its_path(self) -> None:
+        self.network.clone("open-missing-clone", "codex")
+        home = self.network.homes["open-missing-clone"]
+        clone = self.network.clones["open-missing-clone"]
+        command = home / ".local" / "bin" / "megabrain"
+        relocated = clone.with_name("relocated-private-clone")
+        clone.rename(relocated)
+
+        refused = run(
+            [str(command), "open", "--no-open"],
+            home,
+            env={"HOME": str(home)},
+            expected=2,
+        )
+
+        self.assertIn("MegaBrain open failed", refused.stderr)
+        self.assertNotIn("Traceback", refused.stderr)
+        self.assertNotIn(str(clone), refused.stdout + refused.stderr)
+        self.assertNotIn(str(relocated), refused.stdout + refused.stderr)
+
+    def test_first_class_open_rejects_a_configured_clone_outside_the_managed_location(self) -> None:
+        self.network.clone("open-tampered-clone", "codex")
+        home = self.network.homes["open-tampered-clone"]
+        clone = self.network.clones["open-tampered-clone"]
+        command = home / ".local" / "bin" / "megabrain"
+        config_path = home / ".megabrain" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["clones"]["codex"] = str(self.network.seed)
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        refused = run(
+            [str(command), "open", "--no-open"],
+            home,
+            env={"HOME": str(home)},
+            expected=2,
+        )
+
+        self.assertIn("MegaBrain open failed", refused.stderr)
+        self.assertNotIn("Traceback", refused.stderr)
+        self.assertNotIn(str(clone), refused.stdout + refused.stderr)
+        self.assertNotIn(str(self.network.seed), refused.stdout + refused.stderr)
+
+    def test_graph_overview_memory_selection_is_bounded_and_conflict_first(self) -> None:
+        topics = [{"name": "projects", "count": 90}, {"name": "design", "count": 20}]
+        memories = [
+            {
+                "id": f"project-{index}",
+                "tags": ["projects"],
+                "status": "current" if index < 70 else "historical",
+                "conflict": index in {2, 4},
+                "created_at": f"2026-08-{(index % 28) + 1:02d}T12:00:00Z",
+                "importance": "normal",
+            }
+            for index in range(90)
+        ] + [
+            {
+                "id": f"design-{index}",
+                "tags": ["design"],
+                "status": "current",
+                "conflict": False,
+                "created_at": f"2026-07-{(index % 28) + 1:02d}T12:00:00Z",
+                "importance": "core",
+            }
+            for index in range(20)
+        ]
+
+        selected = megabrain_runtime.graph_overview_memory_ids(memories, topics)
+
+        self.assertLessEqual(len(selected), 64)
+        self.assertIn("project-2", selected)
+        self.assertIn("project-4", selected)
+        self.assertLessEqual(sum(memory_id.startswith("project-") for memory_id in selected), 24)
+        self.assertTrue(any(memory_id.startswith("design-") for memory_id in selected))
 
     def test_first_class_update_is_current_without_mutating_check(self) -> None:
         distribution, remote, current_version = self.create_runtime_distribution("current-release", [])
@@ -1570,8 +1664,9 @@ raise SystemExit(99)
         self.assertNotIn('textContent = "Synchronized";', html)
         self.assertIn("Synchronize and open my MegaBrain", html)
         for expected in (
-            'data-view="current"',
-            'data-view="history"',
+            'data-view="overview"',
+            'data-view="explore"',
+            'data-view="timeline"',
             'data-view="conflicts"',
             'data-view="agents"',
             'data-view="imports"',
@@ -1581,6 +1676,14 @@ raise SystemExit(99)
             'id="filter-sensitivity"',
             'id="filter-agent"',
             'id="filter-date"',
+            'id="page-title" tabindex="-1"',
+            'id="brain-graph"',
+            'aria-label="Knowledge graph"',
+            'id="graph-inspector"',
+            'data-memory-card="${escapeHtml(memory.id)}" tabindex="-1"',
+            'items.map(memory => memoryCard(memory)).join("")',
+            "function resetFilters()",
+            "function navigateTo(view, options = {})",
         ):
             self.assertIn(expected, html)
         data_match = re.search(r"const DATA = (?P<data>.*?);\n    const state", html, re.DOTALL)
@@ -1588,8 +1691,17 @@ raise SystemExit(99)
         data = json.loads(data_match.group("data"))
         self.assertEqual(
             data["stats"],
-            {"current": 4, "history": 1, "conflicts": 1, "agents": 1, "imports": 1},
+            {
+                "current": 4,
+                "history": 1,
+                "subjects": 3,
+                "conflicts": 1,
+                "agents": 1,
+                "imports": 1,
+            },
         )
+        self.assertEqual(data["topics"][0], {"name": "browser", "count": 4})
+        self.assertEqual(data["topics"][1], {"name": "channel", "count": 2})
         memories = {item["id"]: item for item in data["memories"]}
         self.assertEqual(memories[original["memory_id"]]["status"], "historical")
         self.assertEqual(memories[replacement["memory_id"]]["status"], "current")

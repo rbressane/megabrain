@@ -16,7 +16,8 @@ That is the complete setup request. An agent opening this repository must treat 
 
 ```text
 MegaBrain is ready.
-Say "Synchronize and open my MegaBrain" anytime to synchronize, validate, and browse your private Brain locally.
+Run `megabrain open` anytime to synchronize and browse your private Brain.
+You can also say "Synchronize and open my MegaBrain".
 ```
 
 That private repository starts with zero personal memories. You do not choose folders, configure Git, or identify which supported agent you are using.
@@ -47,6 +48,7 @@ Other natural actions include:
 The installed command is available directly after setup:
 
 ```bash
+megabrain open
 megabrain update --check
 megabrain update
 ```
@@ -97,7 +99,7 @@ It accepts structured JSON, rejects transcript/secret/private-path-shaped input 
 
 ## Browse And Import
 
-Ask an installed agent to `Synchronize and open my MegaBrain` for a private local catalog of current memory, history, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git.
+Run `megabrain open`, or ask an installed agent to `Synchronize and open my MegaBrain`, for a private local Home with an overview, topic map, current knowledge explorer, timeline, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git.
 
 To import knowledge, tell an installed agent:
 
