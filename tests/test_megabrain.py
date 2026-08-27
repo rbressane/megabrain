@@ -794,6 +794,21 @@ raise SystemExit(99)
         self.assertNotIn("The synthetic garden has four plots.", summaries)
         self.assertEqual(len(context["conflicts"]), 1)
         self.assertEqual(len(context["conflicts"][0]["memory_ids"]), 2)
+        unified = self.network.command(
+            "agent-a",
+            "search",
+            {"query": "project release channel", "limit": 1},
+            "--stdin",
+        )
+        unified_summaries = {
+            item["excerpt"] for item in unified["evidence"] if item["kind"] == "memory"
+        }
+        self.assertEqual(
+            unified_summaries,
+            {"The release channel is stable.", "The release channel is preview."},
+        )
+        self.assertEqual(unified["conflict_expansion"], 1)
+        self.assertEqual(len(unified["conflicts"]["memories"]), 1)
         limited = self.network.command(
             "agent-a", "context", {"task": "Quantum zephyr"}, "--stdin", "--limit", "1"
         )
