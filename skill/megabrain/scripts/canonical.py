@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
@@ -66,7 +67,11 @@ MAX_IMPORT_CANDIDATES = 10
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 MAX_RESOURCE_BYTES = 512 * 1024
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
-RESOURCE_INDEX_SCHEMA = "megabrain.resource-index.v1"
+RESOURCE_INDEX_SCHEMA = "megabrain.resource-index.v2"
+RESOURCE_TOKEN_STOPWORDS = {
+    "a", "all", "an", "and", "are", "do", "for", "how", "in", "is", "it", "of",
+    "on", "or", "should", "the", "this", "to", "use", "we", "what", "which", "with",
+}
 RESOURCE_PATTERN = re.compile(
     r"\A<!--\s*megabrain-resource\s*\n(?P<meta>.*?)\n-->\s*\n?(?P<body>.*)\Z",
     re.DOTALL,
@@ -105,6 +110,17 @@ class ResourceRevision:
     path: Path
     meta: dict[str, Any]
     body: str
+
+
+@dataclass(frozen=True)
+class ResourceSectionMatch:
+    record: ResourceRevision
+    ordinal: int
+    heading_path: str
+    excerpt: str
+    context: str
+    score: float
+    score_components: dict[str, float | int]
 
 
 def utc_now() -> str:
@@ -365,8 +381,52 @@ def current_resources(
     return active, conflicts
 
 
+def _raw_tokens(value: str) -> list[str]:
+    raw = re.findall(r"[a-z0-9]+", value.casefold())
+    expanded = list(raw)
+    for token in raw:
+        split = re.sub(r"(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])", " ", token)
+        expanded.extend(re.findall(r"[a-z0-9]+", split))
+        if len(token) > 3 and token.endswith("s"):
+            expanded.append(token[:-1])
+    return [
+        token for token in expanded
+        if token not in RESOURCE_TOKEN_STOPWORDS and not token.isdigit()
+    ]
+
+
 def _tokens(value: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", value.casefold()))
+    return set(_raw_tokens(value))
+
+
+def markdown_sections(body: str) -> list[tuple[int, str, str]]:
+    """Split Markdown into stable, heading-scoped sections for a disposable index."""
+    headings: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    current_heading = "Document"
+    current_lines: list[str] = []
+    heading_pattern = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+    for line in body.splitlines():
+        match = heading_pattern.match(line)
+        if not match:
+            current_lines.append(line)
+            continue
+        if current_lines or not sections:
+            sections.append((current_heading, current_lines))
+        level = len(match.group(1))
+        title = match.group(2).strip()
+        headings = headings[: level - 1]
+        headings.append(title)
+        current_heading = " > ".join(headings)
+        current_lines = []
+    if current_lines or not sections:
+        sections.append((current_heading, current_lines))
+    normalized = []
+    for heading, lines in sections:
+        text = "\n".join(lines).strip()
+        if text or heading != "Document":
+            normalized.append((len(normalized), heading, text))
+    return normalized or [(0, "Document", "")]
 
 
 def resource_index_path(root: Path) -> Path:
@@ -435,6 +495,22 @@ def build_resource_index(root: Path, commit: str, path: Path) -> float:
                     revision_id TEXT NOT NULL,
                     PRIMARY KEY(token, revision_id)
                 );
+                CREATE TABLE sections (
+                    section_id TEXT PRIMARY KEY,
+                    revision_id TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL,
+                    heading_path TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    UNIQUE(revision_id, ordinal)
+                );
+                CREATE TABLE section_postings (
+                    token TEXT NOT NULL,
+                    section_id TEXT NOT NULL,
+                    frequency INTEGER NOT NULL,
+                    PRIMARY KEY(token, section_id)
+                );
+                CREATE INDEX section_postings_section ON section_postings(section_id);
+                CREATE INDEX sections_revision ON sections(revision_id, ordinal);
                 CREATE TABLE conflicts (
                     resource_id TEXT NOT NULL,
                     revision_id TEXT NOT NULL,
@@ -462,6 +538,20 @@ def build_resource_index(root: Path, commit: str, path: Path) -> float:
                     "INSERT INTO postings VALUES (?, ?)",
                     ((token, revision_id) for token in _tokens(searchable)),
                 )
+                for ordinal, heading_path, section_body in markdown_sections(record.body):
+                    section_id = f"{revision_id}:{ordinal}"
+                    connection.execute(
+                        "INSERT INTO sections VALUES (?, ?, ?, ?, ?)",
+                        (section_id, revision_id, ordinal, heading_path, section_body),
+                    )
+                    frequencies = Counter(_raw_tokens(
+                        f"{record.meta['title']} {record.meta['resource_type']} "
+                        f"{record.meta['authority_domain']} {heading_path} {section_body}"
+                    ))
+                    connection.executemany(
+                        "INSERT INTO section_postings VALUES (?, ?, ?)",
+                        ((token, section_id, frequency) for token, frequency in frequencies.items()),
+                    )
             connection.executemany(
                 "INSERT INTO conflicts VALUES (?, ?)",
                 ((resource_id, revision_id) for resource_id, revisions in conflicts.items() for revision_id in revisions),
@@ -545,6 +635,111 @@ def search_resources(
         for resource_id, revision_id in connection.execute("SELECT resource_id,revision_id FROM conflicts"):
             conflicts[resource_id].append(revision_id)
         return records, dict(conflicts), state, elapsed
+    finally:
+        connection.close()
+
+
+def search_resource_sections(
+    root: Path,
+    query: str,
+    *,
+    allow_rebuild: bool = True,
+    per_resource_limit: int = 2,
+) -> tuple[list[ResourceSectionMatch], dict[str, list[str]], str, float]:
+    query_tokens = _tokens(query)
+    connection, state, elapsed = open_resource_index(root, allow_rebuild=allow_rebuild)
+    try:
+        conflicts: dict[str, list[str]] = defaultdict(list)
+        for resource_id, revision_id in connection.execute("SELECT resource_id,revision_id FROM conflicts"):
+            conflicts[resource_id].append(revision_id)
+        if not query_tokens:
+            return [], dict(conflicts), state, elapsed
+        placeholders = ",".join("?" for _ in query_tokens)
+        total_sections = int(connection.execute("SELECT COUNT(*) FROM sections").fetchone()[0])
+        document_frequency = {
+            token: count
+            for token, count in connection.execute(
+                f"SELECT token,COUNT(*) FROM section_postings WHERE token IN ({placeholders}) GROUP BY token",
+                sorted(query_tokens),
+            )
+        }
+        rows = list(connection.execute(
+            f"""
+            SELECT s.section_id,s.revision_id,s.ordinal,s.heading_path,s.body,
+                   r.path,r.meta_json,r.body
+            FROM section_postings p
+            JOIN sections s ON s.section_id=p.section_id
+            JOIN resources r ON r.revision_id=s.revision_id
+            WHERE p.token IN ({placeholders})
+            GROUP BY s.section_id
+            """,
+            sorted(query_tokens),
+        ))
+        ranked: list[tuple[float, str, int, ResourceRevision, str, str, dict[str, float | int]]] = []
+        normalized_query = " ".join(_raw_tokens(query))
+        for _, revision_id, ordinal, heading_path, section_body, path, meta_json, resource_body in rows:
+            record = ResourceRevision(
+                path=root / str(path),
+                meta=json.loads(meta_json),
+                body=str(resource_body),
+            )
+            title_tokens = _tokens(str(record.meta["title"]))
+            heading_tokens = _tokens(str(heading_path))
+            body_frequencies = Counter(_raw_tokens(str(section_body)))
+            matched = query_tokens & (title_tokens | heading_tokens | set(body_frequencies))
+            title_score = 6 * len(query_tokens & title_tokens)
+            heading_score = 4 * len(query_tokens & heading_tokens)
+            body_score = sum(min(3, body_frequencies[token]) for token in matched)
+            rarity_score = sum(
+                (1.0 + math.log((total_sections + 1) / (document_frequency.get(token, 0) + 1)))
+                for token in matched
+            )
+            searchable = " ".join(_raw_tokens(
+                f"{record.meta['title']} {heading_path} {section_body}"
+            ))
+            exact_score = 8 if normalized_query and normalized_query in searchable else 0
+            coverage = len(matched) / len(query_tokens)
+            score = title_score + heading_score + body_score + rarity_score + exact_score + (4 * coverage)
+            components: dict[str, float | int] = {
+                "title": title_score,
+                "heading": heading_score,
+                "body": body_score,
+                "rare_term": round(rarity_score, 6),
+                "exact_phrase": exact_score,
+                "coverage": round(coverage, 6),
+            }
+            ranked.append((score, str(revision_id), int(ordinal), record, str(heading_path), str(section_body), components))
+        ranked.sort(key=lambda item: (item[0], item[1], -item[2]), reverse=True)
+        per_resource: Counter[str] = Counter()
+        matches: list[ResourceSectionMatch] = []
+        for score, revision_id, ordinal, record, heading_path, section_body, components in ranked:
+            if per_resource[revision_id] >= per_resource_limit:
+                continue
+            neighbor_rows = list(connection.execute(
+                "SELECT ordinal,heading_path,body FROM sections WHERE revision_id=? AND ordinal BETWEEN ? AND ? ORDER BY ordinal",
+                (revision_id, max(0, ordinal - 1), ordinal + 1),
+            ))
+            context_parts = [
+                f"[{neighbor_heading}]\n{neighbor_body}".strip()
+                for _, neighbor_heading, neighbor_body in neighbor_rows
+            ]
+            context = "\n\n".join(context_parts)
+            if len(context) > 6000:
+                context = context[:5999].rstrip() + "…"
+            excerpt = section_body.strip()
+            if len(excerpt) > 2000:
+                excerpt = excerpt[:1999].rstrip() + "…"
+            matches.append(ResourceSectionMatch(
+                record=record,
+                ordinal=ordinal,
+                heading_path=heading_path,
+                excerpt=excerpt,
+                context=context,
+                score=round(score, 6),
+                score_components=components,
+            ))
+            per_resource[revision_id] += 1
+        return matches, dict(conflicts), state, elapsed
     finally:
         connection.close()
 

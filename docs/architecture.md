@@ -20,7 +20,7 @@ The owner remains the publication boundary. The command cannot open an issue, cr
 
 Each supported agent has a clone under `~/.megabrain/clones/<harness>`. New private repositories contain `brain/`, `megabrain.json`, and private-brain documentation. They do not contain GitHub Actions workflows or the executable product runtime.
 
-The installed helper pulls before context retrieval, resolves immutable memory/resource graphs, and performs bounded lexical matching. Disposable memory and resource indexes are compiled only from `git archive HEAD`, never dirty files. Write operations create new immutable records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared files.
+The installed helper pulls before context retrieval, resolves immutable memory/resource graphs, and performs bounded retrieval. Memory context uses field-weighted lexical and rare-term scoring. Unified search adds heading-scoped resource matches, neighboring-section expansion, stable citations, and source-diverse fusion across memory and resource evidence. Disposable memory and resource indexes are compiled only from `git archive HEAD`, never dirty files. Write operations create new immutable records, validate and secret-scan them, commit only those records, and push. Unique filenames let rejected concurrent pushes fetch, rebase, and retry without modifying shared files.
 
 Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
 

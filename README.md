@@ -30,7 +30,7 @@ Talk normally after installation:
 Remember that I prefer concise weekly reports with decisions first.
 ```
 
-MegaBrain retrieves relevant current context before each request and captures only new durable learning afterward. It reports writes compactly:
+MegaBrain retrieves relevant current context before each request and captures only new durable learning afterward. Questions that span memories and long-form resources use one bounded, citation-ready evidence search. It reports writes compactly:
 
 ```text
 MegaBrain: saved 1 durable memory.
@@ -97,7 +97,15 @@ megabrain feedback --stdin
 
 It accepts structured JSON, rejects transcript/secret/private-path-shaped input without echoing rejected values, performs no network call, and writes only to stdout unless an explicit new local output file is requested. It never creates a GitHub issue, branch, PR or release. See [the product feedback lifecycle and schema](docs/product-feedback-loop.md).
 
-## Browse And Import
+## Browse, Search, And Import
+
+Connected agents can retrieve citation-ready evidence without exposing repository paths:
+
+```sh
+printf '%s' '{"query":"How do we recover the gateway?","limit":12}' | megabrain search --stdin
+```
+
+Search combines current memories with matching sections from current resources. Resource evidence includes adjacent Markdown sections plus its immutable URI, revision, heading path, provenance, freshness, and access decision. The index remains an ignored projection of committed Git state.
 
 Run `megabrain open`, or ask an installed agent to `Synchronize and open my MegaBrain`, for a private local Home with an overview, topic map, current knowledge explorer, timeline, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git.
 

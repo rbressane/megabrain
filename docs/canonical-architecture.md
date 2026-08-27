@@ -4,7 +4,7 @@ Protocol 2 makes a user's private MegaBrain the canonical repository for durable
 
 ## Layers
 
-1. **Bounded retrieval** uses disposable SQLite indexes compiled only from `git archive HEAD`. `core` affects tie-breaking only; it never bypasses relevance or `--limit`. At most three reviewed `always` invariants enter every result. Bounded collection and conflict expansions are reported explicitly.
+1. **Bounded retrieval** uses disposable SQLite indexes compiled only from `git archive HEAD`. Memory ranking combines field-weighted lexical relevance with rare-term weighting. Unified search returns memories and heading-scoped resource evidence with immutable citations, score components, and adjacent-section context. `core` affects tie-breaking only; it never bypasses relevance or `--limit`. At most three reviewed `always` invariants enter every result. Bounded collection and conflict expansions are reported explicitly.
 2. **Canonical resources** use stable `megabrain://resource/<uuid>` URIs and immutable revisions under `brain/resources/`. Current state is derived from supersession and retirement links.
 3. **Review-first migration** separates source preparation from runtime approval. `prepare-import.py` reads only an owner allowlist. The normal helper stages structured candidates outside Git. `canonical-local.py` imports one exact fingerprint after owner review.
 4. **Scoped access** stores immutable policy revisions under `brain/policies/`. Private and sensitive reads default deny and require trusted host context; model payload fields cannot grant access.
@@ -32,6 +32,8 @@ MegaBrain is canonical for durable reusable knowledge and archived evidence. Pro
 
 ## Documentation Index
 
+- [Retrieval and activation](retrieval-activation.md)
+- [Retrieval activation benchmark](benchmarks/retrieval-activation-2026-08-27.md)
 - [Resource and attachment format](canonical-resource-format.md)
 - [Import, coverage, and migration](canonical-import-migration.md)
 - [Authority and scoped access](canonical-access-policy.md)
