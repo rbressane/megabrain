@@ -45,3 +45,4 @@ MegaBrain is canonical for durable reusable knowledge and archived evidence. Pro
 - [MegaBrain 2.0.0 release notes](release-notes-2.0.0.md)
 - [MegaBrain 2.0.1 private-retrieval repair](release-notes-2.0.1.md)
 - [MegaBrain 2.1.0 Graph First Home](release-notes-2.1.0.md)
+- [MegaBrain 2.2.0 Retrieval Activation](release-notes-2.2.0.md)
