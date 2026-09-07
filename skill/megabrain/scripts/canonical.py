@@ -250,11 +250,11 @@ def parse_resource(path: Path) -> ResourceRevision:
 
 
 def write_resource(path: Path, meta: Mapping[str, Any], body: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    import operations
     metadata = json.dumps(dict(meta), ensure_ascii=True, sort_keys=True, indent=2)
     normalized = normalized_markdown(body)
     suffix = f"\n{normalized}" if normalized else ""
-    path.write_text(f"<!-- megabrain-resource\n{metadata}\n-->\n{suffix}", encoding="utf-8")
+    operations.atomic_write(path, f"<!-- megabrain-resource\n{metadata}\n-->\n{suffix}", exclusive=True)
 
 
 def validate_resource(record: ResourceRevision) -> list[str]:

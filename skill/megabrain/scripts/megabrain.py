@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from canonical import CanonicalError
+import operations
 
 
 MEMORY_SCHEMA = "megabrain.memory.v1"
@@ -301,9 +302,8 @@ def parse_record(path: Path) -> Record:
 
 
 def write_record(path: Path, meta: dict[str, Any], body: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     metadata = json.dumps(meta, ensure_ascii=True, sort_keys=True, indent=2)
-    path.write_text(f"<!-- megabrain-meta\n{metadata}\n-->\n\n{body.strip()}\n", encoding="utf-8")
+    operations.atomic_write(path, f"<!-- megabrain-meta\n{metadata}\n-->\n\n{body.strip()}\n", exclusive=True)
 
 
 def valid_uuid(value: Any) -> bool:
@@ -813,7 +813,7 @@ def relative(root: Path, path: Path) -> str:
 
 
 def run(command: list[str], cwd: Path, *, check: bool = False) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+    completed = operations.run(command, cwd)
     if check and completed.returncode != 0:
         raise BrainError(
             "COMMAND_FAILED",
@@ -856,6 +856,9 @@ def rebase_remote(root: Path) -> tuple[bool, str | None]:
 
 def push_with_retry(root: Path, attempts: int = 3) -> tuple[bool, str | None]:
     for _ in range(attempts):
+        blocked = operations.outgoing_guard(root, detect_secret)
+        if blocked:
+            return False, blocked
         pushed = run(["git", "push", "origin", "HEAD:main"], root)
         if pushed.returncode == 0:
             return True, None
@@ -865,6 +868,7 @@ def push_with_retry(root: Path, attempts: int = 3) -> tuple[bool, str | None]:
     return False, "push_rejected"
 
 
+@operations.locked
 def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
     if not is_git_repo(root):
         return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
@@ -873,6 +877,9 @@ def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
         return {"synced": False, "stale": True, "reason": "dirty_worktree", "files": dirty}
     if not has_remote(root):
         return {"synced": False, "stale": True, "reason": "missing_origin"}
+    blocked = operations.outgoing_guard(root, detect_secret)
+    if blocked:
+        return {"synced": False, "stale": True, "reason": "validation_failed", "guard": blocked}
     rebased, reason = rebase_remote(root)
     if not rebased:
         if reason == "remote_unavailable":
@@ -1034,7 +1041,7 @@ def exact_duplicate(records: list[Record], subject: str, summary: str) -> Record
 def commit_paths(root: Path, paths: list[Path], message: str) -> dict[str, Any]:
     for path in paths:
         run(["git", "add", "--", relative(root, path)], root, check=True)
-    committed = run(["git", "commit", "-m", message], root)
+    committed = run(["git", "commit", "--only", "-m", message, "--", *[relative(root, path) for path in paths]], root)
     if committed.returncode != 0:
         raise BrainError("COMMIT_FAILED", "Unable to commit memory records", {"stderr": safe_git_error(committed.stderr)})
     if not has_remote(root):
@@ -1327,6 +1334,7 @@ def collection_relevant(record: Record, task_tokens: set[str]) -> bool:
     return required > 0 and len(record_tokens & task_tokens) >= required
 
 
+@operations.locked
 def command_context(
     root: Path,
     payload: dict[str, Any],
@@ -1479,6 +1487,7 @@ def command_context(
     return result
 
 
+@operations.locked
 def command_search(
     root: Path,
     payload: dict[str, Any],
@@ -1756,6 +1765,7 @@ def command_search(
     return result
 
 
+@operations.locked
 def command_remember(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
@@ -1787,6 +1797,7 @@ def find_memory(root: Path, memory_id: str) -> tuple[Record, bool]:
     return record, any(item.meta.get("id") == memory_id for item in active)
 
 
+@operations.locked
 def command_correct(root: Path, memory_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
@@ -1822,6 +1833,7 @@ def command_correct(root: Path, memory_id: str, payload: dict[str, Any]) -> dict
     }
 
 
+@operations.locked
 def command_forget(root: Path, memory_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
@@ -1869,6 +1881,7 @@ def prior_import(root: Path, source: dict[str, str]) -> Record | None:
     return None
 
 
+@operations.locked
 def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
     identity = load_identity(root)
@@ -1981,6 +1994,7 @@ def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@operations.locked
 def command_resource_list(
     root: Path,
     payload: dict[str, Any],
@@ -2037,6 +2051,7 @@ def command_resource_list(
     return result
 
 
+@operations.locked
 def command_resource_read(
     root: Path,
     reference: str,
@@ -2076,6 +2091,7 @@ def command_resource_read(
     }
 
 
+@operations.locked
 def command_import_stage(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     import canonical
 
@@ -2284,8 +2300,23 @@ def graph_overview_memory_ids(
     return selected
 
 
-def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
-    records = load_memories(root)
+def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    commit = operations.git_text(root, "rev-parse", "HEAD")
+    with operations.snapshot(root, "brain/memories", "brain/agents", "brain/imports", "brain/policies", commit=commit) as snapshot:
+        payload = _browser_payload(snapshot, sync, trusted_context=trusted_context)
+    payload["snapshot_commit"] = commit
+    payload["sync"] = safe_browser_sync(root, sync)
+    payload["freshness"]["pending_local_commits"] = payload["sync"]["pending_local_commits"]
+    return payload
+
+
+def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    import canonical
+
+    records = [record for record in load_memories(root) if record.meta.get("sensitivity") == "general" or (
+        record.meta.get("sensitivity") == "private" and trusted_context is not None
+        and canonical.authorize(root, meta=record.meta, trusted_context=trusted_context, capability="read")
+    )]
     active, conflicts = current_memories(records)
     active_ids = {str(record.meta.get("id")) for record in active}
     conflict_ids = {memory_id for ids in conflicts.values() for memory_id in ids}
@@ -2353,6 +2384,8 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
             reverse=True,
         )
     ]
+    if trusted_context is None:
+        imports = []
     generated_at = utc_now()
     newest = max(records, key=lambda item: str(item.meta.get("created_at", "")), default=None)
     newest_id = str(newest.meta.get("id")) if newest else None
@@ -2406,7 +2439,8 @@ def browser_payload(root: Path, sync: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
+@operations.locked
+def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     compatibility = require_compatible_runtime(root, writing=False)
     sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     validation = command_validate(root)
@@ -2419,7 +2453,7 @@ def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
     template = Path(__file__).resolve().parents[1] / "assets" / "browser.html"
     if not template.exists():
         raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
-    payload = browser_payload(root, sync)
+    payload = browser_payload(root, sync, trusted_context=trusted_context)
     serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     serialized = (
         serialized.replace("&", "\\u0026")
@@ -2430,8 +2464,7 @@ def command_browse(root: Path, no_open: bool) -> dict[str, Any]:
     )
     html = template.read_text(encoding="utf-8").replace("__MEGABRAIN_DATA__", serialized)
     output = root / ".megabrain" / "browser" / "index.html"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(html, encoding="utf-8")
+    operations.atomic_write(output, html)
     opened = False if no_open else webbrowser.open(output.resolve().as_uri())
     return {
         "ok": True,
@@ -2633,11 +2666,8 @@ def automatic_runtime_update() -> dict[str, Any] | None:
     runtime_root = Path.home() / ".megabrain" / "runtime"
     if runtime_root not in resolved.parents or not (Path.home() / ".megabrain" / "config.json").exists():
         return None
-    checked = subprocess.run(
+    checked = operations.run(
         [sys.executable, str(resolved.with_name("bootstrap.py")), "update", "--automatic"],
-        text=True,
-        capture_output=True,
-        check=False,
     )
     output = checked.stdout if checked.stdout.strip() else checked.stderr
     try:
@@ -2700,7 +2730,7 @@ def main() -> int:
         root = repo_root()
         trusted_context = (
             trusted_local_context(root)
-            if args.command in {"context", "search", "resources", "resource-read"}
+            if args.command in {"context", "search", "resources", "resource-read", "browse"}
             else None
         )
         if args.command == "sync":
@@ -2755,7 +2785,7 @@ def main() -> int:
         elif args.command == "agents":
             result = command_agents(root)
         elif args.command == "browse":
-            result = command_browse(root, args.no_open)
+            result = command_browse(root, args.no_open, trusted_context=trusted_context)
         elif args.command == "validate":
             result = command_validate(root)
         elif args.command == "doctor":
@@ -2773,7 +2803,7 @@ def main() -> int:
             result["runtime_update"] = runtime_update
         emit(result)
         return 0 if result.get("ok", False) else 1
-    except (BrainError, CanonicalError) as error:
+    except (BrainError, CanonicalError, operations.OperationError) as error:
         emit({"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}}, stream=sys.stderr)
         return 2
 

@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 import canonical
 import megabrain
+import operations
 
 
 def require_owner_local(*, trusted_local: bool = False) -> None:
@@ -48,6 +49,7 @@ def _remove_created(paths: list[Path]) -> None:
         path.unlink(missing_ok=True)
 
 
+@operations.locked
 def approve_import(
     root: Path,
     payload: Mapping[str, Any],
@@ -246,6 +248,7 @@ def approve_import(
     }
 
 
+@operations.locked
 def create_or_revise_resource(
     root: Path,
     payload: Mapping[str, Any],
@@ -284,6 +287,7 @@ def create_or_revise_resource(
     return {"ok": True, "resource": canonical.resource_metadata(record), **commit}
 
 
+@operations.locked
 def set_policy(
     root: Path,
     payload: Mapping[str, Any],
@@ -327,6 +331,7 @@ def set_policy(
     }
 
 
+@operations.locked
 def add_attachment(
     root: Path,
     sources: list[str],
@@ -355,6 +360,7 @@ def add_attachment(
     return {"ok": True, "manifest_id": manifest["manifest_id"], "files": len(manifest["files"]), **commit}
 
 
+@operations.locked
 def migrate_v1(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
     require_owner_local(trusted_local=trusted_local)
     identity, _ = prepare_write(root, require_protocol=False)
@@ -395,6 +401,7 @@ def migrate_v1(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
     return {"ok": True, "status": "migrated", "from_protocol": 1, "to_protocol": 2, **commit}
 
 
+@operations.locked
 def rollback_head(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
     require_owner_local(trusted_local=trusted_local)
     prepare_write(root)
@@ -404,6 +411,7 @@ def rollback_head(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
             "ROLLBACK_BOUNDARY_INVALID",
             "Only the current canonical or policy commit can be rolled back automatically",
         )
+    target = operations.git_text(root, "rev-parse", "HEAD")
     reverted = megabrain.run(["git", "revert", "--no-edit", "HEAD"], root)
     if reverted.returncode != 0:
         megabrain.run(["git", "revert", "--abort"], root)
@@ -411,6 +419,7 @@ def rollback_head(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
     validation = megabrain.command_validate(root)
     if not validation["ok"]:
         raise canonical.CanonicalError("ROLLBACK_VALIDATION_FAILED", "Rollback left an invalid repository")
+    operations.approve_revert(root, target, operations.git_text(root, "rev-parse", "HEAD"))
     pushed, reason = megabrain.push_with_retry(root)
     return {
         "ok": True,
@@ -447,12 +456,29 @@ def build_parser() -> argparse.ArgumentParser:
     attachment.add_argument("--sensitivity", choices=sorted(canonical.SENSITIVITIES), default="general")
     commands.add_parser("migrate-v1")
     commands.add_parser("rollback-head")
+    backup = commands.add_parser("backup")
+    backup.add_argument("destination", type=Path)
+    restore = commands.add_parser("restore")
+    restore.add_argument("bundle", type=Path)
+    restore.add_argument("destination", type=Path)
+    restore.add_argument("--sha256", required=True)
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
     try:
+        if args.command in {"backup", "restore"}:
+            import recovery
+            require_owner_local()
+            if args.command == "restore":
+                result = recovery.restore(args.bundle, args.destination, args.sha256)
+            else:
+                root = megabrain.repo_root()
+                with operations.lock(root):
+                    result = recovery.backup(root, args.destination)
+            megabrain.emit(result)
+            return 0
         root = megabrain.repo_root()
         if args.command == "approve-import":
             result = approve_import(root, read_payload())
@@ -476,7 +502,7 @@ def main() -> int:
             raise canonical.CanonicalError("COMMAND_UNSUPPORTED", "Unsupported owner-local command")
         megabrain.emit(result)
         return 0
-    except (canonical.CanonicalError, megabrain.BrainError) as error:
+    except (canonical.CanonicalError, megabrain.BrainError, operations.OperationError) as error:
         megabrain.emit(
             {"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}},
             stream=sys.stderr,
