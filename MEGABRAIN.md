@@ -46,6 +46,8 @@ Capture only information that reduces future re-explanation: durable facts, pref
 
 `megabrain update` selects only stable semantic-version tags from the official product repository. Runtime download, validation, compatibility checks and atomic activation remain bootstrap responsibilities; the first-class command does not implement a second updater.
 
+Eligible installed reads and Home share a daily check, with bounded failure backoff and persistent per-user/device opt-out and version pins. Durable writes never trigger updates; activation is excluded while a managed write holds the runtime-use lock. Running commands retain their original code, metadata and assets. Interrupted recorded switches restore the previous runtime without modifying Brain data. Rollback pins its compatible, pin-aware target; legacy recovery cannot silently bypass owner update preferences. See [runtime updates](docs/runtime-updates.md).
+
 The update report distinguishes four states:
 
 - stable releases, commits and merge commits between the active and latest stable tags;

@@ -23,8 +23,10 @@ PROCESS_TIMEOUT = 30
 LOCK_TIMEOUT = 10
 MAX_BLOB_BYTES = 64 * 1024 * 1024
 IMMUTABLE_PREFIXES = ("brain/memories/", "brain/resources/", "brain/policies/", "brain/imports/", "brain/attachments/")
+_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar("megabrain_deadline", default=None)
 _CACHE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("megabrain_operation_cache", default=None)
 _SNAPSHOTS: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar("megabrain_snapshots", default=frozenset())
+_SHARED: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar("megabrain_shared_locks", default=frozenset())
 _HELD: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar("megabrain_locks", default=frozenset())
 
 
@@ -36,6 +38,12 @@ class OperationError(Exception):
 
 def run(command: list[str], cwd: Path | None = None, *, env: dict[str, str] | None = None,
         timeout: float = PROCESS_TIMEOUT, text: bool = True, input: str | bytes | None = None) -> subprocess.CompletedProcess:
+    deadline = _DEADLINE.get()
+    if deadline is not None:
+        timeout = min(timeout, deadline - time.monotonic())
+        if timeout <= 0:
+            empty = "" if text else b""
+            return subprocess.CompletedProcess(command, 124, empty, empty)
     environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "Never", **(env or {})}
     process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, stdin=subprocess.PIPE if input is not None else None,
@@ -50,11 +58,29 @@ def run(command: list[str], cwd: Path | None = None, *, env: dict[str, str] | No
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
+@contextlib.contextmanager
+def deadline(seconds: float) -> Iterator[None]:
+    previous = _DEADLINE.get()
+    token = _DEADLINE.set(min(previous, time.monotonic() + seconds) if previous else time.monotonic() + seconds)
+    try:
+        yield
+    finally:
+        _DEADLINE.reset(token)
+
+
 def private_directory(path: Path) -> None:
     if path.is_symlink():
         raise OperationError("UNSAFE_LOCAL_PATH", "A private state directory cannot be a symlink.")
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path, 0o700)
+
+
+def fsync_directory(path: Path) -> None:
+    directory = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def atomic_write(path: Path, content: str | bytes, *, exclusive: bool = False) -> None:
@@ -72,21 +98,19 @@ def atomic_write(path: Path, content: str | bytes, *, exclusive: bool = False) -
             os.link(temporary, path)  # atomic create-if-absent, never replace an immutable record
         else:
             os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
 
 @contextlib.contextmanager
-def lock(root: Path, *, name: str = "operation", timeout: float = LOCK_TIMEOUT) -> Iterator[None]:
+def lock(root: Path, *, name: str = "operation", timeout: float = LOCK_TIMEOUT, shared: bool = False) -> Iterator[None]:
     path = root / ".megabrain" / f"{name}.lock"
     key = str(path.resolve())
     held = _HELD.get()
     if key in held:
+        if key in _SHARED.get() and not shared:
+            raise OperationError("LOCK_UPGRADE_UNSAFE", "Finish the current operation before changing the runtime.")
         yield
         return
     private_directory(path.parent)
@@ -96,18 +120,21 @@ def lock(root: Path, *, name: str = "operation", timeout: float = LOCK_TIMEOUT) 
         deadline = time.monotonic() + timeout
         while True:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
                     raise OperationError("BRAIN_BUSY", "Another Brain operation is running. Retry shortly.")
                 time.sleep(0.05)
         token = _HELD.set(held | {key})
+        shared_token = _SHARED.set(_SHARED.get() | {key}) if shared else None
         cache_token = _CACHE.set({}) if not held else None
         try:
             yield
         finally:
             _HELD.reset(token)
+            if shared_token is not None:
+                _SHARED.reset(shared_token)
             if cache_token is not None:
                 _CACHE.reset(cache_token)
     finally:

@@ -15,8 +15,9 @@ The installed `megabrain` executable dispatches data operations to the existing 
 | Stage a reviewed import | `megabrain import-stage --stdin` |
 | Inspect import coverage | `megabrain coverage` |
 | Update the runtime | `megabrain update`, `megabrain update --check` |
+| Control automatic updates | `megabrain updates status`, `enable`, `disable`, `pin`, `unpin` |
 
-Use each command's `--help` without setup. Content is JSON on stdin, never command-line arguments. Data command success responses use `megabrain.result.v1`; validation failures exit nonzero. Update retains its existing `megabrain.update.v1` report. The CLI does not accept owner-local policy, resource-write, backup or approval commands.
+Use each command's `--help` without setup. Content is JSON on stdin, never command-line arguments. Data command success responses use `megabrain.result.v1`; validation failures exit nonzero. Update retains its existing `megabrain.update.v1` report. Preference commands support `--json` with `megabrain.updates.v1` and work without a network check. See [runtime updates](runtime-updates.md) for daily triggers, notices, opt-out and rollback pins. The CLI does not accept owner-local policy, resource-write, backup or approval commands.
 
 With multiple configured agents and no detectable active harness, data commands fail rather than silently selecting another agent's identity. Ask a connected agent to run the action. The owner's explicit `open` action retains its documented local snapshot selection behavior.
 

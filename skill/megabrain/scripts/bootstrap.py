@@ -22,6 +22,7 @@ if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 import canonical  # noqa: E402
 import operations  # noqa: E402
+import updates  # noqa: E402
 
 
 START_MARKER = "<!-- MEGABRAIN:START -->"
@@ -30,7 +31,6 @@ CONFIG_SCHEMA = "megabrain.user.v1"
 RUNTIME_SCHEMA = "megabrain.runtime.v1"
 BRAIN_SCHEMA = "megabrain.brain.v1"
 OFFICIAL_DISTRIBUTION = "https://github.com/rbressane/megabrain.git"
-UPDATE_INTERVAL = timedelta(hours=24)
 SETUP_READY_MESSAGE = (
     "MegaBrain is ready.\n"
     "Run `megabrain open` anytime to synchronize and browse your private Brain.\n"
@@ -76,13 +76,6 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def parse_timestamp(value: str) -> datetime | None:
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-
-
 def run(
     command: list[str],
     cwd: Path | None = None,
@@ -103,7 +96,7 @@ def require_command(name: str) -> None:
 
 
 def source_skill_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return SCRIPT_DIRECTORY.parent
 
 
 def source_distribution_root() -> Path | None:
@@ -167,12 +160,7 @@ def load_config(home: Path, required: bool = False) -> dict[str, Any]:
 
 
 def save_private_json(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    operations.atomic_write(path, json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
 
 
 def save_config(home: Path, value: dict[str, Any]) -> None:
@@ -239,6 +227,7 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
         "scripts/knowledge.py",
         "scripts/projection.py",
         "scripts/recovery.py",
+        "scripts/updates.py",
         "seed/megabrain.json",
         "seed/.gitignore",
         "seed/MEGABRAIN.md",
@@ -307,6 +296,11 @@ def copy_runtime_release(source_skill: Path, target: Path) -> dict[str, Any]:
 
 
 def activate_runtime(home: Path, version: str) -> Path:
+    with operations.lock(home, name="runtime-use"):
+        return _activate_runtime(home, version)
+
+
+def _activate_runtime(home: Path, version: str) -> Path:
     target = runtime_release(home, version)
     validate_runtime_release(target, version)
     current = current_runtime(home)
@@ -317,6 +311,7 @@ def activate_runtime(home: Path, version: str) -> Path:
         temporary.unlink(missing_ok=True)
         raise BootstrapError("RUNTIME_PATH_OCCUPIED", "MegaBrain's runtime location is occupied by another folder.")
     os.replace(temporary, current)
+    operations.fsync_directory(current.parent)
     return current
 
 
@@ -945,6 +940,11 @@ def _setup(args: argparse.Namespace) -> dict[str, Any]:
         raise BootstrapError("PYTHON_UNSUPPORTED", "MegaBrain requires Python 3.10 or newer.")
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
+    recover_runtime_switch(home)
+    previous_runtime = load_config(home).get("runtime", {})
+    _, pinned = updates.policy(previous_runtime)
+    if pinned and pinned != runtime_metadata(source_skill_root())["version"]:
+        raise BootstrapError("RUNTIME_PINNED", "Unpin updates before installing a different runtime.")
     runtime, runtime_meta, distribution = install_runtime(home, args.distribution)
     command = install_command(home)
     runtime_skill = runtime / "skill" / "megabrain"
@@ -969,8 +969,10 @@ def _setup(args: argparse.Namespace) -> dict[str, Any]:
     config.update({"repository": repository, "remote": remote})
     config.setdefault("clones", {})[harness] = str(root)
     config["runtime"] = {
+        **previous_runtime,
         "version": runtime_meta["version"], "protocol_version": runtime_meta["protocol_version"],
-        "source": distribution, "automatic_updates": runtime_meta["automatic_updates"] == "compatible",
+        "source": distribution,
+        "automatic_updates": previous_runtime.get("automatic_updates", runtime_meta["automatic_updates"] == "compatible"),
     }
     save_config(home, config)
     validation = validate_clone(root, runtime_skill)
@@ -1092,9 +1094,145 @@ def require_brain_compatibility(config: dict[str, Any], version: str, metadata: 
             )
 
 
+def runtime_journal(home: Path) -> Path:
+    return home / ".megabrain" / "runtime-switch.json"
+
+
+def recover_runtime_switch(home: Path) -> None:
+    """Only undo an interrupted switch recorded by this updater, never Brain data."""
+    if not runtime_journal(home).exists():
+        return
+    with operations.lock(home, name="runtime-use", timeout=0):
+        _recover_runtime_switch(home)
+
+
+def _recover_runtime_switch(home: Path) -> None:
+    journal = runtime_journal(home)
+    receipt = load_json(journal, "RUNTIME_RECOVERY_REQUIRED", "The runtime switch needs owner review.")
+    previous = receipt.get("previous_runtime")
+    target = receipt.get("target_version")
+    next_runtime = receipt.get("next_runtime")
+    if (not isinstance(previous, dict) or semantic_version(previous.get("version")) is None
+        or semantic_version(target) is None or not isinstance(next_runtime, dict) or next_runtime.get("version") != target):
+        raise BootstrapError("RUNTIME_RECOVERY_REQUIRED", "The interrupted runtime switch is invalid.")
+    current = current_runtime(home)
+    allowed = {runtime_release(home, previous["version"]).resolve(), runtime_release(home, target).resolve()}
+    if not current.is_symlink() or current.resolve() not in allowed:
+        raise BootstrapError("RUNTIME_RECOVERY_REQUIRED", "The runtime pointer changed outside the recorded switch.")
+    active = runtime_metadata(current / "skill" / "megabrain")["version"]
+    config = load_config(home, required=True)
+    if active not in {previous["version"], target} or config.get("runtime") not in (previous, next_runtime):
+        raise BootstrapError("RUNTIME_RECOVERY_REQUIRED", "The runtime changed outside the recorded switch. Review it before retrying.")
+    activate_runtime(home, previous["version"])
+    config["runtime"] = previous
+    save_config(home, config)
+    journal.unlink()
+    operations.fsync_directory(journal.parent)
+
+
+def switch_runtime(home: Path, config: dict, runtime: dict, *, automatic: bool = False) -> None:
+    with operations.lock(home, name="runtime-use", timeout=0 if automatic else operations.LOCK_TIMEOUT):
+        _switch_runtime(home, config, runtime)
+
+
+def _switch_runtime(home: Path, config: dict, runtime: dict) -> None:
+    save_private_json(runtime_journal(home), {"previous_runtime": config["runtime"], "target_version": runtime["version"], "next_runtime": runtime})
+    try:
+        activate_runtime(home, runtime["version"])
+        save_config(home, {**config, "runtime": runtime})
+    except (OSError, BootstrapError, operations.OperationError):
+        recover_runtime_switch(home)
+        raise
+    runtime_journal(home).unlink()
+    operations.fsync_directory(runtime_journal(home).parent)
+
+
+def automatic_update(home: Path) -> dict[str, Any]:
+    home = home.expanduser().resolve()
+    current_version = None
+    try:
+        config = load_config(home, required=True)
+        runtime = config.get("runtime", {})
+        updates.policy(runtime)
+        current_version = runtime.get("version")
+        state = updates.load_state(home)
+        reason = updates.due(runtime, state, datetime.now(timezone.utc))
+        if reason and not runtime_journal(home).exists():
+            return {"ok": True, "checked": False, "updated": False, "reason": reason, "current_version": current_version}
+        # An active updater/setup never delays another agent's ordinary request.
+        with operations.lock(home, name="runtime", timeout=0):
+            recover_runtime_switch(home)
+            config = load_config(home, required=True)
+            runtime = config.get("runtime", {})
+            updates.policy(runtime)
+            current_version = runtime.get("version")
+            state = updates.load_state(home)
+            reason = updates.due(runtime, state, datetime.now(timezone.utc))
+            if reason:
+                return {"ok": True, "checked": False, "updated": False, "reason": reason, "current_version": current_version}
+            # Persist a retry boundary before network work, including process death.
+            now = datetime.now(timezone.utc)
+            save_private_json(update_state_path(home), {**state, "status": "checking", "checked_at": updates.stamp(now),
+                "next_check_at": updates.stamp(now + timedelta(minutes=updates.RETRY_MINUTES))})
+            try:
+                with operations.deadline(updates.AUTOMATIC_BUDGET):
+                    result = _update_runtime(argparse.Namespace(home=home, automatic=True, check=False, version=None, approve_major=False))
+            except (BootstrapError, operations.OperationError, OSError) as error:
+                result = {"ok": True, "checked": True, "updated": False, "stale": True,
+                          "reason": getattr(error, "code", "UPDATE_FAILED").lower(), "current_version": current_version}
+            return updates.save_result(home, result, state, datetime.now(timezone.utc))
+    except (BootstrapError, operations.OperationError, OSError) as error:
+        return {"ok": True, "checked": False, "updated": False, "reason": getattr(error, "code", "UPDATE_FAILED").lower(),
+                "current_version": current_version}
+
+
+def update_preferences(home: Path, action: str) -> dict[str, Any]:
+    home = home.expanduser().resolve()
+    with operations.lock(home, name="runtime"):
+        if action != "status":
+            recover_runtime_switch(home)
+        config = load_config(home, required=True)
+        updates.policy(config.get("runtime", {}))
+        runtime = dict(config.get("runtime", {}))
+        if semantic_version(runtime.get("version")) is None:
+            raise BootstrapError("CONFIG_INVALID", "The runtime version is invalid.")
+        if action in {"enable", "disable"}:
+            runtime["automatic_updates"] = action == "enable"
+        elif action == "pin":
+            runtime["pinned_version"] = runtime["version"]
+        elif action == "unpin":
+            runtime.pop("pinned_version", None)
+        elif action != "status":
+            raise BootstrapError("UPDATE_POLICY_INVALID", "Unknown update preference action.")
+        if action != "status":
+            save_config(home, {**config, "runtime": runtime})
+            if action in {"enable", "unpin"}:
+                previous = updates.load_state(home)
+                save_private_json(update_state_path(home), {"notice_signature": previous.get("notice_signature")})
+        state = updates.load_state(home)
+        enabled, pinned = updates.policy(runtime)
+        return {"schema": "megabrain.updates.v1", "ok": True, "automatic_updates": enabled,
+                "pinned_version": pinned, "current_version": runtime["version"], "scope": "this_user_on_this_device",
+                "last_check": state.get("checked_at"), "next_check": state.get("next_check_at"),
+                "last_status": state.get("status"), "last_reason": state.get("reason"),
+                "recovery_pending": runtime_journal(home).exists()}
+
+
 def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
-    with operations.lock(args.home.expanduser().resolve(), name="runtime"):
-        return _update_runtime(args)
+    if args.automatic:
+        if args.check or args.version or getattr(args, "approve_major", False):
+            raise BootstrapError("UPDATE_ARGUMENTS_INVALID", "Automatic checks cannot select versions or approve transitions.")
+        return automatic_update(args.home)
+    home = args.home.expanduser().resolve()
+    with operations.lock(home, name="runtime"):
+        if args.check and runtime_journal(home).exists():
+            raise BootstrapError("RUNTIME_RECOVERY_REQUIRED", "An interrupted runtime switch needs recovery. Run an update before checking versions.")
+        if not args.check:
+            recover_runtime_switch(home)
+        result = _update_runtime(args)
+        if not args.check:
+            updates.save_result(home, result, updates.load_state(home), datetime.now(timezone.utc))
+        return result
 
 
 def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
@@ -1108,17 +1246,13 @@ def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     current_tuple = semantic_version(current_version)
     if current_tuple is None:
         raise BootstrapError("CONFIG_INVALID", "The installed MegaBrain version is invalid.")
-    state_path = update_state_path(home)
-    state = load_json(state_path, "UPDATE_STATE_INVALID", "MegaBrain update state is invalid.") if state_path.exists() else {}
-    checked = parse_timestamp(str(state.get("checked_at", "")))
-    if args.automatic and state.get("status") != "offline" and checked and datetime.now(timezone.utc) - checked < UPDATE_INTERVAL:
-        return {"ok": True, "checked": False, "updated": False, "reason": "check_not_due", "current_version": current_version}
+    _, pinned = updates.policy(runtime_config)
+    if pinned and not args.check:
+        return {"ok": True, "checked": False, "updated": False, "reason": "version_pinned", "current_version": current_version}
     remote = str(runtime_config.get("source") or OFFICIAL_DISTRIBUTION)
     try:
         versions = release_versions(remote)
     except BootstrapError as error:
-        if args.automatic:
-            save_private_json(state_path, {"checked_at": utc_now(), "status": "offline", "current_version": current_version})
         if args.automatic or args.check:
             return {"ok": True, "checked": True, "updated": False, "stale": True, "reason": error.code.lower(), "current_version": current_version}
         raise
@@ -1128,6 +1262,9 @@ def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     latest_stable_tuple = versions[-1][0] if versions else current_tuple
     latest_stable = ".".join(map(str, latest_stable_tuple))
     selected = requested or latest_stable_tuple
+    if not requested and selected <= current_tuple and not args.check:
+        return {"ok": True, "checked": True, "updated": False, "current_version": current_version,
+                "latest_version": latest_stable, "latest_stable_version": latest_stable}
     tag_by_version = dict(versions)
     if selected not in tag_by_version:
         if selected == current_tuple and runtime_release(home, current_version).exists():
@@ -1142,15 +1279,15 @@ def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     if args.check:
         return {
             "ok": True, "checked": True, "updated": False,
-            "update_available": selected != current_tuple,
+            "update_available": selected != current_tuple if requested else selected > current_tuple,
             "current_version": current_version, "latest_version": target_version,
             "latest_stable_version": latest_stable,
         }
     approved = bool(getattr(args, "approve_major", False))
     if selected[0] != current_tuple[0] and not approved:
-        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": target_version})
         return {
             "ok": True, "checked": True, "updated": False, "approval_required": True,
+            "notice": f"MegaBrain v{target_version} needs approval for a major-version update.",
             "approval_reason": "major_version", "current_version": current_version,
             "latest_version": target_version, "latest_stable_version": latest_stable,
         }
@@ -1167,23 +1304,31 @@ def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     require_brain_compatibility(config, target_version, metadata)
     current_metadata = validate_runtime_release(current_runtime(home), current_version)
     if metadata["protocol_version"] != current_metadata["protocol_version"] and not approved:
-        save_private_json(state_path, {"checked_at": utc_now(), "status": "approval_required", "current_version": current_version, "latest_version": target_version})
         return {
             "ok": True, "checked": True, "updated": False, "approval_required": True,
+            "notice": f"MegaBrain v{target_version} needs approval for a protocol update.",
             "approval_reason": "protocol_version", "current_version": current_version,
             "latest_version": target_version, "latest_stable_version": latest_stable,
         }
-    activate_runtime(home, target_version)
-    runtime_config.update({"version": target_version, "protocol_version": metadata["protocol_version"]})
-    config["runtime"] = runtime_config
-    save_config(home, config)
-    save_private_json(state_path, {"checked_at": utc_now(), "status": "updated", "current_version": target_version, "release_commit": commit})
     changed = target_version != current_version
+    next_runtime = {**runtime_config, "version": target_version, "protocol_version": metadata["protocol_version"]}
+    if selected < current_tuple:
+        if metadata.get("update_policy_version") != updates.POLICY_VERSION:
+            raise BootstrapError("LEGACY_ROLLBACK_UNSAFE", "This older runtime cannot honor an update pin. Legacy recovery requires a separately reviewed installation.")
+        next_runtime["pinned_version"] = target_version
+    current_skill = current_runtime(home) / "skill" / "megabrain" / "SKILL.md"
+    target_skill = target / "skill" / "megabrain" / "SKILL.md"
+    skill_changed = changed and current_skill.read_bytes() != target_skill.read_bytes()
+    if changed:
+        switch_runtime(home, config, next_runtime, automatic=args.automatic)
     return {
         "ok": True, "checked": True, "updated": changed, "previous_version": current_version,
         "current_version": target_version, "latest_version": target_version,
         "latest_stable_version": latest_stable, "release_commit": commit,
-        "notice": f"MegaBrain: updated to v{target_version}." if changed else None,
+        "notice": (f"MegaBrain updated to v{target_version}." + (" Reload the MegaBrain skill or start a fresh agent session." if skill_changed else "")) if changed else None,
+        "skill_reload_required": skill_changed,
+        "applies_to": "next_operation" if args.automatic else "next_command",
+        "pinned_version": next_runtime.get("pinned_version"),
     }
 
 
@@ -1366,6 +1511,12 @@ def open_brain(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def disconnect(args: argparse.Namespace) -> dict[str, Any]:
+    with operations.lock(args.home.expanduser().resolve(), name="runtime"):
+        recover_runtime_switch(args.home.expanduser().resolve())
+        return _disconnect(args)
+
+
+def _disconnect(args: argparse.Namespace) -> dict[str, Any]:
     home = args.home.expanduser().resolve()
     harness = detect_harness(args.harness)
     config = load_config(home, required=True)
@@ -1444,6 +1595,9 @@ def main() -> int:
         return 0 if result.get("ok") else 1
     except (BootstrapError, operations.OperationError) as error:
         emit({"ok": False, "error": {"code": error.code, "message": error.message}}, sys.stderr)
+        return 2
+    except OSError:
+        emit({"ok": False, "error": {"code": "LOCAL_OPERATION_FAILED", "message": "Local runtime state is unavailable. Check status before retrying; an update may have completed."}}, sys.stderr)
         return 2
 
 

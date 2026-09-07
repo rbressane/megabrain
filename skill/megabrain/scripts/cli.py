@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
 from bootstrap import (
     BootstrapError,
     HARNESS_PATHS,
@@ -21,6 +25,7 @@ from bootstrap import (
     open_brain,
     repository_glance,
     update_runtime,
+    update_preferences,
 )
 from megabrain import ROLE_LINE_PATTERN, detect_secret, strings_in
 import megabrain
@@ -92,6 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="approve a major or protocol-version transition after reviewing it",
     )
     update.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
+    preferences = subparsers.add_parser("updates", help="manage automatic updates on this device")
+    preferences.add_argument("action", nargs="?", default="status", choices=("status", "enable", "disable", "pin", "unpin"))
+    preferences.add_argument("--json", action="store_true", dest="json_output")
+    preferences.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
     feedback = subparsers.add_parser("feedback", help="render a sanitized Product Bake Candidate offline")
     feedback.add_argument("--stdin", action="store_true", help="read the structured candidate from stdin")
     feedback.add_argument("--output", type=Path, help="also write to a new explicit local file")
@@ -178,7 +187,7 @@ def validate_feedback(payload: dict[str, Any]) -> dict[str, str | list[str]]:
 
 def render_feedback(payload: dict[str, Any]) -> str:
     values = validate_feedback(payload)
-    template = (Path(__file__).resolve().parents[1] / "assets" / "product-bake-candidate.md").read_text(
+    template = (SCRIPT_DIRECTORY.parent / "assets" / "product-bake-candidate.md").read_text(
         encoding="utf-8"
     )
     rendered = template.format(**{field: render_block(value) for field, value in values.items()})
@@ -229,6 +238,9 @@ def update_report(args: argparse.Namespace) -> dict[str, Any]:
         "latest_stable_version": latest_stable,
         "update_available": bool(result.get("update_available")),
         "stale": bool(result.get("stale")),
+        "reason": result.get("reason"),
+        "pinned_version": runtime.get("pinned_version"),
+        "skill_reload_required": bool(result.get("skill_reload_required")),
         "repository": glance,
     }
 
@@ -247,7 +259,9 @@ def format_update(report: dict[str, Any]) -> str:
     active = report["active_version"]
     target = report["target_version"]
     lines: list[str] = []
-    if report["approval_required"]:
+    if report.get("reason") == "version_pinned":
+        lines.append(f"MegaBrain v{active} is pinned. Run `megabrain updates unpin` before changing versions.")
+    elif report["approval_required"]:
         reason = "major version" if report["approval_reason"] == "major_version" else "protocol version"
         lines.append(f"MegaBrain v{target} requires explicit approval for a {reason} transition.")
         lines.append("Review the release, then rerun with --approve-major.")
@@ -268,6 +282,10 @@ def format_update(report: dict[str, Any]) -> str:
     else:
         lines.append(f"MegaBrain v{active} is current.")
 
+    if report.get("skill_reload_required"):
+        lines.append("Reload the MegaBrain skill or start a fresh agent session before using the new instructions.")
+    if report.get("pinned_version") and report["updated"]:
+        lines.append("This rollback is pinned. Run `megabrain updates unpin` to resume updates.")
     stable = format_distance("Stable gap", report["repository"]["stable_gap"], "behind")
     if stable:
         lines.append(stable)
@@ -324,7 +342,8 @@ def format_open(report: dict[str, Any]) -> str:
         second_line = "Snapshot refreshed from valid local state; synchronization was incomplete."
     else:
         second_line = "Snapshot refreshed and synchronized when generated."
-    return f"{first_line}\n{second_line}"
+    notice = report.get("runtime_update", {}).get("notice")
+    return f"{first_line}\n{second_line}" + (f"\n{notice}" if notice else "")
 
 
 def emit_error(error: BootstrapError, json_output: bool, operation: str = "update") -> int:
@@ -362,6 +381,13 @@ def forward_helper(arguments: list[str]) -> int:
 
 
 def main() -> int:
+    try:
+        return dispatch()
+    except OSError:
+        return emit_error(BootstrapError("LOCAL_OPERATION_FAILED", "Local runtime state is unavailable. Check status before retrying; an update may have completed."), "--json" in sys.argv)
+
+
+def dispatch() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in HELPER_COMMANDS:
         try:
             return forward_helper(sys.argv[1:])
@@ -369,10 +395,24 @@ def main() -> int:
             return emit_error(error, True, sys.argv[1])
     parser = build_parser()
     args = parser.parse_args()
+    if args.command == "updates":
+        try:
+            report = update_preferences(args.home, args.action)
+        except (BootstrapError, operations.OperationError) as error:
+            return emit_error(error, args.json_output, "updates")
+        if args.json_output:
+            sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        else:
+            enabled = "enabled" if report["automatic_updates"] else "disabled"
+            pin = f" Pinned to v{report['pinned_version']}." if report["pinned_version"] else " No version pin."
+            sys.stdout.write(f"Automatic updates {enabled} for this user on this device.{pin}\n")
+            if report["recovery_pending"]:
+                sys.stdout.write("An interrupted runtime switch needs recovery. Run `megabrain update`.\n")
+        return 0
     if args.command == "open":
         try:
             report = open_report(args)
-        except BootstrapError as error:
+        except (BootstrapError, operations.OperationError) as error:
             return emit_error(error, False, "open")
         sys.stdout.write(format_open(report) + "\n")
         return 0
@@ -392,7 +432,7 @@ def main() -> int:
         parser.error("unknown command")
     try:
         report = update_report(args)
-    except BootstrapError as error:
+    except (BootstrapError, operations.OperationError) as error:
         return emit_error(error, args.json_output)
     if args.json_output:
         json.dump(report, sys.stdout, ensure_ascii=True, indent=2, sort_keys=True)

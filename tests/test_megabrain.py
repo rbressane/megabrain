@@ -2195,7 +2195,11 @@ raise SystemExit(1)
             ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
             home,
         )
-        self.assertEqual(json.loads(automatic.stdout)["current_version"], next_version)
+        self.assertEqual(json.loads(automatic.stdout)["reason"], "version_pinned")
+        self.assertEqual(json.loads(automatic.stdout)["current_version"], current_version)
+        run([str(command), "updates", "unpin", "--json"], home, env={"HOME": str(home)})
+        resumed = run(["python3", str(bootstrap), "update", "--home", str(home), "--automatic"], home)
+        self.assertEqual(json.loads(resumed.stdout)["current_version"], next_version)
         throttled = run(
             ["python3", str(bootstrap), "update", "--home", str(home), "--automatic"],
             home,

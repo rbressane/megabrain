@@ -26,10 +26,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+# Pin modules, metadata and assets once. A current-symlink switch only affects
+# the next process; this operation must never mix two releases.
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
 from canonical import CanonicalError
 import operations
 import knowledge
 import projection
+import updates
 
 
 MEMORY_SCHEMA = "megabrain.memory.v1"
@@ -113,7 +120,7 @@ def semantic_version(value: Any) -> tuple[int, int, int] | None:
 
 
 def runtime_manifest() -> dict[str, Any]:
-    path = Path(__file__).resolve().parents[1] / "runtime.json"
+    path = SCRIPT_DIRECTORY.parent / "runtime.json"
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as error:
@@ -197,7 +204,7 @@ def repo_root() -> Path:
                     return root
         except (json.JSONDecodeError, OSError):
             pass
-    candidate = Path(__file__).resolve().parents[3]
+    candidate = SCRIPT_DIRECTORY.parents[2]
     if (candidate / "brain").is_dir():
         return candidate
     raise BrainError("SETUP_REQUIRED", "MegaBrain has not been set up for this agent yet")
@@ -2469,7 +2476,7 @@ def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any]
             "The local brain must pass validation before it can be browsed",
             {"error_count": len(validation["errors"])},
         )
-    template = Path(__file__).resolve().parents[1] / "assets" / "browser.html"
+    template = SCRIPT_DIRECTORY.parent / "assets" / "browser.html"
     if not template.exists():
         raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
     payload = browser_payload(root, sync, trusted_context=trusted_context)
@@ -2725,21 +2732,12 @@ def command_benchmark() -> dict[str, Any]:
 
 
 def automatic_runtime_update() -> dict[str, Any] | None:
-    resolved = Path(__file__).resolve()
-    runtime_root = Path.home() / ".megabrain" / "runtime"
-    if runtime_root not in resolved.parents or not (Path.home() / ".megabrain" / "config.json").exists():
+    home = Path.home().resolve()
+    runtime_root = home / ".megabrain" / "runtime"
+    if runtime_root not in SCRIPT_DIRECTORY.parents or not (home / ".megabrain" / "config.json").exists():
         return None
-    checked = operations.run(
-        [sys.executable, str(resolved.with_name("bootstrap.py")), "update", "--automatic"],
-    )
-    output = checked.stdout if checked.stdout.strip() else checked.stderr
-    try:
-        result = json.loads(output)
-    except json.JSONDecodeError:
-        return {"updated": False, "reason": "update_check_failed"}
-    if checked.returncode != 0:
-        return {"updated": False, "reason": str(result.get("error", {}).get("code", "update_check_failed")).lower()}
-    return result
+    from bootstrap import automatic_update
+    return automatic_update(home)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2793,11 +2791,25 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
+    args = build_parser().parse_args()
+    home = Path.home().resolve()
+    managed = home / ".megabrain" / "runtime" in SCRIPT_DIRECTORY.parents
+    # Durable writes are never update triggers, and activation cannot interrupt
+    # a managed write. Different clones can still write concurrently.
+    if managed and args.command in {"sync", "remember", "correct", "forget", "ingest", "import-stage", "capture"}:
+        try:
+            with operations.lock(home, name="runtime-use", shared=True):
+                return execute_command(args)
+        except operations.OperationError as error:
+            emit({"ok": False, "error": {"code": error.code, "message": error.message}}, stream=sys.stderr)
+            return 2
+    return execute_command(args)
+
+
+def execute_command(args: argparse.Namespace) -> int:
     try:
-        runtime_update = automatic_runtime_update() if args.command == "context" else None
         root = repo_root()
+        runtime_update = automatic_runtime_update() if args.command in updates.READ_COMMANDS else None
         trusted_context = (
             trusted_local_context(root)
             if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "review", "handoff", "capture"}
@@ -2872,13 +2884,8 @@ def main() -> int:
         elif args.command == "benchmark":
             result = command_benchmark()
         else:
-            parser.error("unknown command")
-            return 2
-        if runtime_update and (
-            runtime_update.get("updated")
-            or runtime_update.get("approval_required")
-            or runtime_update.get("stale")
-        ):
+            raise BrainError("UNKNOWN_COMMAND", "Unknown MegaBrain command.")
+        if runtime_update and runtime_update.get("notify"):
             result["runtime_update"] = runtime_update
         result.setdefault("schema", "megabrain.result.v1")
         emit(result)

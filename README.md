@@ -70,7 +70,7 @@ Each user has a separate private GitHub repository that is the source of truth f
 
 ## Updates
 
-MegaBrain installs stable Git tags, never a moving `main` branch. During normal use it checks at most once per day for compatible releases. A release is downloaded into a new version directory, validated, and activated through an atomic local link; the existing runtime remains active if anything fails.
+MegaBrain installs stable Git tags, never a moving `main` branch. The first context, search, resource, review or Home request after 24 hours checks for updates. Agents on the same device share the check. Offline failures back off while local reads continue. Downloads are validated before activation; the triggering command finishes on its original runtime and the next command uses the new one.
 
 Check immediately without changing the active runtime:
 
@@ -88,7 +88,9 @@ The compact report separates installable stable releases from development on `ma
 
 Compatible updates report the version transition, stable release/commit/merged-PR distance, development distance, and available open-work metadata. If repository metadata is unavailable, the validated runtime update still succeeds and is reported first.
 
-Major or protocol-version transitions require the owner to review the release and explicitly approve them. `megabrain update --version X.Y.Z` supports a compatible recovery or rollback; it refuses a runtime older than any connected Brain's declared minimum.
+Use `megabrain updates disable` or `enable` to control automatic updates. Use `megabrain updates pin` to hold the current version and `unpin` to allow changes again. These preferences apply to this user/device and survive reconnects.
+
+Major or protocol-version transitions require explicit owner approval. `megabrain update --version X.Y.Z` supports compatible, pin-aware rollback and pins the chosen version. It refuses versions below a connected Brain's minimum and legacy runtimes that cannot honor pins. See [runtime updates](docs/runtime-updates.md) for recovery limits, notifications and adoption from 2.3.
 
 A private brain declares its protocol and minimum runtime in `megabrain.json`, so outdated agents can read compatible data but cannot make unsafe writes. Runtime changes never rewrite memory files or private Git history, and the previous runtime remains installed for rollback.
 
