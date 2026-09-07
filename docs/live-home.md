@@ -2,7 +2,7 @@
 
 Live Home is an optional owner-authenticated, read-only viewer for a normal phone or desktop browser. It is not a new authority, an agent gateway, or a memory-writing API. Git remains authoritative. Local snapshots and agent use work without the viewer, including offline.
 
-**Deployment gate:** the implementation is a release candidate. No public host or owner URL has been configured by this product work. Synthetic local verification is not proof of an internet deployment. Do not claim it live until the deployment acceptance below passes on the approved host.
+**Deployment gate:** the implementation is a release candidate. The owner approved free Tailscale Funnel transport for an operator-managed Mac, not a paid plan or a personal-data deployment. Host trust, operator access, free-plan eligibility and the exact HTTPS origin still need verification. No public host or owner URL has been configured by this product work. Synthetic local verification is not proof of an internet deployment. Do not claim it live until the deployment acceptance below passes on the approved host.
 
 ## For the owner
 
@@ -30,7 +30,7 @@ Hosting is an explicit owner decision because the host gets a plaintext replica.
 
 Keep Git credentials in the host's existing credential system. Do not use credential-bearing remote URLs or put secrets in `.sot.json`, command arguments, repository files or logs. Keep the owner verifier outside the clone, accessible only to the service account. The host's operator and filesystem owner remain trusted; this is not a sandbox against either.
 
-1. Select an always-on host and dedicated HTTPS origin, such as `https://brain.example.invalid`. An origin has no path, query, fragment or credentials. Set up DNS and a publicly trusted TLS certificate using the host's existing certificate process. Use an existing reverse proxy if available. Do not expose the unencrypted backend port.
+1. Select an always-on host and dedicated HTTPS origin, such as `https://brain.example.invalid`. An origin has no path, query, fragment or credentials. For the approved free Funnel route, use the generated `ts.net` origin and the [Mac setup below](#free-tailscale-funnel-on-a-mac); no custom domain, manual DNS or router forwarding is needed. Otherwise use the host's existing DNS/certificate process and reverse proxy. Do not expose the unencrypted backend port.
 2. Install an official stable MegaBrain tag containing Live Home after release. Never deploy a development branch to a personal Brain. Before release, use the candidate only with synthetic data on an explicitly approved test target.
 3. Provision the dedicated read-only replica yourself with Git. It must have `origin/main` and no dirty files or local unique commits. The viewer fetches `main`, but **never checks out, resets, merges, rebases, commits or pushes**. Its original `HEAD` can remain behind; the view is built directly from the fetched commit.
 4. Set the owner passphrase in a private interactive terminal running as the service account:
@@ -40,7 +40,7 @@ Keep Git credentials in the host's existing credential system. Do not use creden
    ```
 
    Input is hidden and never echoed. The command stores only a salted PBKDF2-SHA256 verifier (600,000 iterations), mode 0600, in a private directory. It refuses noninteractive input. Do not ask an agent to fill the passphrase. Rotation through the same command revokes all browser sessions on their next request.
-5. Start the viewer behind an **existing HTTPS reverse proxy**:
+5. Start the viewer behind an **existing HTTPS reverse proxy or the approved Funnel transport**:
 
    ```sh
    megabrain live serve \
@@ -74,6 +74,36 @@ Keep Git credentials in the host's existing credential system. Do not use creden
    ```
 
    The local file `~/.megabrain/live-home.json` contains only the URL. This does not sign in, grant agent permissions, test deployment reachability, or change Brain data. A URL recovered from untrusted imported content is not automatically an approved destination.
+
+### Free Tailscale Funnel on a Mac
+
+This is an operator runbook, not an automatic installer. The narrow Funnel exception must be present in the deployment agent's loaded project instructions before activation. Editing an instruction file does not override restrictions already loaded in a running agent session. Use a fresh deployment session when necessary.
+
+1. Confirm the owner trusts the host and its operator with a plaintext replica. Obtain authorized host access, a supervised unprivileged viewer account and an uptime plan, including sleep, reboot and disk-unlock behavior. Do not infer that this development machine is the approved host. Start with a new synthetic replica only.
+2. The operator confirms that the actual use qualifies for Tailscale's **free Personal plan**, which is for non-commercial use. Do not enroll in a paid plan or treat a business trial as permanent free hosting. If eligibility fails, stop for another owner-approved free option. The operator signs in privately; agents must not collect account credentials or authentication URLs.
+3. Check the installed Tailscale version and macOS variant against the current vendor documentation. Its requirements/comparison pages recommend the open-source `tailscale`/`tailscaled` variant for Funnel, while a port-sharing note describes GUI support. Do not assume any installed GUI app meets this deployment's needs. For an unattended host, have an authorized operator assess the vendor-documented CLI daemon, stable version, boot supervision and existing VPN conflicts. Do not automatically replace an existing installation, alter DNS or install a second variant. Tailscale installation/build tooling stays outside the MegaBrain runtime.
+4. The tailnet administrator enables MagicDNS, HTTPS certificates and narrowly scoped Funnel permission for the approved host. Review existing Serve/Funnel routes before changing anything: the same port cannot be private Serve and public Funnel simultaneously. Use a non-identifying machine name because the HTTPS hostname is public and certificate issuance can expose it. Record the exact generated HTTPS origin privately.
+5. Complete owner verifier setup and start the synthetic viewer using the operator setup above, with `--origin` set to that exact HTTPS origin, `--port 8765 --behind-proxy`. The only HTTP listener must be `127.0.0.1:8765`. **Never tunnel `--local-http`.** Confirm the listener belongs to this viewer and not an unrelated local service before opening ingress.
+6. With the above gates satisfied and no conflicting route on port 443, the operator enables only the viewer's HTTP proxy:
+
+   ```sh
+   tailscale funnel --bg --https=443 http://127.0.0.1:8765
+   tailscale funnel status
+   ```
+
+   Keep status output private because it identifies the host. Do not serve a clone directory, file, SSH port or arbitrary TCP listener through Funnel. Confirm the resulting origin exactly matches the viewer configuration. Funnel terminates TLS on the Mac; the backend is loopback HTTP, never public HTTP. Preserve the browser's public Host and Origin. Do not work around a mismatch by weakening the viewer's checks.
+7. Run every deployment acceptance gate below through this real origin, including a physical phone on cellular data with no Tailscale client. Confirm valid TLS, no unauthenticated Brain data, no-store/security headers and owner login/logout/rotation. Do not claim Funnel supplies a WAF, MFA or application rate limits. Assess upstream abuse protections and the viewer's bounded-but-deniable login budget; if required controls cannot be met for free, stop rather than weaken them or buy a service.
+8. Supervise both the viewer and tunnel. `--bg` persists the Funnel route across Tailscale restarts; it does not keep the Mac awake, unlock its disk or restart MegaBrain. Verify reboot recovery and fresh owner sign-in after viewer restart. Funnel remains beta with non-configurable bandwidth limits, not an uptime guarantee. Browser polling uses requests even when no new commit exists; check actual behavior rather than claiming unlimited capacity.
+
+To remove **only this route**, after confirming its identity and original flags:
+
+```sh
+tailscale funnel --bg --https=443 http://127.0.0.1:8765 off
+```
+
+Do not use a global Funnel reset, log out the host or remove unrelated routes. Stop the viewer through its service manager and verify the public route is gone. Retain the replica and owner state until separately authorized disposal. `live unlink` only changes the device's open behavior.
+
+Vendor references: [Funnel requirements](https://tailscale.com/docs/features/tailscale-funnel), [Funnel CLI and route removal](https://tailscale.com/docs/reference/tailscale-cli/funnel), [macOS variants](https://tailscale.com/docs/concepts/macos-variants), [CLI daemon operations](https://github.com/tailscale/tailscale/wiki/Tailscaled-on-macOS), and [Personal-plan terms](https://tailscale.com/pricing?plan=personal). These are external prerequisites, not evidence that this product has been deployed.
 
 ### Local synthetic development
 

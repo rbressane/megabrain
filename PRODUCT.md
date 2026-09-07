@@ -34,7 +34,7 @@ MegaBrain Home is a generated private local snapshot. It provides a graph-first 
 
 - Protocol 2 is the current stable protocol.
 - The runtime uses only Python's standard library and Git. GitHub onboarding may use the authenticated GitHub CLI.
-- The core requires no server or daemon. The only permitted service is an optional owner-authenticated, read-only Live Home for normal phone and desktop browsers. It remains a committed-Git projection; corrections stay agent-driven and existing privacy/security gates remain in force. There is no authoritative database, package manager, hosted relay, autonomous crawler, raw transcript store, or automatic telemetry.
+- The core requires no server or daemon. The optional owner-authenticated, read-only Live Home for normal phone and desktop browsers remains a committed-Git projection; corrections stay agent-driven and existing privacy/security gates remain in force. Owner-approved Tailscale Funnel may provide HTTPS ingress only, with verified free-plan eligibility and no paid subscription. It is operator-managed transport, not an agent gateway, Git synchronization relay or core dependency. No other hosted relay, authoritative database, package manager, autonomous crawler, raw transcript store or automatic telemetry is permitted.
 - Memory entries and resource revisions are immutable and individually addressable. Corrections, supersession, tombstones, provenance, confidence, sensitivity, and unresolved conflicts remain visible.
 - Local reads continue when GitHub is unavailable. Synchronization and audit history use Git, while ignored SQLite indexes remain disposable projections.
 - Private and sensitive retrieval requires task relevance and trusted policy authorization. Importance never bypasses access control.

@@ -17,10 +17,12 @@ Before material project work, read and follow https://markfolio.round6.co/raw/ag
 
 ## Boundaries
 
-- Use only the Python standard library and Git.
-- Do not introduce a server or daemon except for an optional, owner-authenticated, read-only Live Home viewer accessible from normal phone and desktop browsers. The core runtime must remain usable without this service, including offline.
+- Use only the Python standard library and Git for the core runtime. The narrowly approved Live Home transport below is separate operator infrastructure.
+- Do not introduce a server or daemon except for an optional, owner-authenticated, read-only Live Home viewer accessible from normal phone and desktop browsers and its narrowly approved transport below. The core runtime must remain usable without either service, including offline.
 - Live Home is a replaceable view of committed Git data, not a new authority. Corrections and forgetting remain agent-driven. Owner authentication must remain separate from agent permissions; this exception does not relax existing privacy or security gates.
-- Do not introduce an authoritative database, package manager, or hosted relay. Ignored rebuildable SQLite indexes are permitted projections.
+- Do not introduce an authoritative database or package manager. Ignored rebuildable SQLite indexes are permitted projections.
+- No hosted relay except owner-approved Tailscale Funnel, solely as optional HTTPS ingress to the owner-authenticated, read-only Live Home. Tailscale is operator-managed transport, never a core runtime dependency, agent gateway, Git synchronization relay, or authority. Owner sign-in, general-only browsing and all other privacy/security gates remain required.
+- Funnel setup requires an explicitly trusted host/operator, verified free-plan eligibility, no paid subscription, and synthetic deployment acceptance before release. Connecting a personal replica remains separately owner-authorized. Never expose the synthetic-only `--local-http` mode or publish private host/account details.
 - Keep memory entries immutable and individually addressable.
 - Tests and documentation use synthetic information only.
 - Never import existing personal brains while developing or testing.

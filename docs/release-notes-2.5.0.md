@@ -1,6 +1,6 @@
 # MegaBrain 2.5.0 release candidate
 
-**Not published or deployed.** Public HTTPS/phone/host acceptance is pending an approved deployment target. Runtime protocol remains 2; no Brain migration is required.
+**Not published or deployed.** Free Tailscale Funnel transport for an operator-managed Mac is approved, but host access/trust, free-plan eligibility and public HTTPS/phone acceptance remain pending. Runtime protocol remains 2; no Brain migration is required.
 
 ## Optional read-only Live Home
 
