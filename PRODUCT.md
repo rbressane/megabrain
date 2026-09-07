@@ -28,7 +28,7 @@ Natural conversation is the primary interface. Before a request, a connected age
 
 The public MegaBrain repository is the source of truth for product code and protocol. Each owner has a separate private GitHub repository as the source of truth for personal Brain data. Codex, Claude Code, Hermes, and other capable coding agents operate isolated local clones of that private repository.
 
-MegaBrain Home is a generated private local snapshot. It provides an overview, topic exploration, history, conflicts, agents, imports, provenance, and links to immutable Markdown sources. It communicates freshness as of generation time and never presents an old tab as continuously synchronized.
+MegaBrain Home is a generated private local snapshot. It provides a graph-first overview, topic exploration, canonical resources, owner review, history, conflicts, agents, imports, provenance, and links to immutable Markdown sources. Project filters narrow evidence. Review and correction actions prepare owner-approved requests, not browser writes. Automatic capture can be paused per owner-local agent/device; explicit remember requests and don't-remember controls remain distinct. It communicates freshness as of generation time and never presents an old tab as continuously synchronized.
 
 ## Capabilities and Constraints
 

@@ -16,11 +16,21 @@ from bootstrap import (
     OFFICIAL_DISTRIBUTION,
     detect_harness,
     load_config,
+    configured_root,
+    helper_command,
     open_brain,
     repository_glance,
     update_runtime,
 )
 from megabrain import ROLE_LINE_PATTERN, detect_secret, strings_in
+import megabrain
+import operations
+
+HELPER_COMMANDS = {
+    "sync", "context", "search", "remember", "correct", "forget", "ingest", "resources",
+    "resource-read", "import-stage", "coverage", "resource-export", "cache-export",
+    "drift", "agents", "browse", "validate", "doctor", "status", "review", "capture", "handoff",
+}
 
 
 UPDATE_SCHEMA = "megabrain.update.v1"
@@ -64,6 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Open MegaBrain Home, manage the runtime, and prepare privacy-safe product feedback.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    for name in sorted(HELPER_COMMANDS):
+        subparsers.add_parser(name, help=f"{name.replace('-', ' ')} through the connected Brain helper", add_help=False)
     open_command = subparsers.add_parser(
         "open",
         help="synchronize and open your private MegaBrain Home",
@@ -325,7 +337,36 @@ def emit_error(error: BootstrapError, json_output: bool, operation: str = "updat
     return 2
 
 
+def forward_helper(arguments: list[str]) -> int:
+    if any(argument in {"-h", "--help"} for argument in arguments[1:]):
+        # Help never needs access to a Brain or a configured home.
+        megabrain.build_parser().parse_args(arguments)
+        return 0
+    home = Path.home()
+    config = load_config(home, required=True)
+    clones = config.get("clones", {})
+    try:
+        harness = detect_harness(None)
+    except BootstrapError:
+        available = [name for name in HARNESS_PATHS if clones.get(name)]
+        if len(available) != 1:
+            raise BootstrapError("HARNESS_REQUIRED", "Use this command through a connected agent when several agents are configured.")
+        harness = available[0]
+    _, root, skill = configured_root(home, harness)
+    result = helper_command(skill, root, *arguments)
+    if result.returncode == 124:
+        raise BootstrapError("OPERATION_TIMEOUT", "The operation timed out. Local data was retained; check status before retrying a write.")
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.returncode
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in HELPER_COMMANDS:
+        try:
+            return forward_helper(sys.argv[1:])
+        except (BootstrapError, operations.OperationError) as error:
+            return emit_error(error, True, sys.argv[1])
     parser = build_parser()
     args = parser.parse_args()
     if args.command == "open":

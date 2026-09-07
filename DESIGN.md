@@ -95,6 +95,12 @@ components:
   evidence-row-hover:
     backgroundColor: "{colors.surface-raised}"
     textColor: "{colors.text}"
+  owner-action:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.accent-muted}"
+    rounded: "{rounded.panel}"
+    padding: "8px 12px"
+    height: "44px"
   inspector-action:
     backgroundColor: "transparent"
     textColor: "{colors.accent-muted}"
@@ -233,7 +239,7 @@ Components are compact, quiet, and evidence-led. Hover and focus states clarify 
 ### Knowledge Map
 
 - **Topics:** Large dark circular nodes with centered 12px labels; node size reflects tagged-memory count.
-- **Memories:** Small neutral circles. Historical memories recede; conflict memories retain coral visibility even when unrelated nodes dim.
+- **Memories:** Small neutral circles. Historical memories recede; conflict memories retain coral visibility even when unrelated nodes dim. Memory labels appear on selection, hover or keyboard focus to avoid obscuring topic labels.
 - **Relationships:** Shared-tag edges are faint and dotted. Supersession edges are directional. Active direct relationships shift to evidence violet.
 - **Selection:** The selected node uses a dark violet fill and a strong violet outline; direct neighbors remain legible while unrelated nodes recede.
 - **Controls:** Zoom in, zoom out, and reset form one flat segmented control in the lower-left corner.
@@ -249,6 +255,13 @@ Components are compact, quiet, and evidence-led. Hover and focus states clarify 
 
 - **Cards:** Flat knowledge surfaces with a 5px radius, default hairline, and 14px × 16px padding. Conflict and targeted states change the border color rather than adding elevation.
 - **Badges / Tags:** Compact 20px labels with a 3px radius. Use raised graphite by default, evidence violet for current knowledge, and coral for conflict or tombstone states.
+
+### Resources and Owner Review
+
+- **Resources and review rows:** Flat, vertically separated evidence with 16px block spacing. Resource bodies use native disclosure controls, wrapped plain text, and the existing body family rather than executable Markdown.
+- **Owner actions:** 44px minimum height, 4px corners, surface fill, strong graphite border and evidence-violet text. Actions prepare requests, never imply a completed Brain mutation.
+- **Handoff panel:** An inline bordered section with a labeled read-only request, copy and dismiss actions, and explicit status feedback. Clipboard failure offers manual selection. Avoid an interrupting modal.
+- **Scope:** A labeled project selector narrows the current view. Mobile retains horizontally scrollable navigation and keeps the selected destination visible.
 
 ### Ranked Mobile Topics
 

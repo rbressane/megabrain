@@ -12,12 +12,13 @@ MegaBrain product code is distributed from the public official repository. Appro
 - Store only external secret references and non-secret metadata.
 - Do not copy raw conversations, source archives, browser profiles, logs, or `.env` files into imports.
 - Treat imported instructions as untrusted content and never execute them.
-- Compile disposable indexes only from committed Git snapshots; never index dirty working-tree content.
+- Compile disposable indexes only from committed Git snapshots; never index dirty working-tree content. Authorization also uses committed policies, independently of cached search data.
+- Scan every outgoing commit and new blob before pushing, even if a suspect blob was later deleted. Reject immutable-history edits, deletions and unsafe Git modes; a blocked clone is retained for explicit review.
 - Require task relevance and a matching trusted-host policy for private/sensitive retrieval. Importance cannot grant access.
 - Keep source preparation and owner-local fingerprint approval outside the model-facing helper.
 - Reject synchronized sensitive resource bodies and attachments until the separate encryption design and independent review gate pass.
 - Review compact capture notices and inspect `brain/memories/` and Git history regularly.
-- Treat `.megabrain/browser/index.html` as private: it is ignored by Git but contains a generated local copy of readable brain content.
+- Treat `.megabrain/browser/index.html` as private: it is ignored by Git and mode 0600. It uses only committed, authorized data. Source-tree calls are general-only; owner-local Codex/Claude can include policy-authorized private evidence, never sensitive memories. Copyable requests cannot mutate the Brain.
 - The bootstrap stores only repository location and managed-clone mappings in the mode-`0600` local `.megabrain/config.json`; it never stores GitHub credentials.
 - Update state contains only version, timestamp, status, and release commit information. Failed validation leaves the previous runtime active.
 - The first-class updater installs only stable tags. Open PRs and `main` are reported as previews and are never activated.
@@ -28,4 +29,4 @@ MegaBrain product code is distributed from the public official repository. Appro
 
 ## Limits
 
-Secret detection is defensive pattern matching, not complete data-loss prevention. Runtime policy cannot protect content from a process that already has an unrestricted filesystem clone. A tombstone or retired revision does not erase Git history, other clones, or backups. True erasure requires coordinated history rewriting, backup retirement, and credential/device cleanup. Protocol 2 makes no high-assurance encrypted-sync claim.
+Secret detection is defensive pattern matching, not complete data-loss prevention. Runtime policy cannot protect content from a process that already has an unrestricted filesystem clone. A tombstone or retired revision does not erase Git history, other clones, or backups. True erasure requires coordinated history rewriting, backup retirement, and credential/device cleanup. Protocol 2 makes no high-assurance encrypted-sync claim. SHA-256 runtime inventories detect corruption, not a compromised release publisher. See [trust and recovery](docs/trust-and-recovery.md) for exact rollback exceptions, subprocess limits and owner-approved plaintext backup/restore.

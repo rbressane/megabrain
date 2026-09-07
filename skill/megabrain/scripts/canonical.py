@@ -13,8 +13,8 @@ import os
 import re
 import sqlite3
 import stat
-import subprocess
-import tarfile
+import operations
+import projection
 import tempfile
 import time
 import unicodedata
@@ -67,7 +67,7 @@ MAX_IMPORT_CANDIDATES = 10
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 MAX_RESOURCE_BYTES = 512 * 1024
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
-RESOURCE_INDEX_SCHEMA = "megabrain.resource-index.v2"
+RESOURCE_INDEX_SCHEMA = "megabrain.resource-index.v3"
 RESOURCE_TOKEN_STOPWORDS = {
     "a", "all", "an", "and", "are", "do", "for", "how", "in", "is", "it", "of",
     "on", "or", "should", "the", "this", "to", "use", "we", "what", "which", "with",
@@ -237,6 +237,10 @@ def parse_resource(path: Path) -> ResourceRevision:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise CanonicalError("RESOURCE_INVALID", "Resource is not readable UTF-8 data") from error
+    return parse_resource_text(path, text)
+
+
+def parse_resource_text(path: Path, text: str) -> ResourceRevision:
     match = RESOURCE_PATTERN.match(text)
     if not match:
         raise CanonicalError("RESOURCE_INVALID", "Resource metadata block is missing")
@@ -250,11 +254,11 @@ def parse_resource(path: Path) -> ResourceRevision:
 
 
 def write_resource(path: Path, meta: Mapping[str, Any], body: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    import operations
     metadata = json.dumps(dict(meta), ensure_ascii=True, sort_keys=True, indent=2)
     normalized = normalized_markdown(body)
     suffix = f"\n{normalized}" if normalized else ""
-    path.write_text(f"<!-- megabrain-resource\n{metadata}\n-->\n{suffix}", encoding="utf-8")
+    operations.atomic_write(path, f"<!-- megabrain-resource\n{metadata}\n-->\n{suffix}", exclusive=True)
 
 
 def validate_resource(record: ResourceRevision) -> list[str]:
@@ -434,47 +438,17 @@ def resource_index_path(root: Path) -> Path:
 
 
 def _git_commit(root: Path) -> str | None:
-    completed = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    completed = operations.run(["git", "rev-parse", "HEAD"], root)
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
 def build_resource_index(root: Path, commit: str, path: Path) -> float:
     started = time.perf_counter()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with tempfile.TemporaryDirectory(prefix=".resource-tree-", dir=path.parent) as tree_name:
-        snapshot = Path(tree_name)
-        archived = subprocess.Popen(
-            ["git", "archive", "--format=tar", commit, "--", "brain/resources"],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        assert archived.stdout is not None
-        try:
-            with tarfile.open(fileobj=archived.stdout, mode="r|") as archive:
-                for member in archive:
-                    member_path = Path(member.name)
-                    if member_path.is_absolute() or ".." in member_path.parts or member.issym() or member.islnk():
-                        raise CanonicalError("RESOURCE_INDEX_INVALID", "Committed resource archive is unsafe")
-                    archive.extract(member, snapshot, filter="data")
-        except Exception:
-            archived.kill()
-            archived.wait()
-            raise
-        finally:
-            archived.stdout.close()
-        stderr = archived.stderr.read().decode("utf-8", errors="replace") if archived.stderr else ""
-        if archived.stderr:
-            archived.stderr.close()
-        if archived.wait() != 0:
-            raise CanonicalError("RESOURCE_INDEX_FAILED", "Committed resources could not be indexed", {"git": stderr[-300:]})
-        current, conflicts = current_resources(load_resources(snapshot))
+    with operations.lock(root, name="projection"):
+        records, sources = projection.read_records(root, commit, "brain/resources", path,
+                                                   RESOURCE_INDEX_SCHEMA, parse_resource_text, ResourceRevision)
+        current, conflicts = current_resources(records)
         descriptor, temporary_name = tempfile.mkstemp(prefix=".resource-index-", dir=path.parent)
         os.close(descriptor)
         temporary = Path(temporary_name)
@@ -520,15 +494,16 @@ def build_resource_index(root: Path, commit: str, path: Path) -> float:
             )
             connection.executemany(
                 "INSERT INTO metadata VALUES (?, ?)",
-                (("schema", RESOURCE_INDEX_SCHEMA), ("commit", commit)),
+                (("schema", RESOURCE_INDEX_SCHEMA), ("tree", projection.tree_id(root, commit, "brain/resources"))),
             )
+            projection.store_sources(connection, sources)
             for record in current:
                 revision_id = str(record.meta["revision_id"])
                 connection.execute(
                     "INSERT INTO resources VALUES (?, ?, ?, ?)",
                     (
                         revision_id,
-                        str(record.path.relative_to(snapshot)),
+                        str(record.path.relative_to(root)),
                         json.dumps(record.meta, ensure_ascii=True, sort_keys=True, separators=(",", ":")),
                         record.body,
                     ),
@@ -575,6 +550,8 @@ def open_resource_index(
     if not commit:
         raise CanonicalError("RESOURCE_INDEX_UNAVAILABLE", "Resource indexing requires a Git commit")
     path = resource_index_path(root)
+    if path.is_symlink():
+        raise CanonicalError("RESOURCE_INDEX_UNSAFE", "A resource index cannot be a symlink")
     if not path.exists() and not allow_rebuild:
         raise CanonicalError("DIRTY_RESOURCE_INDEX_UNAVAILABLE", "Uncommitted resources will not be indexed")
     connection: sqlite3.Connection | None = None
@@ -582,12 +559,11 @@ def open_resource_index(
     try:
         connection = sqlite3.connect(path)
         metadata = dict(connection.execute("SELECT key,value FROM metadata"))
-        if metadata != {"schema": RESOURCE_INDEX_SCHEMA, "commit": commit}:
+        if metadata != {"schema": RESOURCE_INDEX_SCHEMA, "tree": projection.tree_id(root, commit, "brain/resources")}:
             raise sqlite3.DatabaseError("stale index")
     except (OSError, sqlite3.DatabaseError):
         if connection is not None:
             connection.close()
-        path.unlink(missing_ok=True)
         if not allow_rebuild:
             raise CanonicalError("DIRTY_RESOURCE_INDEX_UNAVAILABLE", "Uncommitted resources will not be indexed")
         elapsed = build_resource_index(root, commit, path)
@@ -739,6 +715,20 @@ def search_resource_sections(
                 score_components=components,
             ))
             per_resource[revision_id] += 1
+        # A conflicting revision remains relevant even when it shares no query terms.
+        included = {match.record.meta["revision_id"] for match in matches}
+        for revisions in conflicts.values():
+            if not included.intersection(revisions):
+                continue
+            for revision in revisions:
+                if revision in included:
+                    continue
+                row = connection.execute("SELECT revision_id,path,meta_json,body FROM resources WHERE revision_id=?", (revision,)).fetchone()
+                if row:
+                    record = _indexed_resource(root, row)
+                    ordinal, heading, body = markdown_sections(record.body)[0]
+                    matches.append(ResourceSectionMatch(record, ordinal, heading, body[:2000], body[:6000], 0.0, {"conflict_companion": 1}))
+                    included.add(revision)
         return matches, dict(conflicts), state, elapsed
     finally:
         connection.close()
@@ -1167,7 +1157,14 @@ def authorize(
         _policy_audit(root, {"action": capability, "decision": "deny", "reason": "untrusted_context", "sensitivity": sensitivity, "agent_id": agent_id})
         return False
     matches = []
-    for policy in current_policies(root):
+    def committed_policies():
+        if operations.is_snapshot(root):
+            return current_policies(root)
+        with operations.snapshot(root, "brain/policies") as committed:
+            return current_policies(committed)
+
+    policies = operations.cached(("policies", str(root.resolve())), committed_policies)
+    for policy in policies:
         if policy["agent_id"] != agent_id or capability not in policy["capabilities"]:
             continue
         if policy["platforms"] and trusted_context["platform"] not in policy["platforms"]:

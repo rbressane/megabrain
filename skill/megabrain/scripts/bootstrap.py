@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 import canonical  # noqa: E402
+import operations  # noqa: E402
 
 
 START_MARKER = "<!-- MEGABRAIN:START -->"
@@ -87,14 +89,12 @@ def run(
     *,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-        env={**os.environ, **(env or {})},
-    )
+    if command[:2] == ["git", "push"] and cwd is not None:
+        from megabrain import detect_secret
+        blocked = operations.outgoing_guard(cwd, detect_secret)
+        if blocked:
+            return subprocess.CompletedProcess(command, 1, "", "Outgoing Brain history requires owner review.")
+    return operations.run(command, cwd, env=env)
 
 
 def require_command(name: str) -> None:
@@ -232,18 +232,56 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
         "scripts/cli.py",
         "scripts/megabrain.py",
         "scripts/bootstrap.py",
+        "scripts/canonical.py",
+        "scripts/canonical-local.py",
+        "scripts/prepare-import.py",
+        "scripts/operations.py",
+        "scripts/knowledge.py",
+        "scripts/projection.py",
+        "scripts/recovery.py",
+        "seed/megabrain.json",
+        "seed/.gitignore",
+        "seed/MEGABRAIN.md",
+        "seed/SECURITY.md",
+        "agents/openai.yaml",
         "assets/browser.html",
         "assets/product-bake-candidate.md",
     ):
         path = skill / relative
         if not path.is_file():
             raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime is incomplete.")
+    inventory_path = root / "release-files.json"
+    if inventory_path.exists():
+        inventory = load_json(inventory_path, "RUNTIME_INVALID", "The runtime integrity receipt is invalid.")
+        if inventory != release_inventory(skill):
+            raise BootstrapError("RUNTIME_INVALID", "The installed runtime no longer matches its verified inventory.")
     for path in skill.rglob("*.py"):
         try:
             compile(path.read_text(encoding="utf-8"), str(path), "exec")
         except (OSError, SyntaxError) as error:
             raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime failed validation.") from error
+    with tempfile.TemporaryDirectory(prefix="megabrain-smoke-") as isolated_home:
+        smoke = run([
+            sys.executable, "-I", "-B", "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); import megabrain, canonical, cli; "
+            "megabrain.build_parser(); cli.build_parser()",
+            str(skill / "scripts"),
+        ], env={"HOME": isolated_home, "MEGABRAIN_ROOT": str(skill / "seed")})
+    if smoke.returncode:
+        raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime failed its isolated startup check.")
     return metadata
+
+
+def release_inventory(skill: Path) -> dict[str, Any]:
+    files = {}
+    for path in sorted(skill.rglob("*")):
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
+        if path.is_symlink():
+            raise BootstrapError("RUNTIME_INVALID", "A runtime file cannot be a symlink.")
+        if path.is_file():
+            files[path.relative_to(skill).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return {"schema": "megabrain.release-files.v1", "files": files}
 
 
 def copy_runtime_release(source_skill: Path, target: Path) -> dict[str, Any]:
@@ -259,6 +297,7 @@ def copy_runtime_release(source_skill: Path, target: Path) -> dict[str, Any]:
             staging / "skill" / "megabrain",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
+        operations.atomic_write(staging / "release-files.json", json.dumps(release_inventory(staging / "skill" / "megabrain"), sort_keys=True))
         validate_runtime_release(staging, str(metadata["version"]))
         staging.rename(target)
     finally:
@@ -878,11 +917,10 @@ def install_skill(home: Path, harness: str, target: Path) -> Path:
 
 
 def helper_command(skill: Path, root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-    return run(
-        [sys.executable, str(skill / "scripts" / "megabrain.py"), *arguments],
-        root,
-        env={"MEGABRAIN_ROOT": str(root)},
-    )
+    env = {"MEGABRAIN_ROOT": str(root)}
+    if skill.parent.name == "skills" and skill.parent.parent.name in {".codex", ".claude", ".hermes"}:
+        env["HOME"] = str(skill.parents[2])
+    return run([sys.executable, str(skill / "scripts" / "megabrain.py"), *arguments], root, env=env)
 
 
 def validate_clone(root: Path, skill: Path) -> dict[str, Any]:
@@ -897,6 +935,11 @@ def validate_clone(root: Path, skill: Path) -> dict[str, Any]:
 
 
 def setup(args: argparse.Namespace) -> dict[str, Any]:
+    with operations.lock(args.home.expanduser().resolve(), name="runtime"):
+        return _setup(args)
+
+
+def _setup(args: argparse.Namespace) -> dict[str, Any]:
     require_command("git")
     if sys.version_info < (3, 10):
         raise BootstrapError("PYTHON_UNSUPPORTED", "MegaBrain requires Python 3.10 or newer.")
@@ -933,7 +976,7 @@ def setup(args: argparse.Namespace) -> dict[str, Any]:
     validation = validate_clone(root, runtime_skill)
     browser: dict[str, Any] | None = None
     if not args.no_open:
-        browsed = helper_command(runtime_skill, root, "browse")
+        browsed = helper_command(link, root, "browse")
         if browsed.stdout.strip():
             try:
                 browser = json.loads(browsed.stdout)
@@ -994,8 +1037,10 @@ def configured_root(home: Path, harness: str) -> tuple[dict[str, Any], Path, Pat
     )
     if identity.get("harness") != harness:
         raise BootstrapError("IDENTITY_MISMATCH", "This clone belongs to another agent harness.")
-    skill = current_runtime(home) / "skill" / "megabrain"
+    skill = home / HARNESS_PATHS[harness][0]
     validate_runtime_release(current_runtime(home))
+    if not skill.is_symlink() or skill.resolve() != (current_runtime(home) / "skill" / "megabrain").resolve():
+        raise BootstrapError("SKILL_PATH_OCCUPIED", "Reconnect the agent to repair its managed skill link.")
     return config, root, skill
 
 
@@ -1016,12 +1061,17 @@ def release_versions(remote: str) -> list[tuple[tuple[int, int, int], str]]:
 
 
 def checkout_release(remote: str, tag: str, destination: Path) -> tuple[Path, str]:
+    advertised = run(["git", "ls-remote", remote, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"])
+    refs = dict(line.split()[::-1] for line in advertised.stdout.splitlines() if len(line.split()) == 2)
+    pinned = refs.get(f"refs/tags/{tag}^{{}}") or refs.get(f"refs/tags/{tag}")
+    if advertised.returncode or not pinned:
+        raise BootstrapError("UPDATE_UNAVAILABLE", "The selected release could not be pinned.")
     cloned = run(["git", "clone", "--quiet", "--depth", "1", "--branch", tag, remote, str(destination)])
     if cloned.returncode != 0:
         raise BootstrapError("UPDATE_DOWNLOAD_FAILED", "MegaBrain could not download the selected release.")
     commit = run(["git", "rev-parse", "HEAD"], destination)
-    if commit.returncode != 0:
-        raise BootstrapError("UPDATE_INVALID", "The downloaded MegaBrain release is invalid.")
+    if commit.returncode != 0 or commit.stdout.strip() != pinned:
+        raise BootstrapError("UPDATE_INVALID", "The downloaded release does not match its pinned tag commit.")
     return destination / "skill" / "megabrain", commit.stdout.strip()
 
 
@@ -1043,6 +1093,11 @@ def require_brain_compatibility(config: dict[str, Any], version: str, metadata: 
 
 
 def update_runtime(args: argparse.Namespace) -> dict[str, Any]:
+    with operations.lock(args.home.expanduser().resolve(), name="runtime"):
+        return _update_runtime(args)
+
+
+def _update_runtime(args: argparse.Namespace) -> dict[str, Any]:
     require_command("git")
     home = args.home.expanduser().resolve()
     config = load_config(home, required=True)
@@ -1387,7 +1442,7 @@ def main() -> int:
             return 2
         emit(result)
         return 0 if result.get("ok") else 1
-    except BootstrapError as error:
+    except (BootstrapError, operations.OperationError) as error:
         emit({"ok": False, "error": {"code": error.code, "message": error.message}}, sys.stderr)
         return 2
 

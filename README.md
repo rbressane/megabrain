@@ -44,6 +44,9 @@ Other natural actions include:
 - `Update MegaBrain`
 - `Connect this agent to my MegaBrain`
 - `Disconnect this agent`
+- `What needs review in my Brain?`
+- `Pause automatic capture for this agent`
+- `Don't remember this`
 
 The installed command is available directly after setup:
 
@@ -51,7 +54,11 @@ The installed command is available directly after setup:
 megabrain open
 megabrain update --check
 megabrain update
+megabrain status
+megabrain review
 ```
+
+See the [installed command contract](docs/command-interface.md) and [owner review/capture workflows](docs/owner-workflows.md). Owner-local capture controls require Codex or Claude; Hermes remains general-only without its separately reviewed provenance integration.
 
 To connect another supported agent or computer, give it the same setup message. The installer finds the existing private repository through the authenticated GitHub account.
 
@@ -107,7 +114,7 @@ printf '%s' '{"query":"How do we recover the gateway?","limit":12}' | megabrain 
 
 Search combines current memories with matching sections from current resources. Resource evidence includes adjacent Markdown sections plus its immutable URI, revision, heading path, provenance, freshness, and access decision. The index remains an ignored projection of committed Git state.
 
-Run `megabrain open`, or ask an installed agent to `Synchronize and open my MegaBrain`, for a private local Home with an overview, topic map, current knowledge explorer, timeline, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git.
+Run `megabrain open`, or ask an installed agent to `Synchronize and open my MegaBrain`, for a private local Home with a graph-first overview, topic map, current knowledge explorer, canonical resources, owner review queue, timeline, conflicts, agents, and imports. `Open my MegaBrain` is an equivalent phrase. The action synchronizes, validates, regenerates the static snapshot, opens it, and reports safe freshness metadata and the host. The browser labels synchronization only as of its displayed generation time and shows the newest memory timestamp, so an older open tab is not presented as continuously current. Markdown remains authoritative and the generated browser is ignored by Git. Home uses committed, policy-filtered data and owner-only file permissions. Correction, forgetting and resource-review actions prepare requests for a connected agent; the page cannot change the Brain.
 
 To import knowledge, tell an installed agent:
 
@@ -127,5 +134,7 @@ The runtime uses only Python 3.10+ and Git. GitHub onboarding also uses the auth
 python3 -m unittest discover -s tests -v
 MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate
 ```
+
+The CI matrix covers macOS/Linux on Python 3.10, 3.11 and 3.13. `python3 tests/browser_smoke.py` uses an isolated Chrome profile and synthetic data to verify Home at four desktop/mobile sizes. See [scale and integration verification](docs/scale-and-integrations.md) and [trust and recovery](docs/trust-and-recovery.md).
 
 Read [MEGABRAIN.md](MEGABRAIN.md) for invariants, [SECURITY.md](SECURITY.md) for the trust boundary, [docs/architecture.md](docs/architecture.md) for the runtime, and [docs/canonical-architecture.md](docs/canonical-architecture.md) for protocol-2 layers and documentation.
