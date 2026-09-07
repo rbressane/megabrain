@@ -739,6 +739,20 @@ def search_resource_sections(
                 score_components=components,
             ))
             per_resource[revision_id] += 1
+        # A conflicting revision remains relevant even when it shares no query terms.
+        included = {match.record.meta["revision_id"] for match in matches}
+        for revisions in conflicts.values():
+            if not included.intersection(revisions):
+                continue
+            for revision in revisions:
+                if revision in included:
+                    continue
+                row = connection.execute("SELECT revision_id,path,meta_json,body FROM resources WHERE revision_id=?", (revision,)).fetchone()
+                if row:
+                    record = _indexed_resource(root, row)
+                    ordinal, heading, body = markdown_sections(record.body)[0]
+                    matches.append(ResourceSectionMatch(record, ordinal, heading, body[:2000], body[:6000], 0.0, {"conflict_companion": 1}))
+                    included.add(revision)
         return matches, dict(conflicts), state, elapsed
     finally:
         connection.close()
