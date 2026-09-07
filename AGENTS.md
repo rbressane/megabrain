@@ -18,7 +18,9 @@ Before material project work, read and follow https://markfolio.round6.co/raw/ag
 ## Boundaries
 
 - Use only the Python standard library and Git.
-- Do not introduce a server, authoritative database, daemon, package manager, or hosted relay. Ignored rebuildable SQLite indexes are permitted projections.
+- Do not introduce a server or daemon except for an optional, owner-authenticated, read-only Live Home viewer accessible from normal phone and desktop browsers. The core runtime must remain usable without this service, including offline.
+- Live Home is a replaceable view of committed Git data, not a new authority. Corrections and forgetting remain agent-driven. Owner authentication must remain separate from agent permissions; this exception does not relax existing privacy or security gates.
+- Do not introduce an authoritative database, package manager, or hosted relay. Ignored rebuildable SQLite indexes are permitted projections.
 - Keep memory entries immutable and individually addressable.
 - Tests and documentation use synthetic information only.
 - Never import existing personal brains while developing or testing.
