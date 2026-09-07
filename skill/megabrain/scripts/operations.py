@@ -131,7 +131,11 @@ def snapshot(root: Path, *paths: str, commit: str | None = None) -> Iterator[Pat
     with tempfile.TemporaryDirectory(prefix="snapshot-", dir=state) as directory:
         destination = Path(directory)
         archive_path = destination / "snapshot.tar"
-        archived = run(["git", "archive", "--format=tar", "-o", str(archive_path), commit, "--", *paths], root)
+        present = git_text(root, "ls-tree", "--name-only", commit, "--", *paths).splitlines()
+        if not present:
+            yield destination
+            return
+        archived = run(["git", "archive", "--format=tar", "-o", str(archive_path), commit, "--", *present], root)
         if archived.returncode:
             raise OperationError("SNAPSHOT_FAILED", "The committed snapshot could not be read.")
         with tarfile.open(archive_path) as archive:

@@ -54,6 +54,15 @@ printf '%s' '{"kind":"preference","subject":"person.communication_style","summar
 
 Show the helper's compact `MegaBrain:` notice when a write creates a memory. Do not invent a notice for duplicates or failed writes.
 
+### Owner Controls and Review
+
+Honor "don't remember this" by skipping capture entirely or using `"capture":"skip"`. Normal background learning uses `"capture":"automatic"` (the default). Use `"capture":"explicit"` only for an explicit owner request to remember an item, including while automatic capture is paused.
+
+- "Pause/resume automatic capture": after the owner's request, run `megabrain capture pause` or `resume`. Explain that this applies to this agent on this device.
+- "What needs review?": run `megabrain review`. These are reminders, not automatic truth changes.
+- For a correction/forgetting request from Home, run `megabrain handoff --stdin` with its action and immutable ID, reread current evidence, and ask for owner confirmation. Resource writes remain owner-local.
+- Set `authority_domain` on project-specific captures. Use `verified_at` only with real verification evidence and `review_after` for time-sensitive project state/commitments. Do not invent dates or rewrite legacy entries to populate fields.
+
 ### Product Feedback Classification
 
 Before finishing, silently decide whether the interaction revealed a material reusable improvement to the public MegaBrain product. A candidate includes a missing command, repeated workaround, behavior/documentation mismatch, installation/update/migration/recovery weakness, retrieval/correction/privacy/security failure, product-wide UX or policy decision, reusable acceptance test, documentation gap, or capability needed across supported agents.

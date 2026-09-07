@@ -56,6 +56,7 @@
 
     button:focus-visible,
     input:focus-visible,
+    textarea:focus-visible,
     select:focus-visible,
     a:focus-visible,
     .memory-card:focus-visible,
@@ -228,7 +229,7 @@
     .badge.private, .badge.sensitive { color: #92b8e8; }
     .summary { color: var(--text-secondary); font-size: 13px; line-height: 1.58; margin: 10px 0 12px; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-wrap; }
     .tag-row { margin-bottom: 11px; }
-    .metadata { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; padding-top: 10px; }
+    .metadata { overflow-wrap: anywhere; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; padding-top: 10px; }
     .metadata strong { color: var(--text-secondary); font-weight: 550; }
     .metadata a, .memory-link, .inspector-link { color: var(--accent-muted); text-decoration: none; }
     .metadata a:hover, .memory-link:hover, .inspector-link:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -240,6 +241,21 @@
     .import-counts { margin-top: 11px; }
     .import-count { color: var(--text-muted); font-size: 10px; }
     .import-count strong { color: var(--text); display: block; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 550; margin-bottom: 1px; }
+    .graph-node.memory .memory-label { opacity: 0; }
+    .graph-node.memory:hover .memory-label, .graph-node.memory:focus-visible .memory-label, .graph-node.memory.selected .memory-label { opacity: 1; }
+    .resource-body { background: var(--canvas); color: var(--text-secondary); font: inherit; line-height: 1.6; max-width: 75ch; overflow-wrap: anywhere; padding: 16px; white-space: pre-wrap; }
+    .resource-card, .review-row { border-bottom: 1px solid var(--border); padding: 16px 0; }
+    .resource-card h2, .review-row h2 { font-size: 14px; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
+    .resource-card summary { color: var(--accent-muted); cursor: pointer; min-height: 44px; padding: 12px 0; }
+    .resource-card summary:focus-visible { outline: 2px solid var(--accent-muted); }
+    .owner-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .owner-action { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--accent-muted); min-height: 44px; padding: 8px 12px; }
+    .owner-action:hover { background: var(--surface-hover); }
+    .handoff-panel { border: 1px solid var(--border-strong); margin-bottom: 16px; padding: 16px; }
+    .handoff-panel h2 { font-size: 18px; margin: 0 0 8px; }
+    .handoff-panel textarea { background: var(--canvas); border: 1px solid var(--border-strong); color: var(--text); font: inherit; line-height: 1.6; min-height: 112px; padding: 12px; resize: vertical; width: 100%; }
+    .domain-filter { margin: 0 0 16px; max-width: 320px; }
+    .domain-filter label { display: block; margin-bottom: 8px; }
     .empty-state { border: 1px dashed var(--border-strong); border-radius: 5px; color: var(--text-muted); font-size: 12px; padding: 36px 16px; text-align: center; }
 
     .timeline { display: grid; gap: 18px; margin: 0 auto; max-width: 980px; }
@@ -277,7 +293,7 @@
     .memory-label { opacity: 0.58; transition: opacity 160ms ease; }
     .dense-graph .memory-label { opacity: 0; }
     .graph-node.conflict .memory-label { opacity: 1; }
-    .graph-node:hover .memory-label, .graph-node.selected .memory-label, .graph-node.adjacent .memory-label { opacity: 1; }
+    .graph-node:hover .memory-label, .graph-node.selected .memory-label { opacity: 1; }
 
     .graph-controls { bottom: 14px; display: flex; left: 14px; position: absolute; z-index: 4; }
     .graph-control { align-items: center; background: #101216; border: 1px solid var(--border-strong); border-right: 0; color: var(--text-muted); display: flex; height: 30px; justify-content: center; padding: 0; width: 32px; }
@@ -387,7 +403,7 @@
     <div class="brand">MegaBrain Home</div>
     <label class="search-shell" for="search">
       <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m12.5 12.5 4 4"></path></svg>
-      <input id="search" type="search" placeholder="Search memories…" autocomplete="off" aria-label="Search memories">
+      <input id="search" type="search" placeholder="Search this view…" autocomplete="off" aria-label="Search this view">
       <span class="key-hint" aria-hidden="true">/</span>
     </label>
     <select class="top-filter" id="filter-kind" aria-label="Filter by kind"><option value="">All knowledge</option></select>
@@ -399,12 +415,14 @@
       <nav class="nav" id="navigation">
         <button class="nav-button active" data-view="overview"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2v7.3a.5.5 0 0 1-.5.5H12v-5H8v5H3.5a.5.5 0 0 1-.5-.5Z"></path></svg><span>Home</span></button>
         <button class="nav-button" data-view="explore"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="15" cy="5" r="2"></circle><circle cx="13" cy="15" r="2"></circle><path d="m6.8 5.7 6.2-.5M6.2 7.6l5.6 5.8M14.6 7l-1.1 6"></path></svg><span>Explore</span><span class="nav-count" id="count-explore">0</span></button>
+        <button class="nav-button" data-view="resources"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2h8l4 4v12H4Z M12 2v5h4 M7 10h6 M7 13h6"></path></svg><span>Resources</span><span class="nav-count" id="count-resources">0</span></button>
+        <button class="nav-button" data-view="review"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h12v14H4Z M7 7h6 M7 10h6 M7 13h3"></path></svg><span>Needs review</span><span class="nav-count" id="count-review">0</span></button>
         <button class="nav-button" data-view="timeline"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"></circle><path d="M10 6v4l2.7 1.8"></path></svg><span>Timeline</span><span class="nav-count" id="count-timeline">0</span></button>
         <button class="nav-button" data-view="conflicts"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 18 17H2Z"></path><path d="M10 7v4.5M10 14.5h.01"></path></svg><span>Conflicts</span><span class="nav-count" id="count-conflicts">0</span></button>
         <button class="nav-button" data-view="agents"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="6" width="12" height="10" rx="2"></rect><path d="M10 3v3M7 10h.01M13 10h.01M7 13h6"></path></svg><span>Agents</span><span class="nav-count" id="count-agents">0</span></button>
         <button class="nav-button" data-view="imports"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10M6 8l4 4 4-4"></path><path d="M3 14v3h14v-3"></path></svg><span>Imports</span><span class="nav-count" id="count-imports">0</span></button>
       </nav>
-      <div class="sidebar-note">Private local snapshot<br>Generated on this device</div>
+      <div class="sidebar-note">Private local snapshot<br>Generated on this device<br><span id="capture-label"></span><br>Ask your agent to pause or resume capture.</div>
     </aside>
 
     <main class="workspace" id="workspace">
@@ -419,6 +437,8 @@
         <select class="control" id="filter-agent" aria-label="Filter by agent"><option value="">All agents</option></select>
         <select class="control" id="filter-date" aria-label="Filter by month"><option value="">All dates</option></select>
       </div>
+      <div class="domain-filter" id="domain-filter"><label for="filter-domain">Project or authority domain</label><select class="control" id="filter-domain"><option value="">All projects</option></select></div>
+      <section class="handoff-panel" id="handoff-panel" aria-labelledby="handoff-title" hidden><h2 id="handoff-title">Review with your agent</h2><p class="summary">This page cannot change your Brain. Copy this request to a connected agent. Review the current evidence and confirm before any change.</p><label for="handoff-text">Owner review request</label><textarea id="handoff-text" readonly></textarea><div class="owner-actions"><button class="owner-action" id="copy-handoff">Copy request</button><button class="owner-action" id="dismiss-handoff">Dismiss</button></div><p id="handoff-status" role="status"></p></section>
       <div class="results-meta" id="results-meta"></div>
       <section class="list" id="content" aria-live="polite"></section>
     </main>
@@ -426,11 +446,11 @@
 
   <script>
     const DATA = __MEGABRAIN_DATA__;
-    const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
-    const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"]];
+    const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", domain: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
+    const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"], ["filter-domain", "domain"]];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mobileGraph = window.matchMedia("(max-width: 760px)");
-    const titles = { overview: "Your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports" };
+    const titles = { overview: "Your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports", resources: "Canonical resources", review: "Knowledge that needs your review" };
     const topicLayout = [[330, 320], [625, 240], [215, 610], [490, 640], [745, 590], [455, 125], [120, 385], [755, 390]];
     const workspace = document.getElementById("workspace");
     const pageChrome = document.getElementById("page-chrome");
@@ -470,7 +490,8 @@
       return `<article class="memory-card ${escapeHtml(memory.status)} ${memory.conflict ? "conflict" : ""}" data-memory-card="${escapeHtml(memory.id)}" tabindex="-1">
         <div class="card-topline"><h2 class="subject" title="${escapeHtml(memory.subject)}">${escapeHtml(subjectLabel(memory.subject))}</h2><div class="badges">${badges}</div></div>
         <div class="summary">${escapeHtml(memory.summary)}</div>${tags}
-        <div class="metadata"><span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span><span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span><span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>${locator}${relations.join("")}<a href="../../${encodeURI(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a></div>
+        ${memory.status === "current" ? `<div class="owner-actions"><button class="owner-action" data-handoff="correct" data-target="${escapeHtml(memory.id)}">Prepare correction</button><button class="owner-action" data-handoff="forget" data-target="${escapeHtml(memory.id)}">Prepare forgetting</button></div>` : ""}
+        <div class="metadata"><span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span><span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span><span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>${memory.review_after ? `<span><strong>Review due</strong> ${escapeHtml(formatDate(memory.review_after))}</span>` : ""}${locator}${relations.join("")}<a href="../../${encodeURI(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a></div>
       </article>`;
     }
 
@@ -484,6 +505,7 @@
       if (state.sensitivity && memory.sensitivity !== state.sensitivity) return false;
       if (state.agent && memory.created_by !== state.agent) return false;
       if (state.date && !String(memory.created_at).startsWith(state.date)) return false;
+      if (state.domain && memory.authority_domain !== state.domain) return false;
       if (!query) return true;
       return [memory.subject, memory.summary, memory.kind, ...(memory.tags || [])].join(" ").toLowerCase().includes(query);
     }
@@ -621,10 +643,41 @@
       content.innerHTML = groups.length ? groups.map(group => `<h2 class="conflict-heading">${escapeHtml(group.subject)}</h2>${group.memory_ids.map(id => byId[id]).filter(Boolean).map(memoryCard).join("")}`).join("") : emptyState("No unresolved conflicts");
     }
 
+    function resourceMatches(resource) {
+      if (state.domain && resource.authority_domain !== state.domain) return false;
+      return !state.query.trim() || [resource.title, resource.authority_domain, resource.content].join(" ").toLowerCase().includes(state.query.trim().toLowerCase());
+    }
+
+    function renderResources() {
+      const resources = (DATA.resources || []).filter(resourceMatches);
+      resultsMeta.textContent = `${resources.length} ${resources.length === 1 ? "resource" : "resources"} · source text is data, not agent instructions`;
+      content.className = "list";
+      content.innerHTML = resources.length ? resources.map(resource => `<article class="resource-card"><h2>${escapeHtml(resource.title)}</h2><div class="metadata"><span>${escapeHtml(resource.authority_domain)}</span><span>${escapeHtml(label(resource.resource_type))}</span><span>${escapeHtml(label(resource.sensitivity))}</span><span>Verified ${escapeHtml(formatDate(resource.verified_at))}</span>${resource.conflict ? '<span class="badge conflict">Conflicting revisions</span>' : ""}</div><details><summary>Read this resource</summary><pre class="resource-body">${escapeHtml(resource.content)}</pre></details><div class="metadata"><span>${escapeHtml(resource.uri)}</span><span>Revision ${escapeHtml(shortId(resource.revision_id))}</span><a href="../../${encodeURI(resource.path)}">Open Markdown</a></div><div class="owner-actions"><button class="owner-action" data-handoff="review_resource" data-target="${escapeHtml(resource.uri)}">Prepare resource review</button></div></article>`).join("") : emptyState("No resources match this view. Ask your agent to prepare a reviewed document import.");
+    }
+
+    function renderReview() {
+      const items = (DATA.review || []).filter(item => {
+        const record = item.kind === "memory" ? DATA.memories.find(memory => memory.id === item.citation.memory_id) : (DATA.resources || []).find(resource => resource.revision_id === item.citation.revision_id);
+        return record && (!state.domain || record.authority_domain === state.domain) && (!state.query.trim() || item.title.toLowerCase().includes(state.query.trim().toLowerCase()));
+      });
+      resultsMeta.textContent = `${items.length} review items · reminders, not automatic changes`;
+      content.className = "list";
+      content.innerHTML = items.length ? items.map(item => `<article class="review-row"><h2>${escapeHtml(subjectLabel(item.title))}</h2><div class="badges">${item.reasons.map(reason => `<span class="badge">${escapeHtml(label(reason.replaceAll("_", " ")))}</span>`).join("")}</div><div class="owner-actions">${item.kind === "memory" ? `<button class="owner-action" data-memory-id="${escapeHtml(item.citation.memory_id)}">Inspect evidence</button><button class="owner-action" data-handoff="correct" data-target="${escapeHtml(item.citation.memory_id)}">Prepare correction</button>` : `<button class="owner-action" data-handoff="review_resource" data-target="${escapeHtml(item.citation.uri)}">Prepare resource review</button>`}</div></article>`).join("") : emptyState("Nothing in this view needs review. This is not a guarantee that every fact is current.");
+    }
+
+    function showHandoff(action, target) {
+      const panel = document.getElementById("handoff-panel");
+      panel.hidden = false;
+      document.getElementById("handoff-text").value = `Prepare a MegaBrain owner review with action ${action} and id ${target}. Use megabrain handoff, reread the current evidence, and ask for my confirmation before any change. For forgetting, explain that Git history remains.`;
+      document.getElementById("handoff-status").textContent = "Nothing has been changed.";
+      document.getElementById("handoff-text").focus();
+      panel.scrollIntoView({ block: "nearest", behavior: reducedMotion.matches ? "auto" : "smooth" });
+    }
+
     function renderAgents() {
       resultsMeta.textContent = `${DATA.agents.length} ${DATA.agents.length === 1 ? "agent" : "agents"}`;
       content.className = "agent-grid";
-      content.innerHTML = DATA.agents.length ? DATA.agents.map(agent => `<article class="agent-card"><h2 class="agent-name">${escapeHtml(agent.display_name)}</h2><div class="agent-detail">${escapeHtml(label(agent.harness))} · ${escapeHtml(shortId(agent.id))}</div><div class="import-counts"><div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div><div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div></div></article>`).join("") : emptyState("No registered agents");
+      content.innerHTML = DATA.agents.length ? DATA.agents.map(agent => `<article class="agent-card"><h2 class="agent-name">${escapeHtml(agent.display_name)}</h2><div class="agent-detail">${escapeHtml(label(agent.harness))} · ${escapeHtml(shortId(agent.id))}</div><div class="agent-detail">${agent.private_policy ? "Private read policy configured. Scope and deny rules still apply." : "No private read policy configured."}</div><div class="agent-detail">Registered, not a live connectivity check. Ask this agent to run MegaBrain status.</div><div class="import-counts"><div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div><div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div></div></article>`).join("") : emptyState("No registered agents");
     }
 
     function renderImports() {
@@ -641,6 +694,8 @@
       workspace.classList.toggle("graph-mode", overview);
       pageChrome.classList.toggle("hidden", overview);
       toolbar.classList.toggle("hidden", !isMemoryView);
+      document.getElementById("domain-filter").classList.toggle("hidden", !["explore", "timeline", "conflicts", "resources", "review"].includes(state.view));
+      document.getElementById("filter-kind").disabled = !isMemoryView && !overview;
       resultsMeta.classList.toggle("hidden", overview);
       if (overview) renderOverview();
       if (state.view === "explore") renderMemories(["current"], "No current memories");
@@ -648,6 +703,8 @@
       if (state.view === "conflicts") renderConflicts();
       if (state.view === "agents") renderAgents();
       if (state.view === "imports") renderImports();
+      if (state.view === "resources") renderResources();
+      if (state.view === "review") renderReview();
       bindMemoryLinks();
     }
 
@@ -671,12 +728,15 @@
 
     function navigateTo(view, options = {}) {
       resetFilters(); state.view = view;
+      document.getElementById("handoff-panel").hidden = true;
       if (options.query) { state.query = options.query; document.getElementById("search").value = state.query; }
       if (options.confidence) { state.confidence = options.confidence; document.getElementById("filter-confidence").value = state.confidence; }
       render(); focusDestination(options.memoryId);
+      document.querySelector('.nav-button.active')?.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
 
     function bindMemoryLinks() {
+      document.querySelectorAll("[data-handoff]").forEach(button => button.addEventListener("click", () => showHandoff(button.dataset.handoff, button.dataset.target)));
       document.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => { const id = button.dataset.memoryId; const memory = DATA.memories.find(item => item.id === id); if (memory) navigateTo(memory.status === "current" ? "explore" : "timeline", { memoryId: id }); }));
     }
 
@@ -747,6 +807,15 @@
     document.getElementById("count-conflicts").textContent = DATA.stats.conflicts;
     document.getElementById("count-agents").textContent = DATA.stats.agents;
     document.getElementById("count-imports").textContent = DATA.stats.imports;
+    document.getElementById("count-resources").textContent = (DATA.resources || []).length;
+    document.getElementById("count-review").textContent = (DATA.review || []).length;
+    document.getElementById("dismiss-handoff").addEventListener("click", () => { document.getElementById("handoff-panel").hidden = true; document.getElementById("page-title").focus(); });
+    document.getElementById("copy-handoff").addEventListener("click", async () => {
+      const field = document.getElementById("handoff-text");
+      try { await navigator.clipboard.writeText(field.value); document.getElementById("handoff-status").textContent = "Request copied. Nothing has been changed."; }
+      catch { field.focus(); field.select(); document.getElementById("handoff-status").textContent = "Clipboard unavailable. The request is selected; copy it using your keyboard."; }
+    });
+    document.getElementById("capture-label").textContent = `Automatic capture: ${DATA.capture?.automatic === false ? "paused" : "on"} for this agent`;
     const freshness = DATA.freshness || {};
     const generatedAt = formatDate(freshness.generated_at || DATA.generated_at);
     const newestMemoryAt = freshness.newest_memory_at ? formatDate(freshness.newest_memory_at) : "No memories yet";
@@ -756,6 +825,7 @@
     if (freshness.stale || DATA.sync.stale) { syncState.classList.add("stale"); document.getElementById("sync-label").textContent = "Snapshot may be stale"; syncState.title = `Synchronization incomplete when generated: ${freshness.reason || DATA.sync.reason || "unknown reason"}`; }
     else { document.getElementById("sync-label").textContent = "Synchronized when generated"; syncState.title = `Synchronized when generated at ${generatedAt}`; }
 
+    populateSelect("filter-domain", [...new Set([...DATA.memories, ...(DATA.resources || [])].map(item => item.authority_domain).filter(Boolean))].sort(), value => value);
     populateSelect("filter-kind", [...new Set(DATA.memories.map(item => item.kind))].sort());
     populateSelect("filter-importance", [...new Set(DATA.memories.map(item => item.importance))].sort());
     populateSelect("filter-confidence", [...new Set(DATA.memories.map(item => item.confidence))].sort());
@@ -764,7 +834,7 @@
     populateSelect("filter-date", [...new Set(DATA.memories.map(item => String(item.created_at).slice(0, 7)))].sort().reverse(), formatMonth);
 
     document.getElementById("navigation").addEventListener("click", event => { const button = event.target.closest("[data-view]"); if (button) navigateTo(button.dataset.view); });
-    document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; render(); });
+    document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; if (state.view === "overview" && state.query.trim()) state.view = "explore"; render(); });
     for (const [id, key] of filterFields) document.getElementById(id).addEventListener("change", event => { state[key] = event.target.value; render(); });
     document.addEventListener("keydown", event => {
       const target = event.target;

@@ -29,6 +29,7 @@ from typing import Any, Iterable
 
 from canonical import CanonicalError
 import operations
+import knowledge
 
 
 MEMORY_SCHEMA = "megabrain.memory.v1"
@@ -528,7 +529,7 @@ def summary_text(record: Record) -> str:
 
 
 def normalize(value: str) -> str:
-    return " ".join(TOKEN_PATTERN.findall(value.lower()))
+    return " ".join(re.findall(r"[^\W_]+", knowledge.normalized(value)))
 
 
 def tokens(value: str) -> set[str]:
@@ -993,7 +994,10 @@ def memory_meta(
     selected_subject = subject or payload.get("subject")
     if not isinstance(selected_subject, str) or not selected_subject.strip():
         raise BrainError("INVALID_SUBJECT", "subject must be a non-empty string")
-    confidence = payload.get("confidence", "confirmed")
+    raw_source = source or payload.get("source") or {}
+    source_type = raw_source.get("type", "user-statement") if isinstance(raw_source, dict) else "import"
+    default_confidence = {"user-statement": "confirmed", "agent-observation": "inferred", "import": "unconfirmed"}.get(source_type, "unconfirmed")
+    confidence = payload.get("confidence", default_confidence)
     sensitivity = payload.get("sensitivity", "private")
     importance = payload.get("importance", "normal")
     tags = payload.get("tags", [])
@@ -1793,6 +1797,11 @@ def command_remember(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     identity = load_identity(root)
     sync = sync_repo(root)
     require_clean_or_offline(sync)
+    capture = payload.get("capture", "automatic")
+    if not isinstance(capture, str) or capture not in {"automatic", "explicit", "skip"}:
+        raise BrainError("CAPTURE_MODE_INVALID", "capture must be automatic, explicit or skip")
+    if capture == "skip" or (capture == "automatic" and not knowledge.capture_state(root)["automatic"]):
+        return {"ok": True, "created": False, "reason": "capture_skipped" if capture == "skip" else "capture_paused"}
     record, duplicate, conflict_ids = create_memory_file(root, identity, payload)
     if duplicate:
         return {"ok": True, "created": False, "duplicate_of": duplicate.meta["id"], "sync": sync}
@@ -2327,9 +2336,10 @@ def graph_overview_memory_ids(
 
 def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     commit = operations.git_text(root, "rev-parse", "HEAD")
-    with operations.snapshot(root, "brain/memories", "brain/agents", "brain/imports", "brain/policies", commit=commit) as snapshot:
+    with operations.snapshot(root, "brain/memories", "brain/agents", "brain/imports", "brain/policies", "brain/resources", commit=commit) as snapshot:
         payload = _browser_payload(snapshot, sync, trusted_context=trusted_context)
     payload["snapshot_commit"] = commit
+    payload["capture"] = knowledge.capture_state(root)
     payload["sync"] = safe_browser_sync(root, sync)
     payload["freshness"]["pending_local_commits"] = payload["sync"]["pending_local_commits"]
     return payload
@@ -2338,11 +2348,15 @@ def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[s
 def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     import canonical
 
-    records = [record for record in load_memories(root) if record.meta.get("sensitivity") == "general" or (
+    all_records = load_memories(root)
+    active, conflicts = current_memories(all_records)
+    records = [record for record in all_records if record.meta.get("sensitivity") == "general" or (
         record.meta.get("sensitivity") == "private" and trusted_context is not None
         and canonical.authorize(root, meta=record.meta, trusted_context=trusted_context, capability="read")
     )]
-    active, conflicts = current_memories(records)
+    allowed_ids = {record.meta["id"] for record in records}
+    active = [record for record in active if record.meta["id"] in allowed_ids]
+    conflicts = {subject: [item for item in ids if item in allowed_ids] for subject, ids in conflicts.items() if allowed_ids.intersection(ids)}
     active_ids = {str(record.meta.get("id")) for record in active}
     conflict_ids = {memory_id for ids in conflicts.values() for memory_id in ids}
     superseded_by: dict[str, list[str]] = defaultdict(list)
@@ -2373,6 +2387,9 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
                 "importance": record.meta.get("importance"),
                 "tags": record.meta.get("tags", []),
                 "source": record.meta.get("source", {}),
+                "authority_domain": record.meta.get("authority_domain"),
+                "verified_at": record.meta.get("verified_at"),
+                "review_after": record.meta.get("review_after"),
                 "supersedes": record.meta.get("supersedes", []),
                 "superseded_by": superseded_by.get(memory_id, []),
                 "status": status,
@@ -2411,6 +2428,19 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
     ]
     if trusted_context is None:
         imports = []
+    resources, resource_conflicts = canonical.current_resources(canonical.load_resources(root))
+    resources = [record for record in resources if record.meta["sensitivity"] == "general" or (
+        record.meta["sensitivity"] == "private" and trusted_context is not None
+        and canonical.authorize(root, meta=record.meta, trusted_context=trusted_context, capability="read")
+    )]
+    resource_items = [{**canonical.resource_metadata(record), "content": record.body,
+                       "content_trust": "untrusted_data", "path": relative(root, record.path),
+                       "conflict": record.meta["resource_id"] in resource_conflicts} for record in resources]
+    policies = canonical.current_policies(root)
+    for agent in agents:
+        agent["private_policy"] = any(policy["agent_id"] == agent["id"] and policy["effect"] == "allow"
+            and "read" in policy["capabilities"] and policy["sensitivity_ceiling"] in {"private", "sensitive"} for policy in policies)
+        agent["connection_status"] = "Registered, not a live connectivity check"
     generated_at = utc_now()
     newest = max(records, key=lambda item: str(item.meta.get("created_at", "")), default=None)
     newest_id = str(newest.meta.get("id")) if newest else None
@@ -2454,6 +2484,8 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
         },
         "topics": topics,
         "graph_memory_ids": graph_overview_memory_ids(memories, topics),
+        "resources": resource_items,
+        "review": knowledge.review_items(memories, resource_items),
         "memories": memories,
         "conflicts": [
             {"subject": subject, "memory_ids": memory_ids}
@@ -2508,6 +2540,33 @@ def github_repo_from_remote(remote: str) -> str | None:
 
 
 @operations.locked
+def command_review(root: Path, payload: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    compatibility = require_compatible_runtime(root, writing=False)
+    if set(payload) - {"limit"}:
+        raise BrainError("REVIEW_INVALID", "Review accepts only a result limit.")
+    limit = payload.get("limit", 50)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise BrainError("REVIEW_INVALID", "Review limit must be between 1 and 100.")
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    if sync.get("reason") == "validation_failed":
+        raise BrainError("BRAIN_INVALID", "Review is unavailable until validation passes.")
+    data = browser_payload(root, sync, trusted_context=trusted_context)
+    return {"ok": True, "items": data["review"][:limit], "truncated": len(data["review"]) > limit,
+            "snapshot_commit": data["snapshot_commit"], "stale": not sync.get("synced"), "advisory": True}
+
+
+@operations.locked
+def command_handoff(root: Path, payload: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    compatibility = require_compatible_runtime(root, writing=False)
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    if sync.get("reason") == "validation_failed":
+        raise BrainError("BRAIN_INVALID", "Handoff is unavailable until validation passes.")
+    data = browser_payload(root, sync, trusted_context=trusted_context)
+    result = knowledge.handoff(payload, data["memories"], data["resources"])
+    return {**result, "snapshot_commit": data["snapshot_commit"], "stale": not sync.get("synced")}
+
+
+@operations.locked
 def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     compatibility = require_compatible_runtime(root, writing=False)
     sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
@@ -2519,6 +2578,7 @@ def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None)
         "sync": {key: sync.get(key) for key in ("synced", "stale", "reason", "pending_local_commits")},
         "validation": {"errors": len(validation["errors"]), "warnings": len(validation["warnings"])},
         "trusted_owner_context": trusted_context is not None,
+        "capture": knowledge.capture_state(root),
         "next_action": "Ready." if sync.get("synced") else "Keep local work. Run doctor to inspect synchronization.",
     }
 
@@ -2760,6 +2820,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("validate")
     subparsers.add_parser("doctor")
     subparsers.add_parser("status")
+    review = subparsers.add_parser("review")
+    review.add_argument("--stdin", action="store_true")
+    handoff = subparsers.add_parser("handoff")
+    handoff.add_argument("--stdin", action="store_true")
+    capture = subparsers.add_parser("capture")
+    capture.add_argument("action", choices=("pause", "resume", "status"))
     subparsers.add_parser("benchmark")
     return parser
 
@@ -2772,7 +2838,7 @@ def main() -> int:
         root = repo_root()
         trusted_context = (
             trusted_local_context(root)
-            if args.command in {"context", "search", "resources", "resource-read", "browse", "status"}
+            if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "review", "handoff", "capture"}
             else None
         )
         if args.command == "sync":
@@ -2834,6 +2900,13 @@ def main() -> int:
             result = command_doctor(root)
         elif args.command == "status":
             result = command_status(root, trusted_context=trusted_context)
+        elif args.command == "review":
+            result = command_review(root, read_input(required=False), trusted_context=trusted_context)
+        elif args.command == "handoff":
+            result = command_handoff(root, read_input(), trusted_context=trusted_context)
+        elif args.command == "capture":
+            with operations.lock(root):
+                result = knowledge.set_capture(root, args.action, trusted_context)
         elif args.command == "benchmark":
             result = command_benchmark()
         else:
