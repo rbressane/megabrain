@@ -239,6 +239,10 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
         path = skill / relative
         if not path.is_file():
             raise BootstrapError("RUNTIME_INVALID", "The MegaBrain runtime is incomplete.")
+    if semantic_version(version) >= (2, 5, 0):
+        for relative in ("scripts/live_home.py", "assets/live-login.html"):
+            if not (skill / relative).is_file():
+                raise BootstrapError("RUNTIME_INVALID", "The MegaBrain Live Home runtime is incomplete.")
     inventory_path = root / "release-files.json"
     if inventory_path.exists():
         inventory = load_json(inventory_path, "RUNTIME_INVALID", "The runtime integrity receipt is invalid.")

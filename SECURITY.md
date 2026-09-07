@@ -27,6 +27,14 @@ MegaBrain product code is distributed from the public official repository. Appro
 - Product feedback is local proposal generation, never telemetry. The renderer performs no network operation, writes nowhere by default, rejects transcript/secret/private-path-shaped input without echo, and cannot publish product work.
 - Revoke a compromised environment through its GitHub credential. Agent registry entries do not enforce access.
 
+## Optional Live Home
+
+The [Live Home runbook](docs/live-home.md) defines the separate owner-authenticated, read-only service boundary. Use a dedicated owner-approved host, OS account and read-only Git replica. The host is another trusted plaintext copy. Development/tests use synthetic data only. Do not expose a personal replica as part of a product test.
+
+The service persists only a mode-0600 salted password verifier outside the Brain; it never records raw passwords, repository credentials or session tokens. Browser sessions are in memory and require a separate owner sign-in. Rotation/restart revokes them. HTTPS, exact Host/Origin checks, no-store responses, HttpOnly/Secure/SameSite cookies, CSP script/style hashes and inert allowlisted Markdown protect the browser boundary. Agent claims cannot authorize owner reads. The viewer serves general knowledge only, never private/sensitive records, raw imports, policies, attachments or arbitrary files. It provides no canonical mutation endpoint.
+
+A loopback HTTP mode is explicitly synthetic-development-only. Public deployment requires operator-managed TLS, supervision and upstream abuse controls. The standard-library listener is bounded but is not a hardened public-edge denial-of-service defense. No MFA or independent security certification is claimed. Sign-out cannot erase evidence already copied or downloaded. Core agent use remains independent of this service.
+
 ## Limits
 
 Secret detection is defensive pattern matching, not complete data-loss prevention. Runtime policy cannot protect content from a process that already has an unrestricted filesystem clone. A tombstone or retired revision does not erase Git history, other clones, or backups. True erasure requires coordinated history rewriting, backup retirement, and credential/device cleanup. Protocol 2 makes no high-assurance encrypted-sync claim. SHA-256 runtime inventories detect corruption, not a compromised release publisher. See [trust and recovery](docs/trust-and-recovery.md) for exact rollback exceptions, subprocess limits and owner-approved plaintext backup/restore.

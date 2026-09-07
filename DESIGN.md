@@ -273,6 +273,12 @@ Components are compact, quiet, and evidence-led. Hover and focus states clarify 
 - **Structure:** A 36px graphite strip carries the relationship legend and record/topic/conflict totals.
 - **Meaning:** Pair every dot or line with a text label. Freshness language must state that synchronization is true only when the snapshot was generated.
 
+### Optional Live Home states
+
+Live mode inherits the same graph, list, inspector, tokens and proposal actions. A flat status strip below the utility bar keeps last synchronization, read-only scope and sign-out visible on desktop and mobile. Text distinguishes connecting, delayed, offline and unavailable states; amber supplements, never replaces, that text. Quiet background updates preserve search, selection, open resource disclosures and reading position rather than replaying entrance motion.
+
+Owner sign-in uses a narrow single-column form on the same graphite canvas, existing violet focus/action color, visible labels and 48px form controls. Readable 16px input text avoids mobile input zoom. The 24px sign-in heading is a form-specific hierarchy step, not a replacement display system. The sign-in screen carries no knowledge or decorative preview. Local snapshots retain their explicit snapshot boundary; live freshness is never implied by a static export.
+
 **The Evidence Path Rule.** Every selection should lead from shape to evidence to immutable Markdown.
 
 ## Do's and Don'ts

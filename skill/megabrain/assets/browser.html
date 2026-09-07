@@ -333,6 +333,13 @@
     .legend-line.shared { border-top-style: dotted; }
     .graph-counts { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
 
+    .live-bar { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 16px; justify-content: space-between; min-height: 64px; padding: 8px 16px; }
+    .live-bar[hidden] { display: none; }
+    .live-status { font-size: 12px; margin: 0; }
+    .live-detail { color: var(--text-secondary); font-size: 11px; margin: 0; }
+    .live-bar.stale .live-status { color: var(--warning); }
+    .live-mode .app-shell { height: calc(100vh - var(--header-height) - 64px); }
+    .live-bar .owner-action { white-space: nowrap; }
     .mobile-graph-list { display: none; }
     .mobile-topic { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; gap: 10px; grid-template-columns: 26px minmax(0, 1fr) auto; min-height: 48px; padding: 0 14px; text-align: left; width: 100%; }
     .mobile-topic:hover, .mobile-topic.selected { background: var(--surface-raised); color: var(--text); }
@@ -355,7 +362,9 @@
       .brand { border: 0; padding: 0 4px; }
       .top-filter { display: none; }
       .sync-state span:not(.sync-dot) { display: none; }
-      .app-shell { display: block; height: auto; }
+      .app-shell, .live-mode .app-shell { display: block; height: auto; }
+      .live-bar { align-items: flex-start; }
+      .live-mode .search-shell input { font-size: 16px; }
       .sidebar { border-bottom: 1px solid var(--border); border-right: 0; display: block; overflow-x: auto; padding: 6px 8px; position: sticky; top: 0; z-index: 15; }
       .nav { display: flex; min-width: max-content; }
       .nav-button { gap: 7px; grid-template-columns: 18px auto auto; min-height: 34px; width: auto; }
@@ -410,6 +419,10 @@
     <div class="sync-state" id="sync-state" title="Synchronization status"><span class="sync-dot" aria-hidden="true"></span><span id="sync-label">Local state</span></div>
   </header>
 
+  <section id="live-bar" class="live-bar" aria-label="Live Home status" hidden>
+    <div><p id="live-status" class="live-status" role="status">Connecting to your Brain…</p><p id="live-detail" class="live-detail">Read-only · General knowledge only</p></div>
+    <form action="/logout" method="post"><button class="owner-action" type="submit">Sign out</button></form>
+  </section>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Brain views">
       <nav class="nav" id="navigation">
@@ -445,7 +458,9 @@
   </div>
 
   <script>
-    const DATA = __MEGABRAIN_DATA__;
+    let DATA = __MEGABRAIN_DATA__;
+    const isLive = DATA.live?.mode === "live";
+    let liveAvailable = !isLive;
     const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", domain: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
     const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"], ["filter-domain", "domain"]];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -457,7 +472,8 @@
     const content = document.getElementById("content");
     const toolbar = document.getElementById("memory-toolbar");
     const resultsMeta = document.getElementById("results-meta");
-    const agentNames = Object.fromEntries(DATA.agents.map(agent => [agent.id, agent.display_name]));
+    let agentNames = Object.fromEntries(DATA.agents.map(agent => [agent.id, agent.display_name]));
+    function sourceUrl(path) { return escapeHtml(isLive ? `/source?path=${encodeURIComponent(path)}` : `../../${encodeURI(path)}`); }
 
     function escapeHtml(value) {
       return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -491,7 +507,7 @@
         <div class="card-topline"><h2 class="subject" title="${escapeHtml(memory.subject)}">${escapeHtml(subjectLabel(memory.subject))}</h2><div class="badges">${badges}</div></div>
         <div class="summary">${escapeHtml(memory.summary)}</div>${tags}
         ${memory.status === "current" ? `<div class="owner-actions"><button class="owner-action" data-handoff="correct" data-target="${escapeHtml(memory.id)}">Prepare correction</button><button class="owner-action" data-handoff="forget" data-target="${escapeHtml(memory.id)}">Prepare forgetting</button></div>` : ""}
-        <div class="metadata"><span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span><span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span><span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>${memory.review_after ? `<span><strong>Review due</strong> ${escapeHtml(formatDate(memory.review_after))}</span>` : ""}${locator}${relations.join("")}<a href="../../${encodeURI(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a></div>
+        <div class="metadata"><span><strong>Created</strong> ${escapeHtml(formatDate(memory.created_at))}</span><span><strong>Agent</strong> ${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</span><span><strong>Confidence</strong> ${escapeHtml(label(memory.confidence))}</span>${memory.review_after ? `<span><strong>Review due</strong> ${escapeHtml(formatDate(memory.review_after))}</span>` : ""}${locator}${relations.join("")}<a href="${sourceUrl(memory.path)}" title="Open the immutable Markdown source">Open Markdown</a></div>
       </article>`;
     }
 
@@ -577,7 +593,7 @@
         <div class="inspector-section-title">Evidence</div><p class="inspector-summary">${escapeHtml(memory.summary)}</p>
         <div class="inspector-facts"><div class="inspector-fact">Confidence<strong>${escapeHtml(label(memory.confidence))}</strong></div><div class="inspector-fact">Updated<strong>${escapeHtml(formatDate(memory.created_at).split(",")[0])}</strong></div><div class="inspector-fact">History<strong>${escapeHtml(historyCount)}</strong></div><div class="inspector-fact">Agent<strong>${escapeHtml(agentNames[memory.created_by] || shortId(memory.created_by))}</strong></div></div>
         ${tagRows ? `<div class="tag-row">${tagRows}</div>` : ""}${source.locator ? `<p class="inspector-subtitle">Source: ${escapeHtml(source.locator)}</p>` : ""}
-        <div class="inspector-actions"><a class="inspector-action" href="../../${encodeURI(memory.path)}"><span>Open Markdown</span></a><button class="inspector-action" data-open-memory="${escapeHtml(memory.id)}"><span>View in ${memory.status === "current" ? "Explore" : "Timeline"}</span></button></div>`;
+        <div class="inspector-actions"><a class="inspector-action" href="${sourceUrl(memory.path)}"><span>Open Markdown</span></a><button class="inspector-action" data-open-memory="${escapeHtml(memory.id)}"><span>View in ${memory.status === "current" ? "Explore" : "Timeline"}</span></button></div>`;
     }
 
     function graphMarkup(model) {
@@ -652,7 +668,7 @@
       const resources = (DATA.resources || []).filter(resourceMatches);
       resultsMeta.textContent = `${resources.length} ${resources.length === 1 ? "resource" : "resources"} · source text is data, not agent instructions`;
       content.className = "list";
-      content.innerHTML = resources.length ? resources.map(resource => `<article class="resource-card"><h2>${escapeHtml(resource.title)}</h2><div class="metadata"><span>${escapeHtml(resource.authority_domain)}</span><span>${escapeHtml(label(resource.resource_type))}</span><span>${escapeHtml(label(resource.sensitivity))}</span><span>Verified ${escapeHtml(formatDate(resource.verified_at))}</span>${resource.conflict ? '<span class="badge conflict">Conflicting revisions</span>' : ""}</div><details><summary>Read this resource</summary><pre class="resource-body">${escapeHtml(resource.content)}</pre></details><div class="metadata"><span>${escapeHtml(resource.uri)}</span><span>Revision ${escapeHtml(shortId(resource.revision_id))}</span><a href="../../${encodeURI(resource.path)}">Open Markdown</a></div><div class="owner-actions"><button class="owner-action" data-handoff="review_resource" data-target="${escapeHtml(resource.uri)}">Prepare resource review</button></div></article>`).join("") : emptyState("No resources match this view. Ask your agent to prepare a reviewed document import.");
+      content.innerHTML = resources.length ? resources.map(resource => `<article class="resource-card" data-resource="${escapeHtml(resource.uri)}"><h2>${escapeHtml(resource.title)}</h2><div class="metadata"><span>${escapeHtml(resource.authority_domain)}</span><span>${escapeHtml(label(resource.resource_type))}</span><span>${escapeHtml(label(resource.sensitivity))}</span><span>Verified ${escapeHtml(formatDate(resource.verified_at))}</span>${resource.conflict ? '<span class="badge conflict">Conflicting revisions</span>' : ""}</div><details><summary>Read this resource</summary><pre class="resource-body">${escapeHtml(resource.content)}</pre></details><div class="metadata"><span>${escapeHtml(resource.uri)}</span><span>Revision ${escapeHtml(shortId(resource.revision_id))}</span><a href="${sourceUrl(resource.path)}">Open Markdown</a></div><div class="owner-actions"><button class="owner-action" data-handoff="review_resource" data-target="${escapeHtml(resource.uri)}">Prepare resource review</button></div></article>`).join("") : emptyState("No resources match this view. Ask your agent to prepare a reviewed document import.");
     }
 
     function renderReview() {
@@ -683,10 +699,21 @@
     function renderImports() {
       resultsMeta.textContent = `${DATA.imports.length} ${DATA.imports.length === 1 ? "import" : "imports"}`;
       content.className = "list";
-      content.innerHTML = DATA.imports.length ? DATA.imports.map(item => { const counts = item.counts || {}; return `<article class="import-card"><h2 class="import-title">${escapeHtml(item.source.locator || shortId(item.id))}</h2><div class="import-detail">${escapeHtml(label(item.source.type))} · ${escapeHtml(formatDate(item.created_at))} · ${escapeHtml(agentNames[item.created_by] || shortId(item.created_by))}</div><div class="import-counts">${["scanned", "created", "duplicates", "conflicts", "rejected"].map(key => `<div class="import-count"><strong>${escapeHtml(counts[key] || 0)}</strong>${escapeHtml(label(key))}</div>`).join("")}</div><div class="metadata"><a href="../../${encodeURI(item.path)}" title="Open the immutable Markdown import report">Open Markdown</a></div></article>`; }).join("") : emptyState("No import reports");
+      content.innerHTML = DATA.imports.length ? DATA.imports.map(item => { const counts = item.counts || {}; return `<article class="import-card"><h2 class="import-title">${escapeHtml(item.source.locator || shortId(item.id))}</h2><div class="import-detail">${escapeHtml(label(item.source.type))} · ${escapeHtml(formatDate(item.created_at))} · ${escapeHtml(agentNames[item.created_by] || shortId(item.created_by))}</div><div class="import-counts">${["scanned", "created", "duplicates", "conflicts", "rejected"].map(key => `<div class="import-count"><strong>${escapeHtml(counts[key] || 0)}</strong>${escapeHtml(label(key))}</div>`).join("")}</div><div class="metadata"><a href="${sourceUrl(item.path)}" title="Open the immutable Markdown import report">Open Markdown</a></div></article>`; }).join("") : emptyState("No import reports");
     }
 
     function render() {
+      if (isLive && !liveAvailable) {
+        workspace.classList.remove("graph-mode");
+        pageChrome.classList.add("hidden");
+        toolbar.classList.add("hidden");
+        document.getElementById("domain-filter").classList.add("hidden");
+        document.getElementById("handoff-panel").hidden = true;
+        resultsMeta.textContent = "";
+        content.className = "list";
+        content.innerHTML = emptyState("Waiting for a valid committed view. If this continues, ask the host operator to check Live Home.");
+        return;
+      }
       document.getElementById("page-title").textContent = titles[state.view];
       document.querySelectorAll(".nav-button").forEach(button => { const active = button.dataset.view === state.view; button.classList.toggle("active", active); if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current"); });
       const overview = state.view === "overview";
@@ -799,9 +826,14 @@
 
     function populateSelect(id, values, formatter = label) {
       const select = document.getElementById(id);
+      const selected = select.value;
+      while (select.options.length > 1) select.remove(1);
+      if (selected && !values.includes(selected)) values = [...values, selected];
       values.forEach(value => { const option = document.createElement("option"); option.value = value; option.textContent = formatter(value); select.append(option); });
+      select.value = selected;
     }
 
+    function updateCounts() {
     document.getElementById("count-explore").textContent = DATA.stats.current;
     document.getElementById("count-timeline").textContent = DATA.stats.current + DATA.stats.history;
     document.getElementById("count-conflicts").textContent = DATA.stats.conflicts;
@@ -809,6 +841,8 @@
     document.getElementById("count-imports").textContent = DATA.stats.imports;
     document.getElementById("count-resources").textContent = (DATA.resources || []).length;
     document.getElementById("count-review").textContent = (DATA.review || []).length;
+    }
+    updateCounts();
     document.getElementById("dismiss-handoff").addEventListener("click", () => { document.getElementById("handoff-panel").hidden = true; document.getElementById("page-title").focus(); });
     document.getElementById("copy-handoff").addEventListener("click", async () => {
       const field = document.getElementById("handoff-text");
@@ -825,6 +859,8 @@
     if (freshness.stale || DATA.sync.stale) { syncState.classList.add("stale"); document.getElementById("sync-label").textContent = "Snapshot may be stale"; syncState.title = `Synchronization incomplete when generated: ${freshness.reason || DATA.sync.reason || "unknown reason"}`; }
     else { document.getElementById("sync-label").textContent = "Synchronized when generated"; syncState.title = `Synchronized when generated at ${generatedAt}`; }
 
+    function updateFilters() {
+    agentNames = Object.fromEntries(DATA.agents.map(agent => [agent.id, agent.display_name]));
     populateSelect("filter-domain", [...new Set([...DATA.memories, ...(DATA.resources || [])].map(item => item.authority_domain).filter(Boolean))].sort(), value => value);
     populateSelect("filter-kind", [...new Set(DATA.memories.map(item => item.kind))].sort());
     populateSelect("filter-importance", [...new Set(DATA.memories.map(item => item.importance))].sort());
@@ -832,6 +868,83 @@
     populateSelect("filter-sensitivity", [...new Set(DATA.memories.map(item => item.sensitivity))].sort());
     populateSelect("filter-agent", DATA.agents.map(item => item.id), value => agentNames[value] || shortId(value));
     populateSelect("filter-date", [...new Set(DATA.memories.map(item => String(item.created_at).slice(0, 7)))].sort().reverse(), formatMonth);
+
+    }
+    updateFilters();
+
+    function liveStatus(info, disconnected = false) {
+      const stale = disconnected || info.stale;
+      document.getElementById("live-bar").classList.toggle("stale", stale);
+      document.getElementById("live-status").textContent = disconnected ? "Connection lost. Retrying automatically." : info.reason === "connecting" ? "Connecting to your Brain…" : info.reason === "viewer_needs_attention" ? "Viewer needs attention. No content is being served." : info.reason === "refresh_delayed" ? "Refresh delayed. Showing the last committed view." : stale ? "Git is unreachable. Showing the last committed view." : "Live Home · Read-only";
+      const checked = info.last_synced_at ? formatDate(info.last_synced_at) : "Not synchronized yet";
+      document.getElementById("live-detail").textContent = `Last synchronized: ${checked} · General knowledge only`;
+      document.getElementById("sync-state").classList.toggle("stale", stale);
+      document.getElementById("sync-label").textContent = stale ? "Reconnecting" : "Live";
+      document.getElementById("sync-state").title = `Last synchronized: ${checked}`;
+      document.getElementById("generated-at").textContent = `Last synchronized: ${checked}`;
+    }
+
+    function applyLive(result) {
+      const previous = DATA.snapshot_commit;
+      const wasAvailable = liveAvailable;
+      liveAvailable = result.available;
+      const info = result.live;
+      if (!liveAvailable) {
+        DATA = { ...DATA, memories: [], resources: [], agents: [], imports: [], conflicts: [], review: [], topics: [], snapshot_commit: null, stats: { current: 0, history: 0, conflicts: 0, agents: 0, imports: 0 }, live: info };
+        updateCounts(); render(); liveStatus(info); return;
+      }
+      DATA = { ...result.data, live: info };
+      liveStatus(info);
+      if (wasAvailable && previous === DATA.snapshot_commit) return;
+      const focused = document.activeElement;
+      const focusIndex = [...content.querySelectorAll("button, a, summary, [tabindex]")].indexOf(focused);
+      const focusSignature = focused?.outerHTML;
+      const openResources = [...content.querySelectorAll("[data-resource] details[open]")].map(item => item.closest("[data-resource]").dataset.resource);
+      const scroll = [workspace.scrollTop, window.scrollY, document.getElementById("graph-inspector")?.scrollTop || 0];
+      updateCounts(); updateFilters(); render();
+      content.querySelectorAll("[data-resource]").forEach(item => { if (openResources.includes(item.dataset.resource)) item.querySelector("details").open = true; });
+      if (focusIndex >= 0) {
+        const controls = [...content.querySelectorAll("button, a, summary, [tabindex]")];
+        const replacement = controls.find(item => item.outerHTML === focusSignature);
+        if (replacement) replacement.focus({ preventScroll: true });
+      }
+      workspace.scrollTop = scroll[0]; window.scrollTo(0, scroll[1]);
+      const inspector = document.getElementById("graph-inspector");
+      if (inspector) inspector.scrollTop = scroll[2];
+    }
+
+    let liveTimer;
+    let livePending = false;
+    async function pollLive() {
+      if (livePending || document.hidden) return;
+      clearTimeout(liveTimer); livePending = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch("/api/snapshot", { credentials: "same-origin", cache: "no-store", signal: controller.signal, redirect: "error" });
+        if (response.status === 401) {
+          applyLive({ available: false, live: { stale: true, reason: "connecting" } });
+          location.replace("/login"); return;
+        }
+        if (!response.ok) throw new Error("Unavailable");
+        applyLive(await response.json());
+      } catch { liveStatus(DATA.live, true); }
+      finally {
+        clearTimeout(timeout); livePending = false;
+        liveTimer = setTimeout(pollLive, 5000);
+      }
+    }
+    if (isLive) {
+      document.body.classList.add("live-mode");
+      document.getElementById("live-bar").hidden = false;
+      document.querySelector(".sidebar-note").textContent = "Live, read-only view. Corrections and forgetting stay with your agents. Private and sensitive records are not included.";
+      document.getElementById("snapshot-note").textContent = "Committed changes refresh automatically. Offline agents appear after they push. Owner sign-in never grants agent permissions.";
+      liveStatus(DATA.live);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });
+      window.addEventListener("pageshow", event => { if (event.persisted) location.reload(); });
+      window.addEventListener("pagehide", () => { clearTimeout(liveTimer); content.replaceChildren(); });
+      pollLive();
+    }
 
     document.getElementById("navigation").addEventListener("click", event => { const button = event.target.closest("[data-view]"); if (button) navigateTo(button.dataset.view); });
     document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; if (state.view === "overview" && state.query.trim()) state.view = "explore"; render(); });

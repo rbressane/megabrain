@@ -34,3 +34,6 @@ jobs:
       - run: python3 tests/browser_smoke.py
         env:
           CHROME: /usr/bin/google-chrome
+      - run: python3 tests/live_browser_smoke.py
+        env:
+          CHROME: /usr/bin/google-chrome

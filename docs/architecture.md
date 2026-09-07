@@ -1,6 +1,6 @@
 # Architecture
 
-MegaBrain has no running service. It consists of a versioned local runtime and isolated clones of one private data repository.
+MegaBrain's core consists of a versioned local runtime and isolated clones of one private data repository. It works without a service. The only optional service is the owner-authenticated, read-only [Live Home viewer](live-home.md).
 
 ## Runtime
 
@@ -27,6 +27,12 @@ The installed helper pulls before context retrieval, resolves immutable memory/r
 Each clone stores an ignored `.megabrain/local.json` identity. Its provenance record lives under `brain/agents/`. If GitHub is unavailable, reads use local state and writes remain committed locally for a later retry. Unexpected clone edits block automatic rebasing.
 
 If first setup creates a local seed but the initial push fails, rerunning setup after authorization is repaired pushes the clean local seed into the still-empty remote instead of discarding local state or requiring manual Git repair. A pristine, unpushed v1.0.0 seed is recognized exactly and has its legacy validation workflow removed from the root commit before synchronization. Any dirty worktree, additional commit, changed seed content, unexpected remote history, or unreachable remote blocks that migration without modifying the clone.
+
+## Optional Live Home
+
+`live_home.py` serves the existing Home UI from a dedicated read-only replica. A bounded fetch loop captures `origin/main`, checks compatibility and validation in a safe committed snapshot, then atomically swaps an in-memory projection. It never checks out, rebases, commits or pushes, and refuses dirty/local-unique state. HTTP requests do not invoke Git. Markdown routes use an exact projection allowlist; no filesystem paths are served directly. Payloads and source bodies have a bounded 128 MiB combined limit.
+
+Owner passphrase verification and in-memory browser sessions are independent of agent identity and permissions. The first viewer is general-only, with no trusted agent context, private records, sensitive content or raw imports. Its read-only HTTP API cannot change canonical knowledge. Polling preserves browser state and reports the last successful synchronization. Runtime code and assets stay pinned until an operator restarts the service. See the [operator and deployment runbook](live-home.md).
 
 ## Compatibility
 

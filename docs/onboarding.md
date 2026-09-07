@@ -24,7 +24,9 @@ Bootstrap then:
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
-MegaBrain Home is a private generated snapshot, not a continuously live page. On every later `megabrain open` command or `Synchronize and open my MegaBrain` action, MegaBrain synchronizes a managed clone, validates it, regenerates the snapshot, opens it on that host, and returns a value-free freshness receipt. Another connected computer or agent has its own clone and local snapshot.
+Local MegaBrain Home is a private generated snapshot, not a continuously live page. Without a saved Live Home link, `megabrain open` or `Synchronize and open my MegaBrain` synchronizes a managed clone, validates it, regenerates the snapshot and opens it on that host. Another connected computer or agent has its own clone and local snapshot.
+
+Optional [Live Home](live-home.md) requires a separately approved always-on host and owner sign-in. After the owner approves its HTTPS URL, the agent can save that link on the device. Later `megabrain open` returns/opens it; all agents on the OS account share it. Other devices require the same approved link. It is read-only and general-only, with visible freshness. `megabrain open --local` always preserves the local snapshot workflow. Installation never exposes a Brain or provisions the viewer automatically.
 
 If setup is interrupted after creating the private repository or committing the local seed, rerunning setup converges on the same private repository. A clean local seed is pushed to an empty remote once authorization is fixed. Setup can safely remove the legacy workflow from an exact, pristine v1.0.0 seed before its first push; any other committed or uncommitted change is left untouched and blocks automatic recovery.
 
