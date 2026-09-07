@@ -25,7 +25,7 @@ This is lexical hybrid retrieval, not semantic embedding search. It improves exa
 
 The resource index splits Markdown at ATX headings. A winning section returns its own bounded excerpt plus the preceding and following sections, capped to a bounded context size. This preserves prerequisites and verification steps that chunk-only retrieval can separate.
 
-The index schema and section boundaries are not canonical. A runtime can delete and rebuild the index from `git archive HEAD` without changing Brain history.
+The index schema and section boundaries are not canonical. A runtime can delete and rebuild the index from a fixed committed Git tree without changing Brain history. Memory/resource subtree IDs drive invalidation independently; bounded object batches avoid per-file extraction, and unchanged blobs reuse parsed source rows. Postings and current/conflict graphs remain derived and are rebuilt atomically. See [scale and integration verification](scale-and-integrations.md).
 
 ## Access and conflicts
 
@@ -33,7 +33,9 @@ General evidence follows normal local retrieval. Private and sensitive evidence 
 
 A result that intersects a current conflict expands to include authorized companion claims, even when that exceeds the requested limit within the fixed conflict-expansion budget. Retrieval never silently chooses one conflicting claim.
 
-Scopes only reduce the candidate set. A project, resource type, or authority domain cannot grant access.
+Scopes only reduce the candidate set. `authority_domain` filters both memories and resources; a `resource_type` scope excludes memories. Legacy memories without explicit authority metadata are excluded from scoped results, not assigned a guessed project. A scope cannot grant access.
+
+Stopword-only input reports `no_searchable_terms`. `truncated` and `conflicts_incomplete` distinguish a bounded result from an exhaustive answer; conflict companions can match by conflict membership rather than query text. Private authorization uses committed policies shared only during one locked operation, and never trusts a dirty policy file.
 
 ## Design source and boundary
 

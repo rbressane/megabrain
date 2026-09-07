@@ -16,7 +16,6 @@ import statistics
 import stat
 import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 import uuid
@@ -30,6 +29,7 @@ from typing import Any, Iterable
 from canonical import CanonicalError
 import operations
 import knowledge
+import projection
 
 
 MEMORY_SCHEMA = "megabrain.memory.v1"
@@ -54,7 +54,7 @@ IMPORTANCES = {"always", "core", "normal"}
 ALWAYS_MEMORY_LIMIT = 3
 CONFLICT_EXPANSION_LIMIT = 5
 COLLECTION_EXPANSION_LIMIT = 50
-RETRIEVAL_INDEX_SCHEMA = "megabrain.retrieval-index.v4"
+RETRIEVAL_INDEX_SCHEMA = "megabrain.retrieval-index.v5"
 SOURCE_TYPES = {"user-statement", "agent-observation", "import"}
 META_PATTERN = re.compile(
     r"\A<!--\s*megabrain-meta\s*\n(?P<meta>.*?)\n-->\s*\n(?P<body>.*)\Z",
@@ -290,6 +290,10 @@ def parse_record(path: Path) -> Record:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as error:
         raise BrainError("INVALID_ENCODING", "Record is not UTF-8", {"path": str(path)}) from error
+    return parse_record_text(path, text)
+
+
+def parse_record_text(path: Path, text: str) -> Record:
     match = META_PATTERN.match(text)
     if not match:
         raise BrainError("INVALID_RECORD", "Missing megabrain-meta block", {"path": str(path)})
@@ -588,53 +592,9 @@ def retrieval_index_path(root: Path) -> Path:
 def build_retrieval_index(root: Path, commit: str, path: Path) -> dict[str, float]:
     started = time.perf_counter()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with tempfile.TemporaryDirectory(prefix=".retrieval-tree-", dir=path.parent) as tree_name:
-        snapshot_root = Path(tree_name)
-        archived = subprocess.Popen(
-            ["git", "archive", "--format=tar", commit, "--", "brain/memories"],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        assert archived.stdout is not None
-        try:
-            with tarfile.open(fileobj=archived.stdout, mode="r|") as archive:
-                for member in archive:
-                    member_path = Path(member.name)
-                    if (
-                        member_path.is_absolute()
-                        or ".." in member_path.parts
-                        or member.issym()
-                        or member.islnk()
-                    ):
-                        raise BrainError(
-                            "INDEX_SNAPSHOT_INVALID",
-                            "The committed Brain archive contains an unsafe path",
-                        )
-                    archive.extract(member, snapshot_root, filter="data")
-        except BrainError:
-            archived.kill()
-            archived.wait()
-            raise
-        except (tarfile.TarError, OSError) as error:
-            archived.kill()
-            archived.wait()
-            raise BrainError(
-                "INDEX_SNAPSHOT_FAILED",
-                "The committed Brain snapshot could not be read",
-            ) from error
-        finally:
-            archived.stdout.close()
-        stderr = archived.stderr.read().decode("utf-8", errors="replace") if archived.stderr else ""
-        if archived.stderr:
-            archived.stderr.close()
-        if archived.wait() != 0:
-            raise BrainError(
-                "INDEX_SNAPSHOT_FAILED",
-                "The committed Brain snapshot could not be read",
-                {"git": safe_git_error(stderr)},
-            )
-        records = load_memories(snapshot_root)
+    with operations.lock(root, name="projection"):
+        records, sources = projection.read_records(root, commit, "brain/memories", path,
+                                                   RETRIEVAL_INDEX_SCHEMA, parse_record_text, Record)
         loaded_at = time.perf_counter()
         active, conflicts = current_memories(records)
         resolved_at = time.perf_counter()
@@ -664,8 +624,9 @@ def build_retrieval_index(root: Path, commit: str, path: Path) -> dict[str, floa
             )
             connection.executemany(
                 "INSERT INTO metadata VALUES (?, ?)",
-                (("schema", RETRIEVAL_INDEX_SCHEMA), ("commit", commit)),
+                (("schema", RETRIEVAL_INDEX_SCHEMA), ("tree", projection.tree_id(root, commit, "brain/memories"))),
             )
+            projection.store_sources(connection, sources)
             for record in active:
                 record_id = str(record.meta["id"])
                 summary = summary_text(record)
@@ -673,7 +634,7 @@ def build_retrieval_index(root: Path, commit: str, path: Path) -> dict[str, floa
                     "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?)",
                     (
                         record_id,
-                        relative(snapshot_root, record.path),
+                        relative(root, record.path),
                         json.dumps(record.meta, ensure_ascii=True, sort_keys=True, separators=(",", ":")),
                         summary,
                         record.meta.get("importance", "normal"),
@@ -717,6 +678,8 @@ def open_retrieval_index(
     started = time.perf_counter()
     commit = git_commit(root)
     path = retrieval_index_path(root)
+    if path.is_symlink():
+        raise BrainError("INDEX_UNSAFE", "A retrieval index cannot be a symlink")
     if not commit:
         raise BrainError("INDEX_UNAVAILABLE", "Retrieval indexing requires a Git commit")
     if not path.exists() and not allow_rebuild:
@@ -730,12 +693,11 @@ def open_retrieval_index(
     try:
         connection = sqlite3.connect(path)
         metadata = dict(connection.execute("SELECT key,value FROM metadata"))
-        if metadata != {"schema": RETRIEVAL_INDEX_SCHEMA, "commit": commit}:
+        if metadata != {"schema": RETRIEVAL_INDEX_SCHEMA, "tree": projection.tree_id(root, commit, "brain/memories")}:
             raise sqlite3.DatabaseError("stale index")
     except (OSError, sqlite3.DatabaseError):
         if connection is not None:
             connection.close()
-        path.unlink(missing_ok=True)
         if not allow_rebuild:
             raise BrainError(
                 "DIRTY_WORKTREE_INDEX_UNAVAILABLE",
@@ -2923,6 +2885,9 @@ def main() -> int:
         return 0 if result.get("ok", False) else 1
     except (BrainError, CanonicalError, operations.OperationError) as error:
         emit({"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}}, stream=sys.stderr)
+        return 2
+    except (OSError, sqlite3.DatabaseError, UnicodeError, ValueError):
+        emit({"ok": False, "error": {"code": "LOCAL_OPERATION_FAILED", "message": "Local data could not be processed. It was retained for review.", "details": {}}}, stream=sys.stderr)
         return 2
 
 

@@ -23,6 +23,8 @@ PROCESS_TIMEOUT = 30
 LOCK_TIMEOUT = 10
 MAX_BLOB_BYTES = 64 * 1024 * 1024
 IMMUTABLE_PREFIXES = ("brain/memories/", "brain/resources/", "brain/policies/", "brain/imports/", "brain/attachments/")
+_CACHE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("megabrain_operation_cache", default=None)
+_SNAPSHOTS: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar("megabrain_snapshots", default=frozenset())
 _HELD: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar("megabrain_locks", default=frozenset())
 
 
@@ -33,12 +35,13 @@ class OperationError(Exception):
 
 
 def run(command: list[str], cwd: Path | None = None, *, env: dict[str, str] | None = None,
-        timeout: float = PROCESS_TIMEOUT, text: bool = True) -> subprocess.CompletedProcess:
+        timeout: float = PROCESS_TIMEOUT, text: bool = True, input: str | bytes | None = None) -> subprocess.CompletedProcess:
     environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "Never", **(env or {})}
     process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, text=text, start_new_session=True)
+                               stderr=subprocess.PIPE, stdin=subprocess.PIPE if input is not None else None,
+                               text=text, start_new_session=True)
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
+        stdout, stderr = process.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
@@ -100,10 +103,13 @@ def lock(root: Path, *, name: str = "operation", timeout: float = LOCK_TIMEOUT) 
                     raise OperationError("BRAIN_BUSY", "Another Brain operation is running. Retry shortly.")
                 time.sleep(0.05)
         token = _HELD.set(held | {key})
+        cache_token = _CACHE.set({}) if not held else None
         try:
             yield
         finally:
             _HELD.reset(token)
+            if cache_token is not None:
+                _CACHE.reset(cache_token)
     finally:
         os.close(descriptor)
 
@@ -114,6 +120,20 @@ def locked(function: Callable) -> Callable:
         with lock(root):
             return function(root, *args, **kwargs)
     return wrapped
+
+
+def cached(key: tuple, load: Callable) -> Any:
+    """Reuse within one locked operation only, never across pulls or revocations."""
+    cache = _CACHE.get()
+    if cache is None:
+        return load()
+    if key not in cache:
+        cache[key] = load()
+    return cache[key]
+
+
+def is_snapshot(root: Path) -> bool:
+    return str(root.resolve()) in _SNAPSHOTS.get()
 
 
 def git_text(root: Path, *args: str) -> str:
@@ -152,7 +172,11 @@ def snapshot(root: Path, *paths: str, commit: str | None = None) -> Iterator[Pat
                         raise OperationError("SNAPSHOT_UNSAFE", "A snapshot object exceeds safe limits.")
                     atomic_write(target, stream.read(), exclusive=True)
         archive_path.unlink()
-        yield destination
+        token = _SNAPSHOTS.set(_SNAPSHOTS.get() | {str(destination.resolve())})
+        try:
+            yield destination
+        finally:
+            _SNAPSHOTS.reset(token)
 
 
 def approve_revert(root: Path, target: str, commit: str) -> None:

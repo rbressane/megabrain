@@ -19,6 +19,8 @@ This repository defines the MegaBrain protocol. Each person's durable knowledge 
 13. Private and sensitive reads require task relevance plus trusted policy authorization; importance never bypasses access control.
 14. Keep source preparation, owner review, and immutable batch approval separate. Never crawl source trees from a model request.
 15. Do not store synchronized sensitive bodies or attachments until the encrypted security track passes independent review.
+16. Reject unsafe outgoing history before synchronization, including secrets absent from HEAD. Only an explicitly approved, hash-bound exact operational rollback may invert the latest immutable/policy write; normal corrections remain new records.
+17. Owner capture controls and review reminders never silently change canonical knowledge. Browser handoffs are proposals, not authorizations or writes.
 
 ## Canonical Resources
 
