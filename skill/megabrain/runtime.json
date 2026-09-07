@@ -1,6 +1,7 @@
 {
   "schema": "megabrain.runtime.v1",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "protocol_version": 2,
-  "automatic_updates": "compatible"
+  "automatic_updates": "compatible",
+  "update_policy_version": 1
 }

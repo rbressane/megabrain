@@ -31,6 +31,8 @@ If `~/.local/bin` is not on `PATH`, setup returns the exact one-line export requ
 
 ## Existing Users
 
+Automatic updates in 2.4 check during ordinary reads and Home visits, with shared daily throttling and offline backoff. Owners can say "Stop automatic updates" or "Keep this version"; the agent uses `megabrain updates disable` or `pin`. These preferences survive setup/connect. A pin blocks installation of a different runtime until explicitly unpinned. See [runtime updates](docs/runtime-updates.md) for all controls and legacy rollback limits.
+
 Running setup again is idempotent. If the authenticated GitHub account already has a configured brain or legacy private `megabrain` repository, setup connects the active agent to it. Installations made before versioned runtimes are migrated by adding compatibility metadata and repointing the managed skill link; existing memories and Git history are preserved.
 
 For an installed agent:

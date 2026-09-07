@@ -32,7 +32,9 @@ If setup is interrupted after creating the private repository or committing the 
 
 The same repository setup message connects another agent or computer through the authenticated GitHub account. Installed users can ask to open, check, update, or disconnect MegaBrain naturally.
 
-Compatible stable updates activate automatically at most once per day. `megabrain update --check` checks immediately without mutation and `megabrain update` installs the latest compatible stable tag. Major or protocol-version changes request approval. Disconnect removes managed harness links and instructions while retaining the command, runtime, private repository, and synchronized clone to prevent data loss.
+The first normal read or Home visit after 24 hours checks the latest stable candidate. Compatible updates activate for subsequent commands; failed attempts back off and local reads continue. `megabrain update --check` checks immediately without changing runtime or schedule, and `megabrain update` requests immediate activation. Major or protocol-version changes request approval. `megabrain updates disable` pauses automatic updates, and `megabrain updates pin` holds the current version. Preferences apply to this user/device and survive reconnect. See [runtime updates](runtime-updates.md), including pin-aware rollback limits.
+
+Disconnect removes managed harness links and instructions while retaining the command, runtime, private repository, and synchronized clone to prevent data loss.
 
 The private-retrieval repair is intentionally not an automatic data migration. After installing a compatible runtime that contains it, the owner reruns setup or connect once. That explicit action upgrades the ignored local identity provenance and creates the conservative policy only for a Codex or Claude agent with no policy history. Existing custom or revoked policies are never replaced. Hermes setup creates no read policy and remains private-read-disabled until its reviewed in-process trusted-provenance integration is installed, bound to the owner DM, and given an exact reviewed policy.
 

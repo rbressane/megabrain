@@ -12,6 +12,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
 import canonical
 import megabrain
 import operations
@@ -467,6 +471,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    home = Path.home().resolve()
+    if home / ".megabrain" / "runtime" in SCRIPT_DIRECTORY.parents:
+        try:
+            with operations.lock(home, name="runtime-use", shared=True):
+                return execute_command(args)
+        except operations.OperationError as error:
+            megabrain.emit({"ok": False, "error": {"code": error.code, "message": error.message}}, stream=sys.stderr)
+            return 2
+    return execute_command(args)
+
+
+def execute_command(args: argparse.Namespace) -> int:
     try:
         if args.command in {"backup", "restore"}:
             import recovery

@@ -18,6 +18,8 @@ Browser snapshots use committed data, not dirty files. An untrusted source-tree 
 
 Downloads pin the advertised stable tag's resolved commit before cloning and reject tag movement during download. Installed releases have a SHA-256 file inventory, required-file checks, Python compilation, and isolated import/parser startup checks before activation. The previous runtime stays active if validation fails. Inventory hashes detect corruption; they do not authenticate a compromised official release publisher. GitHub/official-repository control remains the distribution trust root. No independent signed-release assurance is claimed.
 
+Daily checks share local preferences and a nonblocking installation lock. Each command pins its code, metadata and assets before an update can change `current`. Managed writes hold a shared runtime-use lock; activation requires exclusive access. A switch receipt restores the prior runtime after an interrupted link/config transaction. Rollbacks pin their target and must use a runtime capable of enforcing the pin. Legacy releases require separately reviewed recovery, not silent loss of update controls. See [runtime-updates.md](runtime-updates.md).
+
 ## Backup rehearsal
 
 Backups are owner-local actions, not model-facing exports. In an interactive terminal with the managed Brain selected:
