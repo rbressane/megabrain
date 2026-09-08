@@ -1701,7 +1701,7 @@ raise SystemExit(99)
             "function navigateTo(view, options = {})",
         ):
             self.assertIn(expected, html)
-        data_match = re.search(r"const DATA = (?P<data>.*?);\n    const state", html, re.DOTALL)
+        data_match = re.search(r"let DATA = (?P<data>.*?);\n    const isLive", html, re.DOTALL)
         assert data_match is not None
         data = json.loads(data_match.group("data"))
         self.assertEqual(

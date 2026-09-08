@@ -42,6 +42,10 @@ A memory is current when no later entry supersedes its ID and it is not a tombst
 
 Capture only information that reduces future re-explanation: durable facts, preferences, decisions, commitments, current project state, recurring pitfalls, and resource locations. Do not capture routine requests, transient progress, raw conversation, temporary errors, or secrets.
 
+## Optional Live Home
+
+An optional owner-authenticated, read-only service may present committed Git data to normal phone and desktop browsers. It remains a replaceable projection, not authority, an agent relay or a write API. The core and local snapshots remain usable without it. The viewer uses a dedicated read-only replica, never repairs dirty state or pushes, and clearly reports freshness and disconnected states. Its first release is general-only: owner sign-in must not impersonate an agent or relax private/sensitive policy gates. Corrections and forgetting remain reviewed agent operations. See [Live Home](docs/live-home.md).
+
 ## Runtime Updates
 
 `megabrain update` selects only stable semantic-version tags from the official product repository. Runtime download, validation, compatibility checks and atomic activation remain bootstrap responsibilities; the first-class command does not implement a second updater.

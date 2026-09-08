@@ -1,6 +1,6 @@
 # MegaBrain
 
-MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. It has no server, daemon, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections.
+MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. The core needs no service, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections. An optional owner-authenticated, read-only [Live Home](docs/live-home.md) viewer is under release-candidate verification.
 
 **Status:** protocol 2 is the current stable release for macOS and Linux. Personal knowledge is never stored in this product repository.
 
@@ -39,7 +39,7 @@ MegaBrain: saved 1 durable memory.
 Other natural actions include:
 
 - `Synchronize and open my MegaBrain`
-- `Open my MegaBrain` (the same refresh workflow)
+- `Open my MegaBrain` (the approved Live Home link if configured, otherwise a refreshed local snapshot)
 - `Check MegaBrain`
 - `Update MegaBrain`
 - `Connect this agent to my MegaBrain`
@@ -61,6 +61,12 @@ megabrain review
 See the [installed command contract](docs/command-interface.md) and [owner review/capture workflows](docs/owner-workflows.md). Owner-local capture controls require Codex or Claude; Hermes remains general-only without its separately reviewed provenance integration.
 
 To connect another supported agent or computer, give it the same setup message. The installer finds the existing private repository through the authenticated GitHub account.
+
+## Browse from anywhere
+
+[Live Home](docs/live-home.md) adds a separate owner sign-in, automatic committed-Git refresh and a shared HTTPS link for normal phone and desktop browsers. The first release is read-only and general-only. Private/sensitive evidence stays behind existing agent policy gates; corrections and forgetting remain agent-driven.
+
+It requires an explicitly approved always-on host and TLS setup. No hosted service is provisioned by installation or this repository. Once deployed and approved, ask an agent to save the same URL on each device. All agents on that OS account share it. `megabrain open --local` always keeps the offline snapshot path available. See the runbook for deployment gates and honest freshness/recovery behavior.
 
 ## Product And Personal Data
 

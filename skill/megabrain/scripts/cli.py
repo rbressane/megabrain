@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         "open",
         help="synchronize and open your private MegaBrain Home",
     )
+    open_command.add_argument("--local", action="store_true", help="use a local snapshot instead of the saved Live Home URL")
     open_command.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)
     open_command.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
     update = subparsers.add_parser("update", help="check or install stable MegaBrain releases")
@@ -101,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
     preferences.add_argument("action", nargs="?", default="status", choices=("status", "enable", "disable", "pin", "unpin"))
     preferences.add_argument("--json", action="store_true", dest="json_output")
     preferences.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
+    import live_home
+    live_home.add_parser(subparsers)
     feedback = subparsers.add_parser("feedback", help="render a sanitized Product Bake Candidate offline")
     feedback.add_argument("--stdin", action="store_true", help="read the structured candidate from stdin")
     feedback.add_argument("--output", type=Path, help="also write to a new explicit local file")
@@ -312,6 +315,12 @@ def format_update(report: dict[str, Any]) -> str:
 
 def open_report(args: argparse.Namespace) -> dict[str, Any]:
     home = args.home.expanduser().resolve()
+    if not getattr(args, "local", False):
+        import live_home
+        url = live_home.saved_url(home)
+        if url:
+            opened = False if args.no_open else live_home.webbrowser.open(url)
+            return {"mode": "live", "url": url, "opened": opened}
     config = load_config(home, required=True)
     clones = config.get("clones", {})
     harness = None
@@ -331,6 +340,8 @@ def open_report(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def format_open(report: dict[str, Any]) -> str:
+    if report.get("mode") == "live":
+        return f"MegaBrain Live Home: {report['url']}\nOwner sign-in required. Read-only, general knowledge only.\nUse `megabrain open --local` for an offline snapshot."
     host = report.get("host") or "this computer"
     first_line = (
         f"MegaBrain Home opened on {host}."
@@ -395,6 +406,15 @@ def dispatch() -> int:
             return emit_error(error, True, sys.argv[1])
     parser = build_parser()
     args = parser.parse_args()
+    if args.command == "live":
+        import live_home
+        try:
+            sys.stdout.write(live_home.command(args) + "\n")
+        except (BootstrapError, operations.OperationError) as error:
+            return emit_error(error, False, "live")
+        except OSError:
+            return emit_error(BootstrapError("LIVE_IO_FAILED", "Check the owner file, TLS references and listener availability."), False, "live")
+        return 0
     if args.command == "updates":
         try:
             report = update_preferences(args.home, args.action)

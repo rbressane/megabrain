@@ -4,7 +4,9 @@ The installed `megabrain` executable dispatches data operations to the existing 
 
 | Task | Command |
 | --- | --- |
-| Open the current private snapshot | `megabrain open` |
+| Open the approved Live Home link or refresh the local snapshot | `megabrain open` |
+| Always use the local snapshot | `megabrain open --local` |
+| Save or remove the approved Live Home link on this device | `megabrain live link --url https://brain.example.invalid`, `megabrain live unlink` |
 | Check health or inspect problems | `megabrain status`, `megabrain doctor` |
 | Synchronize local commits | `megabrain sync` |
 | Retrieve evidence | `megabrain search --stdin` |
@@ -19,7 +21,7 @@ The installed `megabrain` executable dispatches data operations to the existing 
 
 Use each command's `--help` without setup. Content is JSON on stdin, never command-line arguments. Data command success responses use `megabrain.result.v1`; validation failures exit nonzero. Update retains its existing `megabrain.update.v1` report. Preference commands support `--json` with `megabrain.updates.v1` and work without a network check. See [runtime updates](runtime-updates.md) for daily triggers, notices, opt-out and rollback pins. The CLI does not accept owner-local policy, resource-write, backup or approval commands.
 
-With multiple configured agents and no detectable active harness, data commands fail rather than silently selecting another agent's identity. Ask a connected agent to run the action. The owner's explicit `open` action retains its documented local snapshot selection behavior.
+With multiple configured agents and no detectable active harness, data commands fail rather than silently selecting another agent's identity. Ask a connected agent to run the action. The owner's explicit `open` action uses the device's saved approved Live Home URL when present, without impersonating an agent or claiming the service is reachable. Otherwise it retains local snapshot selection behavior. `open --local` always selects the local path. `live owner` and `live serve` are explicit operator commands for the separate read-only service, not Brain policy-administration commands. See [Live Home](live-home.md); passphrases are interactive hidden input, never command arguments or JSON.
 
 ## Scope and completeness
 

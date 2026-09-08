@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-07T02:43:03Z",
+  "generatedAt": "2026-09-07T22:30:57Z",
   "title": "Design System: MegaBrain Home",
   "extensions": {
     "colorMeta": {
@@ -242,6 +242,13 @@
     ]
   },
   "components": [
+    {
+      "name": "Live Home Status",
+      "kind": "custom",
+      "description": "Persistent read-only scope, last-sync text and sign-out remain visible on phone and desktop without changing the graph identity.",
+      "html": "<section class=\"ds-live-bar\"><div><p class=\"ds-live-status\" role=\"status\">Live Home · Read-only</p><p class=\"ds-live-detail\">Last synchronized: not yet · General knowledge only</p></div><button class=\"ds-live-action\">Sign out</button></section>",
+      "css": ".ds-live-bar { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 16px; justify-content: space-between; min-height: 64px; padding: 8px 16px; } .ds-live-status { color: var(--text); font-size: 12px; margin: 0; } .ds-live-detail { color: var(--text-secondary); font-size: 11px; margin: 0; } .ds-live-action { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--accent-muted); min-height: 44px; padding: 8px 12px; white-space: nowrap; } .ds-live-action:hover { background: var(--surface-hover); } .ds-live-action:focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; }"
+    },
     {
       "name": "Owner Review Action",
       "kind": "button",

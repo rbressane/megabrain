@@ -2,12 +2,13 @@
 version: 1
 slug: "skill-megabrain-assets-browser-html"
 primary_target: "skill/megabrain/assets/browser.html"
-related_targets: []
+related_targets:
+  - "skill/megabrain/assets/live-login.html"
 ---
 
 # MegaBrain Home
 
-Mode: Operate. Scope: the generated local browser at `skill/megabrain/assets/browser.html`.
+Mode: Operate. Scope: the generated local browser and optional Live Home at `skill/megabrain/assets/browser.html`, with the inherited owner sign-in form at `skill/megabrain/assets/live-login.html`.
 
 Audience and job: A time-constrained owner inspects the current shape of their private Brain, finds a topic or memory, checks provenance and history, and opens immutable Markdown without learning repository mechanics.
 
@@ -17,7 +18,7 @@ Chosen composition: Graph First, approved from `.impeccable/mocks/decision/techn
 
 Memorable interaction: Selecting a topic or memory isolates its direct relationships and turns the inspector into the fastest path from the map to evidence.
 
-Constraints: Static, private, offline, standard-library-only, dependency-free, accessible, reduced-motion aware, responsive. Mobile becomes a ranked topic and memory list rather than a squeezed graph.
+Constraints: Local snapshots remain private and offline. Optional Live Home is an owner-authenticated, read-only, general-only committed-Git view; private/sensitive policy gates remain intact. Both are standard-library-only, dependency-free, accessible, reduced-motion aware and responsive. Mobile becomes a ranked topic and memory list rather than a squeezed graph. Live mode adds a visible last-sync/scope strip and sign-out, retaining search, graph selection, open resources and scroll during refresh. The sign-in form contains no Brain data and uses the same graphite/violet identity with readable mobile input.
 
 Implementation inventory:
 
@@ -31,4 +32,4 @@ Implementation inventory:
 
 Component grammar: 3–5px radii, 1px graphite hairlines, flat surfaces without shadows, compact 10–18px sans type, 1.5px authored icon strokes, violet selection, and coral conflict. No shipping raster assets.
 
-Unresolved: None.
+Unresolved: Public HTTPS, physical phone and approved host acceptance remain release gates. The UI and local synthetic browser checks do not establish a deployed service.

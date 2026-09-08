@@ -2,7 +2,7 @@
 
 ## Inspect, then change
 
-Home remains a private static snapshot. Its graph-first overview leads to current memories and their history. Resources lists approved current documents and runbooks with immutable citations and inert source text. Needs review highlights uncertainty, conflicts, possible duplicate summaries, missing review dates and old verification evidence. Project filters narrow both memory and resource views.
+Local Home remains a private static snapshot. Optional [Live Home](live-home.md) refreshes committed general knowledge through a separate owner-authenticated URL. Both remain read-only. Their graph-first overview leads to current memories and their history. Resources lists approved current documents and runbooks with immutable citations and inert source text. Needs review highlights uncertainty, conflicts, possible duplicate summaries, missing review dates and old verification evidence. Project filters narrow both memory and resource views.
 
 Review signals are advisory. No fact expires, merges or becomes confirmed automatically. A runbook/project resource whose verification is older than 90 days receives a reminder; `freshness_at` remains evidence metadata, not a reinterpreted expiration date. Memories use explicit `review_after` timestamps. A commitment or project-state memory without one is flagged for owner review. Stable preferences need no artificial expiry.
 
