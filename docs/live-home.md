@@ -31,7 +31,7 @@ Hosting is an explicit owner decision because the host gets a plaintext replica.
 Keep Git credentials in the host's existing credential system. Do not use credential-bearing remote URLs or put secrets in `.sot.json`, command arguments, repository files or logs. Keep the owner verifier outside the clone, accessible only to the service account. The host's operator and filesystem owner remain trusted; this is not a sandbox against either.
 
 1. Select an always-on host and dedicated HTTPS origin, such as `https://brain.example.invalid`. An origin has no path, query, fragment or credentials. For the approved free Funnel route, use the generated `ts.net` origin and the [Mac setup below](#free-tailscale-funnel-on-a-mac); no custom domain, manual DNS or router forwarding is needed. Otherwise use the host's existing DNS/certificate process and reverse proxy. Do not expose the unencrypted backend port.
-2. Install an official stable MegaBrain tag containing Live Home after release. Never deploy a development branch to a personal Brain. Before release, use the pinned candidate only with synthetic data on an explicitly approved test target. From its separate product checkout, substitute `python3 skill/megabrain/scripts/cli.py` for `megabrain` in the commands below; stable v2.4.0 does not provide these Live Home commands. Do not replace an existing stable installation or run the product from inside a Brain replica.
+2. Install official stable MegaBrain v2.5.0 or newer. Never deploy a development branch to a personal Brain. Run the installed `megabrain` commands below from a separate product runtime, not from inside a Brain replica.
 3. Provision the dedicated read-only replica yourself with Git. It must have `origin/main` and no dirty files or local unique commits. The viewer fetches `main`, but **never checks out, resets, merges, rebases, commits or pushes**. Its original `HEAD` can remain behind; the view is built directly from the fetched commit.
 4. Set the owner passphrase in a private interactive terminal running as the service account:
 
@@ -154,9 +154,10 @@ On closeout, the owner replaced the previous requirement to finish every manual 
 - **Operator-reported:** clean exact candidate checkout, independent 120-test run, active dedicated-account supervision, loopback/proxy configuration, `/login` reachability and a published/fetched synthetic correction. Owner-confirmed free Personal-plan use is recorded, not independently audited.
 - **Owner-confirmed phone results:** sign-in/Home loading, automatic synthetic correction without refresh, and rotation forcing sign-in with the old passphrase rejected and the new one accepted.
 - **Deferred to usage, not passed:** full reboot/uptime behavior, remaining public-proxy failure/security/cache/header checks, UI-state retention during phone correction, dirty-replica behavior and fresh authenticated runtime/snapshot comparison. Existing local automation does not make these public-deployment passes.
-- **Still required, not deferred:** relevant automated regressions and exact-head CI; explicit merge authorization; separate release authorization plus exact-merge CI and tag/release identity verification. Personal-replica connection stays a separately authorized operator step after a suitable stable release. Do not save the synthetic URL as a permanent Brain destination.
+- **Completed for v2.5.0 publication:** relevant automated regressions, explicit merge and release authorization, exact-merge CI, and tag/release identity verification.
+- **Still separately authorized:** personal-replica connection remains an owner-approved operator step. Do not save the synthetic URL as a permanent Brain destination.
 
-The [verification record](verification/live-home.md) is the sanitized evidence matrix. A working synthetic endpoint is not a published release, proof of personal-data readiness or proof that the running service matches a future release. No new product defect is established by the handoff.
+The [verification record](verification/live-home.md) is the sanitized evidence matrix. Its synthetic endpoint evidence does not prove personal-data readiness or that any running service has updated to v2.5.0. No new product defect is established by the handoff.
 
 ### Baseline for recording deployment evidence
 
