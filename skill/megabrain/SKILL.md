@@ -19,7 +19,7 @@ Keep filesystem paths, Git operations, harness flags, and helper commands intern
 - **Update MegaBrain**: run `megabrain update`. Show its compact report. Use `megabrain update --version X.Y.Z` only for an explicit recovery or rollback request. If a major or protocol-version transition requires approval, show the requested transition and obtain the owner's approval before rerunning with `--approve-major`.
 - **Disconnect this agent**: confirm the user's intent, then run `python3 "$SKILL_DIR/scripts/bootstrap.py" disconnect --harness <this harness>`. The private repository and synchronized local clone are retained.
 
-If setup reports `GITHUB_AUTH_REQUIRED`, ask the owner to approve GitHub authentication, complete `gh auth login`, and retry. Never create a repository unless the user has explicitly requested setup or connection. A successful setup reports `MegaBrain is ready.` and teaches the owner to run `megabrain open` or say `Synchronize and open my MegaBrain` whenever they want to refresh the private local snapshot.
+If setup reports `GITHUB_AUTH_REQUIRED`, ask the owner to approve GitHub authentication, complete `gh auth login`, and retry. Never create a repository unless the user has explicitly requested setup or connection. A successful setup reports that MegaBrain is connected, directs the owner to capability-specific `megabrain status`, and teaches `megabrain open` for refreshing the private local snapshot. Never describe private recall as ready when status reports missing trusted context or policy.
 
 ## Before Every Task
 

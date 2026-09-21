@@ -23,6 +23,12 @@ Use each command's `--help` without setup. Content is JSON on stdin, never comma
 
 With multiple configured agents and no detectable active harness, data commands fail rather than silently selecting another agent's identity. Ask a connected agent to run the action. The owner's explicit `open` action uses the device's saved approved Live Home URL when present, without impersonating an agent or claiming the service is reachable. Otherwise it retains local snapshot selection behavior. `open --local` always selects the local path. `live owner` and `live serve` are explicit operator commands for the separate read-only service, not Brain policy-administration commands. See [Live Home](live-home.md); passphrases are interactive hidden input, never command arguments or JSON.
 
+## Readiness
+
+`status` reports storage, synchronization, private-recall and canonical-search readiness separately. Its top-level `ready` is true only when all four are ready. A successful save or valid repository does not prove private recall. Protocol 1 reports canonical search unavailable, and read commands describe the required migration as a read prerequisite rather than a write failure. Missing trusted host context or an owner-approved policy keeps private recall unavailable without disclosing whether denied records exist. `doctor` includes the same recall checks.
+
+Historical source coverage is reported by `coverage`; retrieval ranking and authorization are separate. A missing result does not prove missing storage or reviewed source coverage.
+
 ## Scope and completeness
 
 `search` accepts an `authority_domain` that narrows BOTH memories and resources. A `resource_type` narrows results to resources only. New memories may declare `authority_domain`; legacy unscoped memories are excluded from scoped searches. Reclassify through an explicit immutable correction, never by editing older entries. Corrections preserve scope unless explicitly changed.
