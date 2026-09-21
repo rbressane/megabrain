@@ -175,11 +175,12 @@ def runtime_can_write(compatibility: dict[str, Any]) -> bool:
     )
 
 
-def require_canonical_protocol(root: Path) -> None:
+def require_canonical_protocol(root: Path, *, operation: str = "write") -> None:
     if brain_manifest(root).get("protocol_version") < 2:
+        action = "canonical search and resource reads" if operation == "read" else "canonical resource writes"
         raise BrainError(
             "CANONICAL_MIGRATION_REQUIRED",
-            "Run the explicit owner-local protocol 1 to 2 migration before canonical resource writes",
+            f"Run the explicit owner-local protocol 1 to 2 migration before {action}",
         )
 
 
@@ -1478,7 +1479,7 @@ def command_search(
     import canonical
 
     compatibility = require_compatible_runtime(root, writing=False)
-    require_canonical_protocol(root)
+    require_canonical_protocol(root, operation="read")
     allowed_fields = {
         "query", "task", "limit", "resource_type", "authority_domain", "diagnostic"
     }
@@ -2007,7 +2008,7 @@ def command_resource_list(
     import canonical
 
     compatibility = require_compatible_runtime(root, writing=False)
-    require_canonical_protocol(root)
+    require_canonical_protocol(root, operation="read")
     sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     if sync.get("reason") == "validation_failed":
         raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
@@ -2064,7 +2065,7 @@ def command_resource_read(
     import canonical
 
     compatibility = require_compatible_runtime(root, writing=False)
-    require_canonical_protocol(root)
+    require_canonical_protocol(root, operation="read")
     sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     if sync.get("reason") == "validation_failed":
         raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
@@ -2535,24 +2536,80 @@ def command_handoff(root: Path, payload: dict[str, Any], *, trusted_context: dic
     return {**result, "snapshot_commit": data["snapshot_commit"], "stale": not sync.get("synced")}
 
 
+def recall_capabilities(
+    root: Path,
+    validation: dict[str, Any],
+    sync: dict[str, Any],
+    trusted_context: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    protocol_ready = brain_manifest(root)["protocol_version"] >= 2
+    private_ready = False
+    if protocol_ready and trusted_context is not None:
+        try:
+            import canonical
+
+            private_ready = canonical.authorize_memory_read(
+                root,
+                {"sensitivity": "private", "subject": "capability.private_recall", "tags": []},
+                trusted_context,
+            )
+        except (ImportError, OSError, ValueError, BrainError, CanonicalError):
+            pass
+    private_reason = (
+        None if private_ready else
+        "canonical_migration_required" if not protocol_ready else
+        "trusted_context_missing" if trusted_context is None else
+        "owner_policy_missing"
+    )
+    return {
+        "storage": {
+            "ready": validation["ok"] and local_config_path(root).exists(),
+            "reason": (
+                None if validation["ok"] and local_config_path(root).exists() else
+                "validation_failed" if not validation["ok"] else
+                "identity_missing"
+            ),
+        },
+        "synchronization": {
+            "ready": bool(sync.get("synced")),
+            "reason": None if sync.get("synced") else sync.get("reason", "synchronization_unavailable"),
+        },
+        "private_recall": {"ready": private_ready, "reason": private_reason},
+        "canonical_search": {
+            "ready": protocol_ready,
+            "reason": None if protocol_ready else "canonical_migration_required",
+        },
+    }
+
+
 @operations.locked
 def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     compatibility = require_compatible_runtime(root, writing=False)
     sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
     validation = command_validate(root)
+    capabilities = recall_capabilities(root, validation, sync, trusted_context)
+    ready = all(capability["ready"] for capability in capabilities.values())
+    if not capabilities["canonical_search"]["ready"]:
+        next_action = "Run the reviewed owner-local protocol 1 to 2 migration."
+    elif not capabilities["private_recall"]["ready"]:
+        next_action = "Private recall needs verified host context and an owner-approved read policy."
+    elif not capabilities["synchronization"]["ready"]:
+        next_action = "Keep local work. Run doctor to inspect synchronization."
+    else:
+        next_action = "Ready."
     return {
-        "ok": validation["ok"], "ready": validation["ok"] and local_config_path(root).exists(),
+        "ok": validation["ok"], "ready": ready, "capabilities": capabilities,
         "runtime_version": compatibility["runtime"]["version"],
         "protocol_version": compatibility["brain"]["protocol_version"],
         "sync": {key: sync.get(key) for key in ("synced", "stale", "reason", "pending_local_commits")},
         "validation": {"errors": len(validation["errors"]), "warnings": len(validation["warnings"])},
         "trusted_owner_context": trusted_context is not None,
         "capture": knowledge.capture_state(root),
-        "next_action": "Ready." if sync.get("synced") else "Keep local work. Run doctor to inspect synchronization.",
+        "next_action": next_action,
     }
 
 
-def command_doctor(root: Path) -> dict[str, Any]:
+def command_doctor(root: Path, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     checks: dict[str, Any] = {
         "python": {"ok": sys.version_info >= (3, 10), "version": ".".join(map(str, sys.version_info[:3]))},
         "git": {"ok": shutil.which("git") is not None},
@@ -2587,6 +2644,17 @@ def command_doctor(root: Path) -> dict[str, Any]:
         checks["compatibility"] = {"ok": False, "reason": error.code.lower()}
     validation = command_validate(root)
     checks["validation"] = {"ok": validation["ok"], "errors": len(validation["errors"]), "warnings": len(validation["warnings"])}
+    capabilities = recall_capabilities(
+        root,
+        validation,
+        {"synced": checks["remote_access"]["ok"], "reason": "remote_access_unavailable"},
+        trusted_context,
+    )
+    checks["recall"] = {
+        "ok": capabilities["private_recall"]["ready"] and capabilities["canonical_search"]["ready"],
+        "private_recall": capabilities["private_recall"],
+        "canonical_search": capabilities["canonical_search"],
+    }
     return {"ok": all(check["ok"] for check in checks.values()), "checks": checks}
 
 
@@ -2812,7 +2880,7 @@ def execute_command(args: argparse.Namespace) -> int:
         runtime_update = automatic_runtime_update() if args.command in updates.READ_COMMANDS else None
         trusted_context = (
             trusted_local_context(root)
-            if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "review", "handoff", "capture"}
+            if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "doctor", "review", "handoff", "capture"}
             else None
         )
         if args.command == "sync":
@@ -2871,7 +2939,7 @@ def execute_command(args: argparse.Namespace) -> int:
         elif args.command == "validate":
             result = command_validate(root)
         elif args.command == "doctor":
-            result = command_doctor(root)
+            result = command_doctor(root, trusted_context=trusted_context)
         elif args.command == "status":
             result = command_status(root, trusted_context=trusted_context)
         elif args.command == "review":

@@ -32,9 +32,9 @@ RUNTIME_SCHEMA = "megabrain.runtime.v1"
 BRAIN_SCHEMA = "megabrain.brain.v1"
 OFFICIAL_DISTRIBUTION = "https://github.com/rbressane/megabrain.git"
 SETUP_READY_MESSAGE = (
-    "MegaBrain is ready.\n"
-    "Run `megabrain open` anytime to synchronize and browse your private Brain.\n"
-    "You can also say \"Synchronize and open my MegaBrain\"."
+    "MegaBrain is connected.\n"
+    "Run `megabrain status` to verify storage, synchronization, private recall, and canonical search.\n"
+    "Run `megabrain open` anytime to synchronize and browse your private Brain."
 )
 HARNESS_PATHS = {
     "codex": (".codex/skills/megabrain", ".codex/AGENTS.md"),
@@ -1472,18 +1472,18 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
     harness = detect_harness(args.harness)
     config, root, skill = configured_root(home, harness)
     validation = validate_clone(root, skill)
-    synced = helper_command(skill, root, "sync")
+    checked = helper_command(skill, root, "status")
     try:
-        sync_result = json.loads(synced.stdout)
+        recall = json.loads(checked.stdout)
     except json.JSONDecodeError:
-        sync_result = {"synced": False, "stale": True, "reason": "status_unavailable"}
+        recall = {"ready": False, "capabilities": {}, "sync": {"synced": False, "reason": "status_unavailable"}}
     update_args = argparse.Namespace(home=home, automatic=False, check=True, version=None)
     update = update_runtime(update_args)
-    identity_exists = (root / ".megabrain" / "local.json").exists()
     return {
-        "ok": True, "ready": identity_exists and validation["ok"], "harness": harness,
-        "repository": config.get("repository"), "counts": validation["counts"], "sync": sync_result,
-        "runtime": update, "message": "MegaBrain is ready." if identity_exists else "MegaBrain needs repair.",
+        "ok": bool(recall.get("ok")), "ready": bool(recall.get("ready")), "harness": harness,
+        "repository": config.get("repository"), "counts": validation["counts"], "sync": recall.get("sync", {}),
+        "capabilities": recall.get("capabilities", {}), "runtime": update,
+        "message": "MegaBrain recall is ready." if recall.get("ready") else "MegaBrain is connected with limited recall; inspect capabilities.",
     }
 
 

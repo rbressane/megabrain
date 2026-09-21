@@ -20,7 +20,7 @@ Bootstrap then:
 8. reports a one-line `PATH` correction when required without editing shell profiles;
 9. validates and synchronizes the result;
 10. opens the local browser on the machine running the agent and reports that host explicitly; and
-11. reports `MegaBrain is ready.` and teaches `megabrain open` as the direct return action, with `Synchronize and open my MegaBrain` as its conversational equivalent.
+11. reports that MegaBrain is connected, directs the owner to capability-specific `megabrain status`, and teaches `megabrain open` as the direct return action.
 
 The user does not choose a filesystem path, repository, harness, branch, or Git configuration. GitHub authorization is the only unavoidable consent boundary.
 
@@ -38,6 +38,6 @@ The first normal read or Home visit after 24 hours checks the latest stable cand
 
 Disconnect removes managed harness links and instructions while retaining the command, runtime, private repository, and synchronized clone to prevent data loss.
 
-The private-retrieval repair is intentionally not an automatic data migration. After installing a compatible runtime that contains it, the owner reruns setup or connect once. That explicit action upgrades the ignored local identity provenance and creates the conservative policy only for a Codex or Claude agent with no policy history. Existing custom or revoked policies are never replaced. Hermes setup creates no read policy and remains private-read-disabled until its reviewed in-process trusted-provenance integration is installed, bound to the owner DM, and given an exact reviewed policy.
+The private-retrieval repair is intentionally not an automatic data migration. After installing a compatible runtime that contains it, the owner reruns setup or connect once. That explicit action upgrades the ignored local identity provenance and creates the conservative policy only for a Codex or Claude agent with no policy history. Existing custom or revoked policies are never replaced. Hermes setup creates no read policy. The released runtime has no Hermes recall adapter, so the shell helper is not an unused trusted path and cannot infer owner trust. Hermes remains private-read-disabled until a separately reviewed in-process integration verifies the authorized owner DM and receives an exact reviewed policy.
 
 An activated runtime updates command and skill symlinks immediately. New sessions load the updated skill instructions normally. A session that already loaded the previous skill may need to reread it or start a new session before new Product Bake Candidate completion behavior is reliable.

@@ -24,6 +24,8 @@ Coverage entries distinguish discovered, scanned, candidate-extracted, intention
 
 ## Protocol Migration
 
-Existing protocol-1 memories and IDs remain valid. No automatic schema change occurs. The owner-local `migrate-v1` command creates the protocol-2 layout and changes only `megabrain.json` in one commit. Failure restores the prior manifest and removes new markers. `rollback-head` accepts only the latest canonical/policy commit and creates a Git revert; it never resets or rewrites history.
+Existing protocol-1 memories and IDs remain valid. No automatic schema change occurs. Before migration, run `megabrain status` and `megabrain doctor`, inventory every connected writer, and confirm each writer runs a protocol-2-capable runtime. Create and verify an owner-local plaintext bundle backup before approval. Stop incompatible writers rather than allowing them to recreate protocol-1 state.
 
-Migration sources remain usable until fingerprint checks, retrieval acceptance, backup inventory, and rollback rehearsal pass. Final source freeze, writer shutdown, archive retirement, and consumer cutover require separate approval.
+The owner-local `migrate-v1` command creates the protocol-2 layout and changes only `megabrain.json` in one commit. Failure restores the prior manifest and removes new markers. After migration, run status plus synthetic context/search checks through each supported authorized harness. Runtimes older than the manifest's `minimum_runtime` are rejected for writes. `rollback-head` accepts only the latest canonical/policy commit and creates a Git revert; it never resets or rewrites history. Rehearse that rollback on synthetic data before a personal migration.
+
+Migration sources remain usable until fingerprint checks, retrieval acceptance, backup inventory, and rollback rehearsal pass. Final source freeze, writer shutdown, archive retirement, reviewed backfill, and consumer cutover require separate approval. Backfill records source coverage, deduplicates by existing identity or fingerprint, excludes secret-like material, and does not treat retrieval ranking as proof of coverage.

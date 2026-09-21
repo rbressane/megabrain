@@ -94,7 +94,9 @@ class ScaleTests(unittest.TestCase):
                     response = run([str(command), *args], home, stdin=payload, expected=expected,
                                    env={"HOME": str(home), "MEGABRAIN_HARNESS": harness})
                     return json.loads(response.stdout or response.stderr)
-                self.assertTrue(call("status")["ready"])
+                status = call("status")
+                self.assertEqual(status["ready"], harness != "hermes")
+                self.assertEqual(status["capabilities"]["private_recall"]["ready"], harness != "hermes")
                 if harness == "hermes":
                     self.assertEqual(call("capture", "pause", expected=2)["error"]["code"], "OWNER_CONTEXT_REQUIRED")
                 else:

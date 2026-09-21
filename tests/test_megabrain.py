@@ -42,9 +42,9 @@ jobs:
       - uses: rbressane/megabrain/.github/actions/validate-brain@v1.0.0
 """
 ONBOARDING_MESSAGE = (
-    "MegaBrain is ready.\n"
-    "Run `megabrain open` anytime to synchronize and browse your private Brain.\n"
-    "You can also say \"Synchronize and open my MegaBrain\"."
+    "MegaBrain is connected.\n"
+    "Run `megabrain status` to verify storage, synchronization, private recall, and canonical search.\n"
+    "Run `megabrain open` anytime to synchronize and browse your private Brain."
 )
 
 
@@ -1358,6 +1358,20 @@ raise SystemExit(99)
         self.assertNotIn(hermes_private, json.dumps(hermes_result))
         self.assertFalse(
             hermes_result["diagnostics"]["authorization"]["trusted_context"]
+        )
+        hermes_status = self.network.command("unbound-hermes-agent", "status")
+        self.assertFalse(hermes_status["ready"])
+        self.assertTrue(hermes_status["capabilities"]["storage"]["ready"])
+        self.assertTrue(hermes_status["capabilities"]["canonical_search"]["ready"])
+        self.assertEqual(
+            hermes_status["capabilities"]["private_recall"]["reason"],
+            "trusted_context_missing",
+        )
+        hermes_doctor = self.network.command("unbound-hermes-agent", "doctor", expected=1)
+        self.assertFalse(hermes_doctor["checks"]["recall"]["ok"])
+        self.assertEqual(
+            hermes_doctor["checks"]["recall"]["private_recall"]["reason"],
+            "trusted_context_missing",
         )
 
     def test_retrieval_budget_collection_sensitive_policy_and_committed_index(self) -> None:

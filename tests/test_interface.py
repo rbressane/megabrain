@@ -37,10 +37,57 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(self.call("search", "--stdin", payload={"query": "recovery", "authority_domain": "alpha"})["evidence"][0]["authority_domain"], "alpha")
         self.assertTrue(self.call("forget", corrected["memory_id"], "--stdin", payload={})["created"])
         self.assertEqual(self.call("search", "--stdin", payload={"query": "recovery"})["evidence"], [])
-        self.assertTrue(self.call("status")["ready"])
+        status = self.call("status")
+        self.assertTrue(status["ready"])
+        self.assertTrue(all(item["ready"] for item in status["capabilities"].values()))
         self.assertTrue(self.call("sync")["synced"])
         self.assertTrue(self.call("validate")["ok"])
         self.assertEqual(self.call("resources", "--stdin", payload={})["resources"], [])
+
+    def test_private_recall_preserves_approximate_and_exact_dates_across_languages(self):
+        arrival = self.call("remember", "--stdin", payload={
+            "subject": "synthetic.relocation_arrival",
+            "summary": "Cheguei a Lisboa aproximadamente em março de 2024.",
+            "sensitivity": "private",
+            "source": {"type": "user-statement"},
+        })
+        administrative = self.call("remember", "--stdin", payload={
+            "subject": "synthetic.administrative_residence_date",
+            "summary": "The exact administrative residence date is 2024-04-17.",
+            "sensitivity": "private",
+            "source": {"type": "user-statement"},
+        })
+
+        portuguese = self.call("search", "--stdin", payload={"query": "quando cheguei a Lisboa"})
+        english = self.call("search", "--stdin", payload={"query": "exact administrative residence date"})
+        portuguese_ids = {item["citation"].get("memory_id") for item in portuguese["evidence"]}
+        english_ids = {item["citation"].get("memory_id") for item in english["evidence"]}
+        self.assertIn(arrival["memory_id"], portuguese_ids)
+        self.assertIn(administrative["memory_id"], english_ids)
+        self.assertNotEqual(arrival["memory_id"], administrative["memory_id"])
+        self.assertTrue(all(item["source"]["type"] == "user-statement" for item in english["evidence"]))
+
+    def test_protocol_one_status_and_read_migration_error_are_truthful(self):
+        manifest_path = self.root / "megabrain.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest.update({"protocol_version": 1, "minimum_runtime": "1.0.0"})
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        run(["git", "add", "megabrain.json"], self.root)
+        run(["git", "commit", "-m", "test: use synthetic protocol one"], self.root)
+        run(["git", "push", "origin", "HEAD:main"], self.root)
+
+        status = self.call("status")
+        self.assertFalse(status["ready"])
+        self.assertTrue(status["capabilities"]["storage"]["ready"])
+        self.assertFalse(status["capabilities"]["canonical_search"]["ready"])
+        self.assertEqual(
+            status["capabilities"]["private_recall"]["reason"],
+            "canonical_migration_required",
+        )
+        failed = self.call("search", "--stdin", payload={"query": "synthetic"}, expected=2)
+        self.assertEqual(failed["error"]["code"], "CANONICAL_MIGRATION_REQUIRED")
+        self.assertIn("canonical search and resource reads", failed["error"]["message"])
+        self.assertNotIn("writes", failed["error"]["message"])
 
     def test_help_for_every_installed_command_requires_no_brain(self):
         for name in cli.HELPER_COMMANDS:
