@@ -143,6 +143,6 @@ python3 -m unittest discover -s tests -v
 MEGABRAIN_ROOT=skill/megabrain/seed python3 skill/megabrain/scripts/megabrain.py validate
 ```
 
-The CI matrix covers macOS/Linux on Python 3.10, 3.11 and 3.13. `python3 tests/browser_smoke.py` uses an isolated Chrome profile and synthetic data to verify Home at four desktop/mobile sizes. See [scale and integration verification](docs/scale-and-integrations.md) and [trust and recovery](docs/trust-and-recovery.md).
+The CI matrix covers macOS/Linux on Python 3.10, 3.11 and 3.13. Pushes run on `main` and version branches (`v*.*.*`). Other branches run when a pull request is open. `python3 tests/browser_smoke.py` uses an isolated Chrome profile and synthetic data to verify Home at four desktop/mobile sizes. See [scale and integration verification](docs/scale-and-integrations.md) and [trust and recovery](docs/trust-and-recovery.md).
 
 Read [MEGABRAIN.md](MEGABRAIN.md) for invariants, [SECURITY.md](SECURITY.md) for the trust boundary, [docs/architecture.md](docs/architecture.md) for the runtime, and [docs/canonical-architecture.md](docs/canonical-architecture.md) for protocol-2 layers and documentation.

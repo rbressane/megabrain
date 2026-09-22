@@ -1,7 +1,13 @@
 name: Validate MegaBrain
 
 on:
+  # Feature-branch pushes are covered by pull_request, so they do not
+  # start a second identical run. Merge commits on main and version
+  # branches still validate once.
   push:
+    branches:
+      - main
+      - "v[0-9]*.*.*"
   pull_request:
 
 permissions:
