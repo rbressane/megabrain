@@ -33,7 +33,7 @@ All eight synthetic collection members were returned at every size for both evid
 - Existing synthetic network tests retain separate-clone concurrency, offline recovery, onboarding, updates, import idempotence and source/citation checks.
 - `tests/browser_smoke.py`: real Chrome at four desktop/mobile sizes. See [Home verification](verification/home-owner-workflows.md).
 
-CI runs the standard-library suite on macOS and Linux with Python 3.10, 3.11 and 3.13, plus Chrome smoke on Linux. There is no server or package-manager runtime dependency.
+CI runs the standard-library suite on macOS and Linux with Python 3.10, 3.11 and 3.13, plus Chrome smoke on Linux. That workflow runs on pushes to `main` and version branches, and on pull requests. There is no server or package-manager runtime dependency.
 
 ## Agent integration boundary
 
