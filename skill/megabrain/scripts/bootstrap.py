@@ -1483,7 +1483,9 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
         "ok": bool(recall.get("ok")), "ready": bool(recall.get("ready")), "harness": harness,
         "repository": config.get("repository"), "counts": validation["counts"], "sync": recall.get("sync", {}),
         "capabilities": recall.get("capabilities", {}), "runtime": update,
-        "message": "MegaBrain recall is ready." if recall.get("ready") else "MegaBrain is connected with limited recall; inspect capabilities.",
+        "message": "MegaBrain recall is ready." if recall.get("ready") else (
+            f"MegaBrain is connected with limited recall. {recall.get('next_action') or 'Inspect capabilities.'}"
+        ),
     }
 
 

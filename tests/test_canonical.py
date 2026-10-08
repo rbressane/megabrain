@@ -3,17 +3,23 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import pty
 import shutil
+import stat
+import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 import uuid
+from pathlib import Path
 from unittest import mock
 
 from tests.test_megabrain import BrainNetwork, SCRIPTS, megabrain_runtime, run
 
 
 import canonical
+import megabrain
 
 
 def load_script(name: str, filename: str):
@@ -717,6 +723,107 @@ Confirm the teal health indicator after restart.
         )["resources"][0]
         opened = self.network.command("canonical-agent", "resource-read", None, runbook["uri"])
         self.assertIn("restoring its clean clone", opened["content"])
+
+
+class LegacyConsumerUpgradeTests(unittest.TestCase):
+    """A v1 consumer reached through its harness skill link upgrades with documented commands only."""
+
+    def setUp(self) -> None:
+        self.networks: list[BrainNetwork] = []
+
+    def tearDown(self) -> None:
+        for network in self.networks:
+            network.close()
+
+    def install_legacy(self, harness: str) -> tuple[Path, Path]:
+        self.network = BrainNetwork()
+        self.networks.append(self.network)
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "work"
+            run(["git", "clone", str(self.network.remote), str(work)], self.network.root)
+            manifest = {"schema": "megabrain.brain.v1", "protocol_version": 1, "minimum_runtime": "1.0.0"}
+            (work / "megabrain.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            for directory in ("resources", "attachments", "policies"):
+                shutil.rmtree(work / "brain" / directory, ignore_errors=True)
+            run(["git", "add", "-A"], work)
+            run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "test: v1"], work)
+            run(["git", "push", "origin", "HEAD:main"], work)
+        root = self.network.clone(harness, harness)
+        identity_path = root / ".megabrain" / "local.json"
+        identity = json.loads(identity_path.read_text(encoding="utf-8"))
+        identity.pop("context_provenance", None)
+        identity_path.write_text(json.dumps(identity), encoding="utf-8")
+        identity_path.chmod(0o644)
+        return self.network.homes[harness], root
+
+    def owner_local(self, home: Path, harness: str, *arguments: str) -> tuple[int, dict]:
+        script = home / f".{harness}" / "skills" / "megabrain" / "scripts" / "canonical-local.py"
+        env = {key: value for key, value in os.environ.items() if key != "MEGABRAIN_ROOT"}
+        env.update({"HOME": str(home), "GIT_CONFIG_NOSYSTEM": "1"})
+        master, replica = pty.openpty()
+        process = subprocess.Popen(
+            ["python3", str(script), *arguments],
+            stdin=replica, stdout=replica, stderr=subprocess.PIPE, env=env, cwd=home,
+        )
+        os.close(replica)
+        os.write(master, b"APPROVE LOCAL CANONICAL CHANGE\n")
+        output = b""
+        while True:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+        os.close(master)
+        error = process.stderr.read().decode()
+        process.stderr.close()
+        process.wait()
+        text = output.decode()
+        return process.returncode, json.loads(text[text.index("{"):] if "{" in text else error[error.index("{"):])
+
+    def test_migration_through_skill_link_restores_private_recall(self) -> None:
+        for harness in ("claude", "codex"):
+            with self.subTest(harness=harness):
+                home, root = self.install_legacy(harness)
+                before = self.network.command(harness, "status")
+                migration = before["capabilities"]["canonical_search"]["remediation"]
+                self.assertIn("canonical-local.py migrate-v1", migration["command"])
+                self.assertTrue(migration["owner_local_terminal_required"])
+                self.assertIn(migration["command"], before["next_action"])
+                for capability in before["capabilities"].values():
+                    if not capability["ready"]:
+                        self.assertTrue(capability["remediation"]["command"])
+
+                code, migrated = self.owner_local(home, harness, "migrate-v1")
+                self.assertEqual(code, 0, migrated)
+                self.assertEqual(migrated["status"], "migrated")
+                self.assertTrue(migrated["owner_policy_created"])
+                identity_path = root / ".megabrain" / "local.json"
+                self.assertEqual(stat.S_IMODE(identity_path.stat().st_mode), 0o600)
+                self.assertTrue(self.network.command(harness, "status")["capabilities"]["private_recall"]["ready"])
+
+                head = run(["git", "rev-parse", "HEAD"], root).stdout
+                code, again = self.owner_local(home, harness, "migrate-v1")
+                self.assertEqual((code, again["status"], again["owner_policy_created"]), (0, "already_migrated", False))
+                self.assertEqual(run(["git", "rev-parse", "HEAD"], root).stdout, head)
+
+    def test_repo_root_uses_invocation_path_and_names_unresolved_clone(self) -> None:
+        home, root = self.install_legacy("claude")
+        link = home / ".claude" / "skills" / "megabrain" / "scripts" / "canonical-local.py"
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), mock.patch.object(Path, "home", return_value=home):
+            os.environ.pop("MEGABRAIN_ROOT", None)
+            self.assertEqual(megabrain.repo_root(link), root.resolve())
+            with self.assertRaises(megabrain.BrainError) as raised:
+                megabrain.repo_root(Path(link.resolve()))
+            self.assertEqual(raised.exception.code, "CLONE_NOT_RESOLVED")
+
+    def test_every_not_ready_reason_has_remediation(self) -> None:
+        for reason in ("canonical_migration_required", "trusted_context_missing", "owner_policy_missing",
+                       "identity_missing", "validation_failed", "offline"):
+            self.assertTrue(megabrain.capability_remediation(reason, "claude")["command"], reason)
+        self.assertIsNone(megabrain.capability_remediation(None, "claude"))
 
 
 if __name__ == "__main__":

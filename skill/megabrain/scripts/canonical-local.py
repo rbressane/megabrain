@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+# Keep the skill-link path: it names the harness whose clone this command manages.
+INVOKED_PATH = Path(os.path.abspath(__file__))
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
+import bootstrap
 import canonical
 import megabrain
 import operations
@@ -371,7 +374,7 @@ def migrate_v1(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
     manifest_path = root / "megabrain.json"
     original = json.loads(manifest_path.read_text(encoding="utf-8"))
     if original.get("protocol_version") == 2:
-        return {"ok": True, "status": "already_migrated"}
+        return {"ok": True, "status": "already_migrated", **upgrade_owner_identity(root, identity)}
     if original.get("protocol_version") != 1:
         raise canonical.CanonicalError("MIGRATION_UNSUPPORTED", "Only protocol 1 can migrate to protocol 2")
     paths = [manifest_path]
@@ -402,7 +405,17 @@ def migrate_v1(root: Path, *, trusted_local: bool = False) -> dict[str, Any]:
         manifest_path.write_text(json.dumps(original, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         _remove_created(created)
         raise
-    return {"ok": True, "status": "migrated", "from_protocol": 1, "to_protocol": 2, **commit}
+    return {
+        "ok": True, "status": "migrated", "from_protocol": 1, "to_protocol": 2, **commit,
+        **upgrade_owner_identity(root, identity),
+    }
+
+
+def upgrade_owner_identity(root: Path, identity: Mapping[str, Any]) -> dict[str, bool]:
+    """Apply the protocol 2 identity upgrade that connect performs, so private recall works after migration."""
+    upgraded, _ = bootstrap.load_or_create_identity(root, identity["harness"], identity["display_name"])
+    bootstrap.register_agent(root, upgraded)
+    return {"owner_policy_created": bootstrap.ensure_owner_read_policy(root, upgraded)}
 
 
 @operations.locked
@@ -490,12 +503,12 @@ def execute_command(args: argparse.Namespace) -> int:
             if args.command == "restore":
                 result = recovery.restore(args.bundle, args.destination, args.sha256)
             else:
-                root = megabrain.repo_root()
+                root = megabrain.repo_root(INVOKED_PATH)
                 with operations.lock(root):
                     result = recovery.backup(root, args.destination)
             megabrain.emit(result)
             return 0
-        root = megabrain.repo_root()
+        root = megabrain.repo_root(INVOKED_PATH)
         if args.command == "approve-import":
             result = approve_import(root, read_payload())
         elif args.command == "resource-create":
@@ -518,9 +531,9 @@ def execute_command(args: argparse.Namespace) -> int:
             raise canonical.CanonicalError("COMMAND_UNSUPPORTED", "Unsupported owner-local command")
         megabrain.emit(result)
         return 0
-    except (canonical.CanonicalError, megabrain.BrainError, operations.OperationError) as error:
+    except (canonical.CanonicalError, megabrain.BrainError, operations.OperationError, bootstrap.BootstrapError) as error:
         megabrain.emit(
-            {"ok": False, "error": {"code": error.code, "message": error.message, "details": error.details}},
+            {"ok": False, "error": {"code": error.code, "message": error.message, "details": getattr(error, "details", None)}},
             stream=sys.stderr,
         )
         return 2
