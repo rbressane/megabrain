@@ -188,26 +188,34 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def repo_root() -> Path:
+def repo_root(invoked: Path | None = None) -> Path:
+    """Find the managed clone. Pass the unresolved invocation path when imported from another script."""
     override = os.environ.get("MEGABRAIN_ROOT")
     if override:
         return Path(override).expanduser().resolve()
-    invoked = Path(os.path.abspath(__file__))
+    invoked = invoked or Path(os.path.abspath(__file__))
     harness = next((name for name in ("codex", "claude", "hermes") if f".{name}" in invoked.parts), None)
     config = Path.home() / ".megabrain" / "config.json"
-    if harness and config.exists():
+    clones: dict[str, Any] = {}
+    if config.exists():
         try:
             value = json.loads(config.read_text(encoding="utf-8"))
-            clone = value.get("clones", {}).get(harness) if isinstance(value, dict) else None
-            if clone:
-                root = Path(str(clone)).expanduser().resolve()
-                if (root / "brain").is_dir():
-                    return root
+            clones = value.get("clones", {}) if isinstance(value, dict) else {}
         except (json.JSONDecodeError, OSError):
             pass
+    if harness and clones.get(harness):
+        root = Path(str(clones[harness])).expanduser().resolve()
+        if (root / "brain").is_dir():
+            return root
     candidate = SCRIPT_DIRECTORY.parents[2]
     if (candidate / "brain").is_dir():
         return candidate
+    if clones and harness is None:
+        raise BrainError(
+            "CLONE_NOT_RESOLVED",
+            "MegaBrain is set up, but this command was not run through an agent skill link. "
+            "Run it from ~/.<harness>/skills/megabrain/scripts/.",
+        )
     raise BrainError("SETUP_REQUIRED", "MegaBrain has not been set up for this agent yet")
 
 
@@ -2561,7 +2569,7 @@ def recall_capabilities(
         "trusted_context_missing" if trusted_context is None else
         "owner_policy_missing"
     )
-    return {
+    capabilities = {
         "storage": {
             "ready": validation["ok"] and local_config_path(root).exists(),
             "reason": (
@@ -2580,6 +2588,29 @@ def recall_capabilities(
             "reason": None if protocol_ready else "canonical_migration_required",
         },
     }
+    try:
+        harness = str(load_identity(root).get("harness") or "<harness>")
+    except BrainError:
+        harness = "<harness>"
+    for capability in capabilities.values():
+        capability["remediation"] = capability_remediation(capability["reason"], harness)
+    return capabilities
+
+
+def capability_remediation(reason: str | None, harness: str) -> dict[str, Any] | None:
+    if reason is None:
+        return None
+    scripts = f"~/.{harness}/skills/megabrain/scripts"
+    if reason == "canonical_migration_required":
+        return {"command": f"python3 {scripts}/canonical-local.py migrate-v1", "owner_local_terminal_required": True}
+    if reason in {"trusted_context_missing", "owner_policy_missing", "identity_missing"}:
+        if harness == "hermes":
+            return {"command": None, "owner_local_terminal_required": False,
+                    "note": "Hermes private recall needs its reviewed trusted host integration."}
+        return {"command": f"python3 {scripts}/bootstrap.py connect --harness {harness}", "owner_local_terminal_required": False}
+    if reason == "validation_failed":
+        return {"command": f"python3 {scripts}/megabrain.py validate", "owner_local_terminal_required": False}
+    return {"command": f"python3 {scripts}/megabrain.py doctor", "owner_local_terminal_required": False}
 
 
 @operations.locked
@@ -2590,9 +2621,15 @@ def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None)
     capabilities = recall_capabilities(root, validation, sync, trusted_context)
     ready = all(capability["ready"] for capability in capabilities.values())
     if not capabilities["canonical_search"]["ready"]:
-        next_action = "Run the reviewed owner-local protocol 1 to 2 migration."
+        next_action = (
+            "Run the protocol 1 to 2 migration in your own interactive terminal: "
+            + capabilities["canonical_search"]["remediation"]["command"]
+        )
     elif not capabilities["private_recall"]["ready"]:
-        next_action = "Private recall needs verified host context and an owner-approved read policy."
+        command = capabilities["private_recall"]["remediation"]["command"]
+        next_action = "Private recall needs verified host context and an owner-approved read policy." + (
+            f" Run: {command}" if command else ""
+        )
     elif not capabilities["synchronization"]["ready"]:
         next_action = "Keep local work. Run doctor to inspect synchronization."
     else:
