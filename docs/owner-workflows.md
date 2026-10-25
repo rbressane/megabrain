@@ -35,3 +35,5 @@ The setting applies to **this agent on this device**, not all replicas. It is ig
 ## Agent health
 
 The Agents view distinguishes a configured private-read policy from registration. Neither registration nor a static snapshot is proof that an agent is online. Ask that agent to run `megabrain status`; use `doctor` for failure details. Private access still depends on the exact active policy, scope, trusted context and relevance.
+
+`megabrain health` is a separate read-only knowledge lint. It reports dead `megabrain://` resource citations, uncited current resources, conflicting current claims, stale review/verification dates, and coverage gaps. Findings are advisory. The command never writes, merges, expires, or repairs records. `review` remains the owner queue for confirmation and correction proposals.

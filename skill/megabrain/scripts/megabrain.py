@@ -1893,6 +1893,162 @@ def prior_import(root: Path, source: dict[str, str]) -> Record | None:
     return None
 
 
+INBOX_RELATIVE = Path(".megabrain") / "inbox"
+INBOX_MAX_BYTES = 1_048_576
+INBOX_FILE_LIMIT = 50
+INBOX_SKIP_NAMES = {".gitkeep", ".ds_store"}
+
+
+def default_inbox(root: Path) -> Path:
+    return root / INBOX_RELATIVE
+
+
+def inbox_locator(name: str) -> str:
+    return f"inbox/{Path(name).name}"
+
+
+def file_fingerprint(data: bytes) -> str:
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def inbox_candidate_payload(value: Any, source: dict[str, str]) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if isinstance(value.get("memories"), list):
+        return {"source": source, "memories": value["memories"]}
+    if isinstance(value.get("summary"), str) and isinstance(value.get("subject"), str):
+        candidate = {key: value[key] for key in value if key != "source"}
+        return {"source": source, "memories": [candidate]}
+    return None
+
+
+def classify_inbox_file(root: Path, path: Path) -> dict[str, Any] | None:
+    name = path.name
+    if name.startswith(".") or name.lower() in INBOX_SKIP_NAMES:
+        return None
+    locator = inbox_locator(name)
+    if path.is_symlink() or not path.is_file():
+        return {"locator": locator, "status": "rejected", "reason": "unsupported_file"}
+    try:
+        size = path.stat().st_size
+        data = path.read_bytes()
+    except OSError:
+        return {"locator": locator, "status": "rejected", "reason": "unreadable"}
+    if size > INBOX_MAX_BYTES:
+        return {"locator": locator, "status": "rejected", "reason": "too_large"}
+    digest = file_fingerprint(data)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return {"locator": locator, "status": "rejected", "reason": "not_utf8", "hash": digest}
+    source = {"type": "file", "locator": locator, "hash": digest}
+    if detect_secret(text):
+        return {"locator": locator, "status": "rejected", "reason": "secret_value_rejected", "hash": digest}
+    if len(ROLE_LINE_PATTERN.findall(text)) >= 2:
+        return {"locator": locator, "status": "rejected", "reason": "raw_transcript_rejected", "hash": digest}
+    previous = prior_import(root, source)
+    if previous:
+        return {
+            "locator": locator,
+            "status": "unchanged",
+            "hash": digest,
+            "import_id": previous.meta["id"],
+        }
+    if path.suffix.lower() == ".json":
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {"locator": locator, "status": "rejected", "reason": "invalid_json", "hash": digest}
+        payload = inbox_candidate_payload(parsed, source)
+        if payload is None:
+            return {"locator": locator, "status": "rejected", "reason": "invalid_candidate", "hash": digest}
+        if contains_prompt_injection(payload):
+            return {"locator": locator, "status": "rejected", "reason": "untrusted_instruction_rejected", "hash": digest}
+        return {"locator": locator, "status": "candidate", "hash": digest, "payload": payload}
+    return {"locator": locator, "status": "needs_summary", "hash": digest}
+
+
+def scan_inbox(root: Path, inbox: Path) -> tuple[list[dict[str, Any]], bool]:
+    if not inbox.exists():
+        return [], False
+    if inbox.is_symlink() or not inbox.is_dir():
+        raise BrainError("INBOX_INVALID", "Inbox must be a directory of source files.")
+    found: list[Path] = []
+    for path in sorted(inbox.rglob("*")):
+        if path.is_symlink() or any(part.startswith(".") for part in path.relative_to(inbox).parts[:-1]):
+            continue
+        if path.is_file():
+            found.append(path)
+    truncated = len(found) > INBOX_FILE_LIMIT
+    items = []
+    for path in found[:INBOX_FILE_LIMIT]:
+        item = classify_inbox_file(root, path)
+        if item is not None:
+            items.append(item)
+    return items, truncated
+
+
+def public_inbox_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {key: value for key, value in item.items() if key != "payload"}
+        for item in items
+    ]
+
+
+def command_inbox_ingest(root: Path, inbox_arg: str, payload: dict[str, Any]) -> dict[str, Any]:
+    inbox = default_inbox(root) if inbox_arg == "" else Path(inbox_arg).expanduser()
+    items, truncated = scan_inbox(root, inbox)
+    if isinstance(payload.get("memories"), list):
+        ingest_payload = dict(payload)
+        if not isinstance(ingest_payload.get("source"), dict):
+            hashed = [item for item in items if item.get("hash")]
+            if len(hashed) != 1:
+                raise BrainError(
+                    "INVALID_IMPORT_SOURCE",
+                    "Inbox ingest from stdin needs source provenance or exactly one inbox file.",
+                )
+            ingest_payload["source"] = {
+                "type": "file",
+                "locator": hashed[0]["locator"],
+                "hash": hashed[0]["hash"],
+            }
+        return command_ingest(root, ingest_payload)
+    created = 0
+    imported = 0
+    for item in items:
+        if item.get("status") != "candidate":
+            continue
+        result = command_ingest(root, item["payload"])
+        item.pop("payload", None)
+        item["status"] = str(result.get("status") or "imported")
+        item["import_id"] = result.get("import_id")
+        item["counts"] = result.get("counts")
+        imported += 1
+        created += int((result.get("counts") or {}).get("created") or 0)
+    statuses = Counter(str(item.get("status")) for item in items)
+    return {
+        "ok": True,
+        "status": "imported" if imported else "inventory",
+        "inbox": "inbox",
+        "items": public_inbox_items(items),
+        "truncated": truncated,
+        "counts": {
+            "scanned": len(items),
+            "candidates": statuses.get("candidate", 0),
+            "imported": imported,
+            "unchanged": statuses.get("unchanged", 0),
+            "needs_summary": statuses.get("needs_summary", 0),
+            "rejected": statuses.get("rejected", 0),
+            "created": created,
+        },
+        "notice": (
+            f"MegaBrain: ingested {created} durable memories from inbox."
+            if imported
+            else "MegaBrain: inbox inventory only. Structured JSON candidates become memories; raw files need agent summaries."
+        ),
+    }
+
+
 @operations.locked
 def command_ingest(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     require_compatible_runtime(root, writing=True)
@@ -2646,6 +2802,68 @@ def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None)
     }
 
 
+def command_health(root: Path, *, strict: bool = False) -> dict[str, Any]:
+    compatibility = require_compatible_runtime(root, writing=False)
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    records = load_memories(root)
+    active, conflicts = current_memories(records)
+    active_ids = {str(record.meta["id"]) for record in active}
+    conflict_ids = {memory_id for ids in conflicts.values() for memory_id in ids}
+    memories = []
+    for record in records:
+        memories.append(
+            {
+                "id": record.meta["id"],
+                "kind": record.meta.get("kind"),
+                "subject": record.meta.get("subject"),
+                "status": "current" if str(record.meta["id"]) in active_ids else "historical",
+                "summary": summary_text(record),
+                "supersedes": record.meta.get("supersedes") or [],
+                "importance": record.meta.get("importance"),
+                "confidence": record.meta.get("confidence"),
+                "review_after": record.meta.get("review_after"),
+                "authority_domain": record.meta.get("authority_domain"),
+                "conflict": str(record.meta["id"]) in conflict_ids,
+            }
+        )
+    resources: list[dict[str, Any]] = []
+    try:
+        import canonical
+
+        loaded = canonical.load_resources(root)
+        current, resource_conflicts = canonical.current_resources(loaded)
+        current_ids = {str(record.meta["resource_id"]) for record in current}
+        conflict_revisions = {revision for ids in resource_conflicts.values() for revision in ids}
+        for record in loaded:
+            resources.append(
+                {
+                    "resource_id": record.meta.get("resource_id"),
+                    "revision_id": record.meta.get("revision_id"),
+                    "uri": record.meta.get("uri") or f"megabrain://resource/{record.meta.get('resource_id')}",
+                    "title": record.meta.get("title"),
+                    "status": "current" if str(record.meta.get("resource_id")) in current_ids else "historical",
+                    "body": record.body,
+                    "authority_domain": record.meta.get("authority_domain"),
+                    "verified_at": record.meta.get("verified_at"),
+                    "resource_type": record.meta.get("resource_type"),
+                    "conflict": str(record.meta.get("revision_id")) in conflict_revisions,
+                }
+            )
+    except (ImportError, CanonicalError):
+        pass
+    report = knowledge.health_report(memories, resources)
+    findings = sum(report["summary"].get(category, 0) for category in knowledge.HEALTH_CATEGORIES)
+    return {
+        "ok": findings == 0 if strict else True,
+        "advisory": True,
+        "read_only": True,
+        "strict": strict,
+        "sync": {key: sync.get(key) for key in ("synced", "stale", "reason")},
+        **report,
+        "summary": {**report["summary"], "findings": findings},
+    }
+
+
 def command_doctor(root: Path, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     checks: dict[str, Any] = {
         "python": {"ok": sys.version_info >= (3, 10), "version": ".".join(map(str, sys.version_info[:3]))},
@@ -2864,6 +3082,13 @@ def build_parser() -> argparse.ArgumentParser:
     forget.add_argument("--stdin", action="store_true")
     ingest = subparsers.add_parser("ingest")
     ingest.add_argument("--stdin", action="store_true")
+    ingest.add_argument(
+        "--inbox",
+        nargs="?",
+        const="",
+        metavar="PATH",
+        help="scan the local inbox and ingest structured JSON candidates",
+    )
     resources = subparsers.add_parser("resources")
     resources.add_argument("--stdin", action="store_true")
     resource_read = subparsers.add_parser("resource-read")
@@ -2883,6 +3108,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     browse.add_argument("--no-open", action="store_true", help="generate the browser without opening it")
     subparsers.add_parser("validate")
+    health = subparsers.add_parser("health")
+    health.add_argument("--strict", action="store_true", help="exit nonzero when knowledge findings exist")
     subparsers.add_parser("doctor")
     subparsers.add_parser("status")
     review = subparsers.add_parser("review")
@@ -2946,7 +3173,14 @@ def execute_command(args: argparse.Namespace) -> int:
         elif args.command == "forget":
             result = command_forget(root, args.memory_id, read_input(required=False))
         elif args.command == "ingest":
-            result = command_ingest(root, read_input())
+            if getattr(args, "inbox", None) is not None:
+                result = command_inbox_ingest(
+                    root,
+                    args.inbox,
+                    read_input(required=False) if args.stdin else {},
+                )
+            else:
+                result = command_ingest(root, read_input())
         elif args.command == "resources":
             result = command_resource_list(
                 root,
@@ -2975,6 +3209,8 @@ def execute_command(args: argparse.Namespace) -> int:
             result = command_browse(root, args.no_open, trusted_context=trusted_context)
         elif args.command == "validate":
             result = command_validate(root)
+        elif args.command == "health":
+            result = command_health(root, strict=getattr(args, "strict", False))
         elif args.command == "doctor":
             result = command_doctor(root, trusted_context=trusted_context)
         elif args.command == "status":

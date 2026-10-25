@@ -7,7 +7,8 @@ The installed `megabrain` executable dispatches data operations to the existing 
 | Open the approved Live Home link or refresh the local snapshot | `megabrain open` |
 | Always use the local snapshot | `megabrain open --local` |
 | Save or remove the approved Live Home link on this device | `megabrain live link --url https://brain.example.invalid`, `megabrain live unlink` |
-| Check health or inspect problems | `megabrain status`, `megabrain doctor` |
+| Check health or inspect problems | `megabrain status`, `megabrain doctor`, `megabrain health` |
+| Ingest reviewed summaries or scan the local inbox | `megabrain ingest --stdin`, `megabrain ingest --inbox` |
 | Synchronize local commits | `megabrain sync` |
 | Retrieve evidence | `megabrain search --stdin` |
 | Retrieve memory-only context | `megabrain context --stdin` |
