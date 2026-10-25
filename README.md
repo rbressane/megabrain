@@ -132,6 +132,15 @@ Ingest the durable knowledge from this folder, repository, export, or URL into M
 
 Imports summarize durable knowledge instead of copying raw conversations or archives. Imported content is treated as untrusted data, unchanged sources are skipped, disagreements remain visible, and secret values are rejected.
 
+Drop structured JSON candidates or raw sources into the connected clone's local `.megabrain/inbox/` folder (ignored by Git). Then:
+
+```sh
+megabrain ingest --inbox
+megabrain health
+```
+
+`ingest --inbox` creates new memories only from JSON that already contains durable `subject`/`summary` fields. Raw files are inventoried as `needs_summary` so a connected agent can extract summaries and call `ingest --stdin`. Inbox files are never deleted. `health` is a read-only lint for dead `megabrain://` links, uncited resources, conflicts, stale review dates, and gaps; it does not repair files. Use `--strict` when a nonzero exit on findings is useful. These commands port the inbox-and-lint *idea* from [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) (MIT) into MegaBrain's existing immutable memory format. They do not adopt Obsidian, wikilinks, or automatic raw-file summarization.
+
 Protocol 2 also supports stable `megabrain://` resources and fingerprint-bound review batches. Source preparation is an owner-run allowlist operation, approval is owner-local, and instruction-like documents remain inert data. Sensitive synchronized content is intentionally unavailable pending a separate reviewed encryption design.
 
 ## Development
