@@ -2470,6 +2470,11 @@ def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[s
         payload = _browser_payload(snapshot, sync, trusted_context=trusted_context)
     payload["snapshot_commit"] = commit
     payload["capture"] = knowledge.capture_state(root)
+    import activity
+
+    payload["activity"] = activity.home_activity(
+        sys.modules[__name__], root, visible_ids={str(memory["id"]) for memory in payload["memories"]}, include_local=True,
+    )
     payload["sync"] = safe_browser_sync(root, sync)
     payload["freshness"]["pending_local_commits"] = payload["sync"]["pending_local_commits"]
     return payload
@@ -2640,6 +2645,16 @@ def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any]
     template = SCRIPT_DIRECTORY.parent / "assets" / "browser.html"
     if not template.exists():
         raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
+    import activity
+
+    if sync.get("reason") != "remote_unavailable":
+        try:
+            # Share this agent's receipts and read every other agent's for the Today page.
+            published = activity.publish(sys.modules[__name__], root, timeout=8)
+            if not published.get("published") and published.get("reason") not in {"remote_unavailable", "already_current"}:
+                activity.fetch_remote(root, 8)
+        except operations.OperationError:
+            pass
     payload = browser_payload(root, sync, trusted_context=trusted_context)
     serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     serialized = (
@@ -3136,6 +3151,14 @@ def execute_command(args: argparse.Namespace) -> int:
                 prefetched = prefetch_remote(root, args.prefetch_timeout)
             sync = sync_repo(root, prefetched=prefetched)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}
+            if args.prefetch_timeout and result["ok"]:
+                import activity
+
+                try:
+                    # Throttled to every 30 minutes and only when receipts changed.
+                    result["activity"] = activity.publish(sys.modules[__name__], root, timeout=args.prefetch_timeout)
+                except operations.OperationError:
+                    result["activity"] = {"published": False, "reason": "publish_failed"}
         elif args.command == "context":
             if not 1 <= args.limit <= 100:
                 raise BrainError("INVALID_LIMIT", "limit must be between 1 and 100")

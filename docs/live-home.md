@@ -14,7 +14,7 @@ Use `megabrain open --local` for the existing local snapshot, including its exis
 
 ### What you can see
 
-- The existing graph, mobile topic list, current memories, history, conflicts, resources, agents and review reminders.
+- Today: status, what needs you, agent activity from the shared activity branch, recent changes and current knowledge. Also the topic map, mobile topic list, current memories, history, conflicts, resources, agents and review reminders.
 - **General knowledge only**, still behind owner authentication. Private and sensitive records, raw imports, policy documents, attachments and repository files are not served. Sign-in cannot impersonate an agent or supply a trusted private-read context. Use an authorized local agent for excluded evidence.
 - Committed corrections and tombstones after the creating agent pushes them. Offline or uncommitted work on another agent cannot appear yet.
 - Markdown sources from the same captured commit, served as inert plain text through an exact allowlist, not a filesystem route.

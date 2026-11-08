@@ -16,15 +16,108 @@
       --border-strong: #343840;
       --text: #f3f4f6;
       --text-secondary: #b7bbc3;
-      --text-muted: #8b9099;
+      --text-muted: #9aa0a9;
       --accent: #7c6ef6;
       --accent-muted: #aaa2ff;
       --success: #69b9af;
       --warning: #d7a95f;
       --danger: #f06a6a;
-      --sidebar-width: 184px;
+      --danger-soft: rgba(240, 106, 106, 0.5);
+      --chrome: #0d0f12;
+      --inspector: #0f1114;
+      --control-bg: #101216;
+      --border-hover: #444851;
+      --private: #92b8e8;
+      --evidence-dot: #777e89;
+      --legend-conflict: #ff9a9a;
+      --graph-edge: #555b65;
+      --graph-strong: #a7acb5;
+      --graph-node: #59606b;
+      --graph-topic: #181b20;
+      --graph-topic-stroke: #8d949f;
+      --graph-history: #3e434c;
+      --graph-history-stroke: #6f7681;
+      --graph-conflict-fill: #271719;
+      --graph-hover: #89919e;
+      --graph-selected: #282442;
+      color-scheme: dark;
+      --sidebar-width: 208px;
       --header-height: 52px;
       --status-height: 36px;
+    }
+
+    :root[data-theme="light"] {
+      --canvas: #f6f5f2;
+      --surface: #ffffff;
+      --surface-raised: #efede8;
+      --surface-hover: #e9e6df;
+      --border: #e0dcd4;
+      --border-strong: #cbc5ba;
+      --text: #1c1b19;
+      --text-secondary: #3f3c37;
+      --text-muted: #625e57;
+      --accent: #5646d4;
+      --accent-muted: #4636bd;
+      --success: #23705f;
+      --warning: #8a5a0b;
+      --danger: #b8322a;
+      --danger-soft: rgba(184, 50, 42, 0.45);
+      --chrome: #fbfaf8;
+      --inspector: #fbfaf8;
+      --control-bg: #ffffff;
+      --border-hover: #aaa397;
+      --private: #2a5d9c;
+      --evidence-dot: #a29b8f;
+      --legend-conflict: #d9675e;
+      --graph-edge: #b4ada2;
+      --graph-strong: #7a7368;
+      --graph-node: #c8c1b5;
+      --graph-topic: #ffffff;
+      --graph-topic-stroke: #8c857a;
+      --graph-history: #e2ded6;
+      --graph-history-stroke: #a59e92;
+      --graph-conflict-fill: #fae6e3;
+      --graph-hover: #a59e92;
+      --graph-selected: #e7e3fb;
+      color-scheme: light;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --canvas: #f6f5f2;
+        --surface: #ffffff;
+        --surface-raised: #efede8;
+        --surface-hover: #e9e6df;
+        --border: #e0dcd4;
+        --border-strong: #cbc5ba;
+        --text: #1c1b19;
+        --text-secondary: #3f3c37;
+        --text-muted: #625e57;
+        --accent: #5646d4;
+        --accent-muted: #4636bd;
+        --success: #23705f;
+        --warning: #8a5a0b;
+        --danger: #b8322a;
+        --danger-soft: rgba(184, 50, 42, 0.45);
+        --chrome: #fbfaf8;
+        --inspector: #fbfaf8;
+        --control-bg: #ffffff;
+        --border-hover: #aaa397;
+        --private: #2a5d9c;
+        --evidence-dot: #a29b8f;
+        --legend-conflict: #d9675e;
+        --graph-edge: #b4ada2;
+        --graph-strong: #7a7368;
+        --graph-node: #c8c1b5;
+        --graph-topic: #ffffff;
+        --graph-topic-stroke: #8c857a;
+        --graph-history: #e2ded6;
+        --graph-history-stroke: #a59e92;
+        --graph-conflict-fill: #fae6e3;
+        --graph-hover: #a59e92;
+        --graph-selected: #e7e3fb;
+        color-scheme: light;
+      }
     }
 
     * { box-sizing: border-box; }
@@ -33,7 +126,7 @@
       background: var(--canvas);
       color: var(--text);
       font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 14px;
+      font-size: 16px;
     }
 
     body {
@@ -79,11 +172,11 @@
 
     .topbar {
       align-items: center;
-      background: #0d0f12;
+      background: var(--chrome);
       border-bottom: 1px solid var(--border);
       display: grid;
       gap: 12px;
-      grid-template-columns: var(--sidebar-width) minmax(260px, 620px) minmax(150px, 220px) 1fr;
+      grid-template-columns: var(--sidebar-width) minmax(260px, 620px) minmax(150px, 220px) 1fr auto;
       height: var(--header-height);
       padding: 0 18px 0 0;
       position: relative;
@@ -95,7 +188,7 @@
       align-self: stretch;
       border-right: 1px solid var(--border);
       display: flex;
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 650;
       letter-spacing: -0.01em;
       padding: 0 20px;
@@ -120,7 +213,7 @@
       border: 0;
       caret-color: var(--accent-muted);
       color: var(--text);
-      font-size: 13px;
+      font-size: 15px;
       height: 100%;
       min-width: 0;
       outline: 0;
@@ -129,7 +222,7 @@
     }
 
     .search-shell input::placeholder { color: var(--text-muted); opacity: 1; }
-    .key-hint { border: 1px solid var(--border-strong); border-radius: 3px; color: var(--text-muted); font-size: 10px; line-height: 18px; padding: 0 5px; }
+    .key-hint { border: 1px solid var(--border-strong); border-radius: 3px; color: var(--text-muted); font-size: 12px; line-height: 18px; padding: 0 5px; }
 
     .top-filter, .control {
       background: var(--surface);
@@ -142,14 +235,14 @@
       width: 100%;
     }
 
-    .top-filter:hover, .control:hover { background: var(--surface-hover); border-color: #444851; }
-    .sync-state { align-items: center; color: var(--text-muted); display: flex; font-size: 11px; gap: 7px; justify-self: end; white-space: nowrap; }
+    .top-filter:hover, .control:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    .sync-state { align-items: center; color: var(--text-muted); display: flex; font-size: 13px; gap: 7px; justify-self: end; white-space: nowrap; }
     .sync-dot { background: var(--success); border-radius: 50%; height: 6px; width: 6px; }
     .sync-state.stale { color: var(--warning); }
     .sync-state.stale .sync-dot { background: var(--warning); }
 
     .app-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); height: calc(100vh - var(--header-height)); }
-    .sidebar { background: #0d0f12; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; padding: 12px 9px; }
+    .sidebar { background: var(--chrome); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; padding: 12px 9px; }
     .nav { display: grid; gap: 2px; }
 
     .nav-button {
@@ -159,7 +252,7 @@
       border-radius: 5px;
       color: var(--text-muted);
       display: grid;
-      font-size: 13px;
+      font-size: 15px;
       grid-template-columns: 22px minmax(0, 1fr) auto;
       min-height: 36px;
       padding: 0 9px;
@@ -170,14 +263,14 @@
     .nav-button:hover { background: var(--surface); color: var(--text-secondary); }
     .nav-button.active { background: var(--surface-raised); border-color: var(--border); color: var(--text); }
     .nav-button.active .icon { color: var(--accent-muted); }
-    .nav-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-    .sidebar-note { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-top: auto; padding: 12px 9px 4px; }
+    .nav-count { color: var(--text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .sidebar-note { border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; line-height: 1.45; margin-top: auto; padding: 12px 9px 4px; }
 
     .workspace { background: var(--canvas); min-width: 0; overflow: auto; padding: 24px 28px 44px; }
     .workspace.graph-mode { overflow: hidden; padding: 0; }
     .page-heading { align-items: end; display: flex; gap: 18px; justify-content: space-between; margin-bottom: 12px; }
-    .page-heading h1 { font-size: 18px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; margin: 0; }
-    .page-meta, .snapshot-note, .results-meta { color: var(--text-muted); font-size: 11px; }
+    .page-heading h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; margin: 0; }
+    .page-meta, .snapshot-note, .results-meta { color: var(--text-muted); font-size: 13px; }
     .page-meta { font-variant-numeric: tabular-nums; white-space: nowrap; }
     .snapshot-note { line-height: 1.55; margin: 0 0 16px; max-width: 80ch; }
 
@@ -205,10 +298,10 @@
     }
 
     .memory-card:hover, .agent-card:hover, .import-card:hover { border-color: var(--border-strong); }
-    .memory-card.conflict { border-color: rgba(240, 106, 106, 0.55); }
+    .memory-card.conflict { border-color: var(--danger-soft); }
     .memory-card.targeted { border-color: var(--accent); }
     .card-topline { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; min-width: 0; }
-    .subject, .agent-name, .import-title { font-size: 13px; font-weight: 650; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+    .subject, .agent-name, .import-title { font-size: 15px; font-weight: 650; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
     .badges, .tag-row, .metadata, .import-counts { align-items: center; display: flex; flex-wrap: wrap; gap: 5px 10px; }
 
     .badge, .tag {
@@ -217,7 +310,7 @@
       border-radius: 3px;
       color: var(--text-muted);
       display: inline-flex;
-      font-size: 10px;
+      font-size: 12px;
       line-height: 18px;
       min-height: 20px;
       padding: 0 6px;
@@ -226,130 +319,172 @@
 
     .badge.current, .badge.core { color: var(--accent-muted); }
     .badge.conflict, .badge.tombstone { color: var(--danger); }
-    .badge.private, .badge.sensitive { color: #92b8e8; }
-    .summary { color: var(--text-secondary); font-size: 13px; line-height: 1.58; margin: 10px 0 12px; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .badge.private, .badge.sensitive { color: var(--private); }
+    .summary { color: var(--text-secondary); font-size: 15px; line-height: 1.58; margin: 10px 0 12px; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-wrap; }
     .tag-row { margin-bottom: 11px; }
-    .metadata { overflow-wrap: anywhere; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; padding-top: 10px; }
+    .metadata { overflow-wrap: anywhere; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; padding-top: 10px; }
     .metadata strong { color: var(--text-secondary); font-weight: 550; }
     .metadata a, .memory-link, .inspector-link { color: var(--accent-muted); text-decoration: none; }
     .metadata a:hover, .memory-link:hover, .inspector-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-    .memory-link { background: transparent; border: 0; font-size: 10px; padding: 0; }
+    .memory-link { background: transparent; border: 0; font-size: 12px; padding: 0; }
 
-    .conflict-heading { border-bottom: 1px solid rgba(240, 106, 106, 0.45); color: var(--danger); font-size: 12px; font-weight: 650; margin: 14px 0 0; overflow-wrap: anywhere; padding: 0 2px 8px; }
+    .conflict-heading { border-bottom: 1px solid var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 650; margin: 14px 0 0; overflow-wrap: anywhere; padding: 0 2px 8px; }
     .conflict-heading:first-child { margin-top: 0; }
-    .agent-detail, .import-detail { color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
+    .agent-detail, .import-detail { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
     .import-counts { margin-top: 11px; }
-    .import-count { color: var(--text-muted); font-size: 10px; }
-    .import-count strong { color: var(--text); display: block; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 550; margin-bottom: 1px; }
+    .import-count { color: var(--text-muted); font-size: 12px; }
+    .import-count strong { color: var(--text); display: block; font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 550; margin-bottom: 1px; }
     .graph-node.memory .memory-label { opacity: 0; }
     .graph-node.memory:hover .memory-label, .graph-node.memory:focus-visible .memory-label, .graph-node.memory.selected .memory-label { opacity: 1; }
     .resource-body { background: var(--canvas); color: var(--text-secondary); font: inherit; line-height: 1.6; max-width: 75ch; overflow-wrap: anywhere; padding: 16px; white-space: pre-wrap; }
     .resource-card, .review-row { border-bottom: 1px solid var(--border); padding: 16px 0; }
-    .resource-card h2, .review-row h2 { font-size: 14px; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
+    .resource-card h2, .review-row h2 { font-size: 16px; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
     .resource-card summary { color: var(--accent-muted); cursor: pointer; min-height: 44px; padding: 12px 0; }
     .resource-card summary:focus-visible { outline: 2px solid var(--accent-muted); }
     .owner-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .owner-action { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--accent-muted); min-height: 44px; padding: 8px 12px; }
     .owner-action:hover { background: var(--surface-hover); }
     .handoff-panel { border: 1px solid var(--border-strong); margin-bottom: 16px; padding: 16px; }
-    .handoff-panel h2 { font-size: 18px; margin: 0 0 8px; }
+    .handoff-panel h2 { font-size: 21px; margin: 0 0 8px; }
     .handoff-panel textarea { background: var(--canvas); border: 1px solid var(--border-strong); color: var(--text); font: inherit; line-height: 1.6; min-height: 112px; padding: 12px; resize: vertical; width: 100%; }
     .domain-filter { margin: 0 0 16px; max-width: 320px; }
     .domain-filter label { display: block; margin-bottom: 8px; }
-    .empty-state { border: 1px dashed var(--border-strong); border-radius: 5px; color: var(--text-muted); font-size: 12px; padding: 36px 16px; text-align: center; }
+    .empty-state { border: 1px dashed var(--border-strong); border-radius: 5px; color: var(--text-muted); font-size: 14px; padding: 36px 16px; text-align: center; }
 
     .timeline { display: grid; gap: 18px; margin: 0 auto; max-width: 980px; }
     .timeline-month { display: grid; gap: 12px; grid-template-columns: 110px minmax(0, 1fr); }
-    .timeline-month-label { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 600; padding-top: 14px; text-transform: uppercase; }
+    .timeline-month-label { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 600; padding-top: 14px; text-transform: uppercase; }
     .timeline-items { border-left: 1px solid var(--border-strong); display: grid; gap: 6px; padding-left: 18px; }
     .timeline-items .memory-card { position: relative; }
     .timeline-items .memory-card::before { background: var(--accent); border: 3px solid var(--canvas); border-radius: 50%; content: ""; height: 10px; left: -24px; position: absolute; top: 17px; width: 10px; }
     .timeline-items .memory-card.historical::before, .timeline-items .memory-card.tombstone::before { background: var(--text-muted); }
 
-    .graph-shell { display: grid; grid-template-columns: minmax(0, 1fr) 304px; grid-template-rows: minmax(0, 1fr) var(--status-height); height: 100%; min-height: 0; }
+    .graph-shell { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: minmax(0, 1fr) var(--status-height); height: 100%; min-height: 0; }
     .graph-canvas { background: var(--canvas); cursor: grab; min-height: 0; overflow: hidden; position: relative; touch-action: none; }
     .graph-canvas.dragging { cursor: grabbing; }
     #brain-graph { display: block; height: 100%; min-height: 420px; width: 100%; }
 
-    .graph-edge { stroke: #555b65; stroke-width: 0.9; transition: opacity 160ms ease, stroke 160ms ease; }
+    .graph-edge { stroke: var(--graph-edge); stroke-width: 0.9; transition: opacity 160ms ease, stroke 160ms ease; }
     .graph-edge.shared { opacity: 0.34; stroke-dasharray: 2 5; }
-    .graph-edge.supersedes { marker-end: url(#graph-arrow); opacity: 0.7; stroke: #a7acb5; }
+    .graph-edge.supersedes { marker-end: url(#graph-arrow); opacity: 0.7; stroke: var(--graph-strong); }
     .graph-edge.conflict { opacity: 0.8; stroke: var(--danger); stroke-dasharray: 4 4; }
     .graph-edge.dimmed { opacity: 0.28; }
     .graph-edge.conflict.dimmed { opacity: 0.82; }
     .graph-edge.active { opacity: 0.95; stroke: var(--accent-muted); stroke-width: 1.35; }
     .graph-node { cursor: pointer; outline: none; transition: opacity 160ms ease; }
-    .graph-node circle { fill: #59606b; stroke: #a7acb5; stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
-    .graph-node.topic circle { fill: #181b20; stroke: #8d949f; stroke-width: 1.4; }
-    .graph-node.historical circle, .graph-node.tombstone circle { fill: #3e434c; stroke: #6f7681; }
-    .graph-node.conflict circle { fill: #271719; stroke: var(--danger); stroke-width: 1.5; }
-    .graph-node:hover circle, .graph-node.adjacent circle { fill: #89919e; stroke: var(--text); }
-    .graph-node.selected circle { fill: #282442; stroke: var(--accent); stroke-width: 2.4; }
+    .graph-node circle { fill: var(--graph-node); stroke: var(--graph-strong); stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
+    .graph-node.topic circle { fill: var(--graph-topic); stroke: var(--graph-topic-stroke); stroke-width: 1.4; }
+    .graph-node.historical circle, .graph-node.tombstone circle { fill: var(--graph-history); stroke: var(--graph-history-stroke); }
+    .graph-node.conflict circle { fill: var(--graph-conflict-fill); stroke: var(--danger); stroke-width: 1.5; }
+    .graph-node:hover circle, .graph-node.adjacent circle { fill: var(--graph-hover); stroke: var(--text); }
+    .graph-node.selected circle { fill: var(--graph-selected); stroke: var(--accent); stroke-width: 2.4; }
     .graph-node.dimmed { opacity: 0.68; }
     .graph-node.conflict.dimmed { opacity: 1; }
 
-    .graph-label { fill: var(--text-secondary); font-size: 11px; paint-order: stroke; pointer-events: none; stroke: var(--canvas); stroke-linejoin: round; stroke-width: 4px; }
-    .topic .graph-label { fill: var(--text); font-size: 12px; font-weight: 600; text-anchor: middle; }
+    .graph-label { fill: var(--text-secondary); font-size: 13px; paint-order: stroke; pointer-events: none; stroke: var(--canvas); stroke-linejoin: round; stroke-width: 4px; }
+    .topic .graph-label { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; }
     .memory-label { opacity: 0.58; transition: opacity 160ms ease; }
     .dense-graph .memory-label { opacity: 0; }
     .graph-node.conflict .memory-label { opacity: 1; }
     .graph-node:hover .memory-label, .graph-node.selected .memory-label { opacity: 1; }
 
     .graph-controls { bottom: 14px; display: flex; left: 14px; position: absolute; z-index: 4; }
-    .graph-control { align-items: center; background: #101216; border: 1px solid var(--border-strong); border-right: 0; color: var(--text-muted); display: flex; height: 30px; justify-content: center; padding: 0; width: 32px; }
+    .graph-control { align-items: center; background: var(--control-bg); border: 1px solid var(--border-strong); border-right: 0; color: var(--text-muted); display: flex; height: 30px; justify-content: center; padding: 0; width: 32px; }
     .graph-control:first-child { border-radius: 4px 0 0 4px; }
     .graph-control:last-child { border-radius: 0 4px 4px 0; border-right: 1px solid var(--border-strong); }
     .graph-control:hover { background: var(--surface-hover); color: var(--text); }
     .graph-control .icon { height: 14px; width: 14px; }
 
-    .graph-inspector { background: #0f1114; border-left: 1px solid var(--border); min-height: 0; overflow: auto; padding: 20px 16px; }
+    .graph-inspector { background: var(--inspector); border-left: 1px solid var(--border); min-height: 0; overflow: auto; padding: 20px 16px; }
     .inspector-header { border-bottom: 1px solid var(--border); margin-bottom: 14px; padding-bottom: 14px; }
-    .inspector-title { font-size: 18px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
-    .inspector-subtitle { color: var(--text-muted); font-size: 11px; margin-top: 5px; }
-    .inspector-section-title { color: var(--text-secondary); font-size: 11px; font-weight: 600; margin: 18px 0 7px; }
+    .inspector-title { font-size: 21px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+    .inspector-subtitle { color: var(--text-muted); font-size: 13px; margin-top: 5px; }
+    .inspector-section-title { color: var(--text-secondary); font-size: 13px; font-weight: 600; margin: 18px 0 7px; }
     .evidence-list { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
     .evidence-row { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; gap: 8px; grid-template-columns: 8px minmax(0, 1fr) auto; min-height: 42px; padding: 7px 9px; text-align: left; width: 100%; }
     .evidence-row:last-child { border-bottom: 0; }
     .evidence-row:hover, .evidence-row.selected { background: var(--surface-raised); color: var(--text); }
-    .evidence-dot { background: #777e89; border-radius: 50%; height: 6px; width: 6px; }
+    .evidence-dot { background: var(--evidence-dot); border-radius: 50%; height: 6px; width: 6px; }
     .evidence-dot.current { background: var(--accent-muted); }
     .evidence-dot.conflict { background: var(--danger); }
     .evidence-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .evidence-state { color: var(--text-muted); font-size: 10px; }
-    .inspector-summary { color: var(--text-secondary); font-size: 12px; line-height: 1.58; margin: 0; overflow-wrap: anywhere; }
+    .evidence-state { color: var(--text-muted); font-size: 12px; }
+    .inspector-summary { color: var(--text-secondary); font-size: 14px; line-height: 1.58; margin: 0; overflow-wrap: anywhere; }
     .inspector-facts { border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; margin: 14px 0; }
-    .inspector-fact { color: var(--text-muted); font-size: 10px; padding: 10px 0; }
-    .inspector-fact strong { color: var(--text-secondary); display: block; font-size: 11px; font-weight: 550; margin-top: 3px; }
+    .inspector-fact { color: var(--text-muted); font-size: 12px; padding: 10px 0; }
+    .inspector-fact strong { color: var(--text-secondary); display: block; font-size: 13px; font-weight: 550; margin-top: 3px; }
     .inspector-actions { display: grid; gap: 2px; }
-    .inspector-action { align-items: center; background: transparent; border: 0; border-radius: 4px; color: var(--accent-muted); display: flex; font-size: 11px; justify-content: space-between; min-height: 34px; padding: 0 8px; text-align: left; text-decoration: none; width: 100%; }
+    .inspector-action { align-items: center; background: transparent; border: 0; border-radius: 4px; color: var(--accent-muted); display: flex; font-size: 13px; justify-content: space-between; min-height: 34px; padding: 0 8px; text-align: left; text-decoration: none; width: 100%; }
     .inspector-action:hover { background: var(--surface-raised); }
 
-    .graph-status { align-items: center; background: #0d0f12; border-top: 1px solid var(--border); color: var(--text-muted); display: flex; font-size: 10px; gap: 18px; grid-column: 1 / -1; min-width: 0; padding: 0 14px; }
+    .graph-status { align-items: center; background: var(--chrome); border-top: 1px solid var(--border); color: var(--text-muted); display: flex; font-size: 12px; gap: 18px; grid-column: 1 / -1; min-width: 0; padding: 0 14px; }
     .legend-item { align-items: center; display: inline-flex; gap: 6px; white-space: nowrap; }
-    .legend-dot { background: #777e89; border: 1px solid #a7acb5; border-radius: 50%; height: 7px; width: 7px; }
+    .legend-dot { background: var(--evidence-dot); border: 1px solid var(--graph-strong); border-radius: 50%; height: 7px; width: 7px; }
     .legend-dot.current { background: var(--accent); border-color: var(--accent-muted); }
-    .legend-dot.conflict { background: var(--danger); border-color: #ff9a9a; }
-    .legend-line { border-top: 1px solid #a7acb5; height: 0; width: 22px; }
+    .legend-dot.conflict { background: var(--danger); border-color: var(--legend-conflict); }
+    .legend-line { border-top: 1px solid var(--graph-strong); height: 0; width: 22px; }
     .legend-line.shared { border-top-style: dotted; }
     .graph-counts { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
 
     .live-bar { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 16px; justify-content: space-between; min-height: 64px; padding: 8px 16px; }
     .live-bar[hidden] { display: none; }
-    .live-status { font-size: 12px; margin: 0; }
-    .live-detail { color: var(--text-secondary); font-size: 11px; margin: 0; }
+    .live-status { font-size: 14px; margin: 0; }
+    .live-detail { color: var(--text-secondary); font-size: 13px; margin: 0; }
     .live-bar.stale .live-status { color: var(--warning); }
     .live-mode .app-shell { height: calc(100vh - var(--header-height) - 64px); }
     .live-bar .owner-action { white-space: nowrap; }
     .mobile-graph-list { display: none; }
     .mobile-topic { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); display: grid; gap: 10px; grid-template-columns: 26px minmax(0, 1fr) auto; min-height: 48px; padding: 0 14px; text-align: left; width: 100%; }
     .mobile-topic:hover, .mobile-topic.selected { background: var(--surface-raised); color: var(--text); }
-    .mobile-rank { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
-    .mobile-count { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .mobile-rank { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .mobile-count { color: var(--text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
     .hidden { display: none !important; }
 
+    .theme-toggle { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-secondary); font-size: 14px; height: 34px; padding: 0 12px; white-space: nowrap; }
+    .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+
+    .today { display: grid; gap: 22px; margin: 0 auto; max-width: 1160px; }
+    .today-hero { display: grid; gap: 8px; }
+    .today-hero h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; margin: 0; }
+    .today-hero h1.attention { color: var(--warning); }
+    .today-lede { color: var(--text-secondary); font-size: 17px; line-height: 1.55; margin: 0; max-width: 72ch; }
+    .today-freshness { align-items: center; color: var(--text-muted); display: flex; flex-wrap: wrap; font-size: 15px; gap: 8px; }
+    .today-freshness .sync-dot { height: 8px; width: 8px; }
+    .today-freshness.stale { color: var(--warning); }
+    .today-freshness.stale .sync-dot { background: var(--warning); }
+    .today-grid { align-items: start; display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #today-title:focus { outline: none; }
+    .today-item-title.as-link { background: transparent; border: 0; color: var(--text); cursor: pointer; padding: 0; text-align: left; }
+    .today-item-title.as-link:hover { color: var(--accent-muted); text-decoration: underline; text-underline-offset: 3px; }
+    .today-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; min-width: 0; padding: 20px 22px; }
+    .today-card.wide { grid-column: 1 / -1; }
+    .today-card.needs { border-color: var(--danger-soft); }
+    .today-card h2 { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; margin: 0 0 4px; }
+    .today-subheading { margin-top: 18px !important; }
+    .graph-arrow-head { fill: var(--graph-strong); }
+    .today-card .card-lede { color: var(--text-muted); font-size: 15px; line-height: 1.5; margin: 0 0 14px; }
+    .today-list { display: grid; list-style: none; margin: 0; padding: 0; }
+    .today-item { border-top: 1px solid var(--border); display: grid; gap: 4px; min-width: 0; padding: 12px 0; }
+    .today-item:first-child { border-top: 0; padding-top: 2px; }
+    .today-kicker { color: var(--accent-muted); font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+    .today-kicker.changed { color: var(--warning); }
+    .today-kicker.forgotten, .today-kicker.conflict { color: var(--danger); }
+    .today-item-title { font-size: 17px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+    .today-item-text { color: var(--text-secondary); font-size: 17px; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
+    .today-item-text.was { color: var(--text-muted); font-size: 15px; }
+    .today-item-meta { color: var(--text-muted); font-size: 14px; line-height: 1.5; }
+    .today-link { background: transparent; border: 0; color: var(--accent-muted); font-size: 15px; justify-self: start; min-height: 32px; padding: 4px 0; text-align: left; }
+    .today-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .today-numbers { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 0 0 12px; }
+    .today-number { color: var(--text-muted); font-size: 14px; }
+    .today-number strong { color: var(--text); display: block; font-size: 26px; font-variant-numeric: tabular-nums; font-weight: 650; line-height: 1.2; }
+    .today-empty { color: var(--text-secondary); font-size: 17px; line-height: 1.55; margin: 0; }
+    @media (max-width: 900px) { .today-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .today-hero h1 { font-size: 25px; } .today-card { padding: 16px; } .theme-toggle { padding: 0 8px; } }
+
     @media (max-width: 1050px) {
-      :root { --sidebar-width: 164px; }
-      .topbar { grid-template-columns: var(--sidebar-width) minmax(220px, 1fr) 170px auto; }
+      :root { --sidebar-width: 184px; }
+      .topbar { grid-template-columns: var(--sidebar-width) minmax(220px, 1fr) 170px auto auto; }
       .graph-shell { grid-template-columns: minmax(0, 1fr) 280px; }
       .graph-status { gap: 12px; }
       .legend-item:nth-of-type(2), .legend-item:nth-of-type(4) { display: none; }
@@ -358,7 +493,7 @@
 
     @media (max-width: 760px) {
       body { overflow: auto; }
-      .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; height: auto; min-height: 52px; padding: 8px 10px; }
+      .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto auto; height: auto; min-height: 52px; padding: 8px 10px; }
       .brand { border: 0; padding: 0 4px; }
       .top-filter { display: none; }
       .sync-state span:not(.sync-dot) { display: none; }
@@ -386,7 +521,7 @@
     }
 
     @media (max-width: 520px) {
-      .brand { font-size: 12px; }
+      .brand { font-size: 14px; }
       .key-hint { display: none; }
       .toolbar { grid-template-columns: 1fr; }
       .card-topline { display: block; }
@@ -401,7 +536,7 @@
 </head>
 <body>
   <!--
-  THESIS: MegaBrain Home is the Brain itself, not a dashboard about it; the graph replaces hero copy and summary cards.
+  THESIS (revised 8 Nov 2026 by owner decision): Home opens on Today, plain sentences about what the Brain knows, what changed, how agents use it and what needs the owner. The graph remains as Map.
   OWN-WORLD: Warm graphite surfaces, quiet hairlines, compact neutral type, violet selection, and coral conflict markers form a precise technical instrument.
   STORY: The owner sees the whole knowledge shape, selects a topic or memory, inspects current evidence and history, then opens immutable Markdown when needed.
   FIRST VIEWPORT: A 184px dim rail and 52px utility bar frame a dominant graph canvas with a 304px evidence inspector and compact status legend.
@@ -417,6 +552,7 @@
     </label>
     <select class="top-filter" id="filter-kind" aria-label="Filter by kind"><option value="">All knowledge</option></select>
     <div class="sync-state" id="sync-state" title="Synchronization status"><span class="sync-dot" aria-hidden="true"></span><span id="sync-label">Local state</span></div>
+    <button class="theme-toggle" id="theme-toggle" type="button">Light theme</button>
   </header>
 
   <section id="live-bar" class="live-bar" aria-label="Live Home status" hidden>
@@ -426,7 +562,8 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="Brain views">
       <nav class="nav" id="navigation">
-        <button class="nav-button active" data-view="overview"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2v7.3a.5.5 0 0 1-.5.5H12v-5H8v5H3.5a.5.5 0 0 1-.5-.5Z"></path></svg><span>Home</span></button>
+        <button class="nav-button active" data-view="today"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"></circle><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"></path></svg><span>Today</span></button>
+        <button class="nav-button" data-view="overview"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5 8 3.5l4 2 5-2v11l-5 2-4-2-5 2Z M8 3.5v11 M12 5.5v11"></path></svg><span>Map</span></button>
         <button class="nav-button" data-view="explore"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="15" cy="5" r="2"></circle><circle cx="13" cy="15" r="2"></circle><path d="m6.8 5.7 6.2-.5M6.2 7.6l5.6 5.8M14.6 7l-1.1 6"></path></svg><span>Explore</span><span class="nav-count" id="count-explore">0</span></button>
         <button class="nav-button" data-view="resources"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 2h8l4 4v12H4Z M12 2v5h4 M7 10h6 M7 13h6"></path></svg><span>Resources</span><span class="nav-count" id="count-resources">0</span></button>
         <button class="nav-button" data-view="review"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h12v14H4Z M7 7h6 M7 10h6 M7 13h3"></path></svg><span>Needs review</span><span class="nav-count" id="count-review">0</span></button>
@@ -461,11 +598,11 @@
     let DATA = __MEGABRAIN_DATA__;
     const isLive = DATA.live?.mode === "live";
     let liveAvailable = !isLive;
-    const state = { view: "overview", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", domain: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
+    const state = { view: "today", query: "", kind: "", importance: "", confidence: "", sensitivity: "", agent: "", date: "", domain: "", graphSelected: "", graphScale: 1, graphX: 0, graphY: 0 };
     const filterFields = [["filter-kind", "kind"], ["filter-importance", "importance"], ["filter-confidence", "confidence"], ["filter-sensitivity", "sensitivity"], ["filter-agent", "agent"], ["filter-date", "date"], ["filter-domain", "domain"]];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mobileGraph = window.matchMedia("(max-width: 760px)");
-    const titles = { overview: "Your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports", resources: "Canonical resources", review: "Knowledge that needs your review" };
+    const titles = { today: "Today", overview: "Map of your MegaBrain", explore: "Explore current knowledge", timeline: "Memory timeline", conflicts: "Conflicts", agents: "Registered agents", imports: "Import reports", resources: "Canonical resources", review: "Knowledge that needs your review" };
     const topicLayout = [[330, 320], [625, 240], [215, 610], [490, 640], [745, 590], [455, 125], [120, 385], [755, 390]];
     const workspace = document.getElementById("workspace");
     const pageChrome = document.getElementById("page-chrome");
@@ -621,7 +758,7 @@
         const aria = node.type === "topic" ? `${node.label}, ${node.count} ${node.count === 1 ? "memory" : "memories"}` : `${subjectLabel(node.memory.subject)}, ${label(node.memory.status)}`;
         return `<g class="graph-node ${escapeHtml(node.type)} ${memoryClasses} ${isSelected ? "selected" : ""} ${isAdjacent ? "adjacent" : ""} ${dimmed ? "dimmed" : ""}" data-graph-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" tabindex="${isSelected ? "0" : "-1"}" role="button" aria-pressed="${isSelected}" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><circle r="${radius}"></circle><text class="graph-label ${node.type === "memory" ? "memory-label" : ""}" x="${labelX}" y="${labelY}">${escapeHtml(node.label)}</text></g>`;
       }).join("");
-      return `<svg id="brain-graph" class="${model.nodes.length > 70 ? "dense-graph" : ""}" viewBox="0 0 900 820" role="group" aria-labelledby="graph-title graph-description"><title id="graph-title">MegaBrain knowledge graph</title><desc id="graph-description">Topics connect to memories through explicit tags. Arrows show supersession and coral lines show conflicts.</desc><defs><marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 8 4 0 8Z" fill="#a7acb5"></path></marker></defs><g id="graph-stage" transform="translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})"><g aria-hidden="true">${edges}</g><g>${nodes}</g></g></svg>`;
+      return `<svg id="brain-graph" class="${model.nodes.length > 70 ? "dense-graph" : ""}" viewBox="0 0 900 820" role="group" aria-labelledby="graph-title graph-description"><title id="graph-title">MegaBrain knowledge graph</title><desc id="graph-description">Topics connect to memories through explicit tags. Arrows show supersession and coral lines show conflicts.</desc><defs><marker id="graph-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="graph-arrow-head" d="M0 0 8 4 0 8Z"></path></marker></defs><g id="graph-stage" transform="translate(${state.graphX} ${state.graphY}) scale(${state.graphScale})"><g aria-hidden="true">${edges}</g><g>${nodes}</g></g></svg>`;
     }
 
     function mobileGraphMarkup(model) {
@@ -640,6 +777,85 @@
       content.className = "graph-shell";
       content.innerHTML = `<div class="graph-canvas" id="graph-viewport" role="region" aria-label="Knowledge graph">${graphMarkup(model)}<div class="mobile-graph-list">${mobileGraphMarkup(model)}</div>${graphControlsMarkup()}</div><aside class="graph-inspector" id="graph-inspector" aria-label="Selected knowledge">${graphInspector(model, selected)}</aside><div class="graph-status" aria-label="Graph legend"><span class="legend-item"><span class="legend-dot current"></span>Current</span><span class="legend-item"><span class="legend-dot"></span>Historical</span><span class="legend-item"><span class="legend-line"></span>Supersedes</span><span class="legend-item"><span class="legend-line shared"></span>Shared tag</span><span class="legend-item"><span class="legend-dot conflict"></span>Conflict</span><span class="graph-counts">${escapeHtml(graphRecordCount)} · ${escapeHtml(DATA.stats.subjects || 0)} subjects · ${escapeHtml(DATA.stats.conflicts)} ${DATA.stats.conflicts === 1 ? "conflict" : "conflicts"}</span></div>`;
       bindGraphControls();
+    }
+
+    function plural(count, word, many) { return `${count} ${count === 1 ? word : (many || `${word}s`)}`; }
+    function relativeTime(value) {
+      const time = new Date(value).getTime();
+      if (!value || Number.isNaN(time)) return "at an unknown time";
+      const minutes = Math.round((Date.now() - time) / 60000);
+      if (minutes < 1) return "just now";
+      if (minutes < 60) return `${minutes} min ago`;
+      const hours = Math.round(minutes / 60);
+      if (hours < 24) return `${hours} h ago`;
+      const days = Math.round(hours / 24);
+      return days === 1 ? "yesterday" : days < 45 ? `${days} days ago` : formatDate(value).split(",")[0];
+    }
+    function confidenceNote(memory) { return memory.confidence === "confirmed" ? "" : memory.confidence === "inferred" ? "an agent's inference" : "not yet verified"; }
+    function todayItem(kicker, kickerClass, title, text, meta, memoryId, extra = "") {
+      const heading = memoryId ? `<button class="today-item-title as-link" data-memory-id="${escapeHtml(memoryId)}" title="Open this memory">${escapeHtml(title)}</button>` : `<span class="today-item-title">${escapeHtml(title)}</span>`;
+      return `<li class="today-item"><span class="today-kicker ${kickerClass}">${escapeHtml(kicker)}</span>${heading}${text ? `<p class="today-item-text">${escapeHtml(text)}</p>` : ""}${extra}<span class="today-item-meta">${escapeHtml(meta)}</span></li>`;
+    }
+
+    function renderToday() {
+      const byId = Object.fromEntries(DATA.memories.map(memory => [memory.id, memory]));
+      const current = DATA.memories.filter(memory => memory.status === "current");
+      const freshness = DATA.freshness || {};
+      const activity = DATA.activity || { available: false, agents: [], totals_7d: { lookups: 0, found: 0, nothing_found: 0 }, top_memories: [] };
+      const usage = Object.fromEntries((activity.agents || []).map(agent => [agent.agent_id, agent]));
+      const conflicts = DATA.conflicts.filter(group => group.memory_ids.some(id => byId[id]?.status === "current"));
+      const review = DATA.review || [];
+      const stale = isLive ? Boolean(DATA.live?.stale) : Boolean(freshness.stale || DATA.sync?.stale);
+      const newest = freshness.newest_memory_at || DATA.memories[0]?.created_at;
+      const activeAgents = DATA.agents.filter(agent => (usage[agent.id]?.lookups_7d || 0) > 0).length;
+      const needsCount = conflicts.length + (review.length ? 1 : 0);
+      const headline = stale ? "Your MegaBrain may be out of date" : conflicts.length ? `${plural(conflicts.length, "conflict")} ${conflicts.length === 1 ? "needs" : "need"} you` : "Your MegaBrain is up to date";
+      const freshnessText = isLive ? `Live view · last synchronized ${relativeTime(DATA.live?.last_synced_at)}` : `Snapshot taken ${relativeTime(freshness.generated_at || DATA.generated_at)}${stale ? " · synchronization did not finish, so newer changes may be missing" : ""}`;
+      const lede = `${plural(current.length, "current memory", "current memories")}${activity.available ? ` · ${activeAgents} of ${plural(DATA.agents.length, "agent")} used it this week` : ""} · last change ${relativeTime(newest)}.`;
+
+      const needItems = conflicts.slice(0, 4).map(group => {
+        const claims = group.memory_ids.map(id => byId[id]).filter(memory => memory?.status === "current");
+        const extra = claims.map(memory => `<p class="today-item-text">“${escapeHtml(memory.summary)}” <span class="today-item-meta">(${escapeHtml(agentNames[memory.created_by] || "unknown agent")}, ${escapeHtml(relativeTime(memory.created_at))})</span></p>`).join("");
+        return `<li class="today-item"><span class="today-kicker conflict">Conflict</span><span class="today-item-title">${escapeHtml(`Your agents disagree about ${subjectLabel(claims[0]?.subject || group.subject)}`)}</span>${extra}<span class="today-item-meta">Tell any agent which claim is right. It will record a correction.</span><button class="today-link" data-today-view="conflicts">See both claims</button></li>`;
+      });
+      if (review.length) needItems.push(`<li class="today-item"><span class="today-kicker">Review</span><span class="today-item-title">${escapeHtml(plural(review.length, "item"))} could use a look</span><p class="today-item-text">Uncertain facts, possible duplicates and dates that may be out of date. These are reminders; nothing changes on its own.</p><button class="today-link" data-today-view="review">Open the review list</button></li>`);
+      const needs = `<section class="today-card ${conflicts.length ? "needs" : ""}" aria-labelledby="today-needs"><h2 id="today-needs">Needs you</h2><p class="card-lede">${needsCount ? "Decisions only you can make." : "Conflicts and review reminders appear here."}</p>${needItems.length ? `<ul class="today-list">${needItems.join("")}</ul>` : `<p class="today-empty">Nothing needs you right now.</p>`}</section>`;
+
+      let agentsBody;
+      if (!activity.available) {
+        agentsBody = `<p class="today-empty">Agent use appears here once your agents run a MegaBrain release with automatic recall.</p>`;
+      } else {
+        const totals = activity.totals_7d || { lookups: 0, found: 0, nothing_found: 0 };
+        const numbers = `<div class="today-numbers"><div class="today-number"><strong>${escapeHtml(totals.lookups)}</strong>lookups this week</div><div class="today-number"><strong>${escapeHtml(totals.found)}</strong>found something</div><div class="today-number"><strong>${escapeHtml(totals.nothing_found)}</strong>found nothing</div></div>`;
+        const rows = DATA.agents.map(agent => {
+          const stats = usage[agent.id];
+          const text = stats && stats.lookups_7d ? `Used ${plural(stats.lookups_7d, "time")} this week (${stats.lookups_24h} in the last day). Found something ${stats.found_7d} of ${stats.lookups_7d} times.` : "No use recorded this week.";
+          return `<li class="today-item"><span class="today-item-title">${escapeHtml(agent.display_name || label(agent.harness))}</span><p class="today-item-text">${escapeHtml(text)}</p><span class="today-item-meta">${escapeHtml(stats?.last_used_at ? `Last used ${relativeTime(stats.last_used_at)}` : "Not used recently")}</span></li>`;
+        }).join("");
+        const top = (activity.top_memories || []).map(item => byId[item.id] ? `<li class="today-item"><button class="today-item-title as-link" data-memory-id="${escapeHtml(item.id)}" title="Open this memory">${escapeHtml(subjectLabel(byId[item.id].subject))}</button><span class="today-item-meta">Recalled ${escapeHtml(plural(item.uses, "time"))} this week</span></li>` : "").join("");
+        agentsBody = `${numbers}<ul class="today-list">${rows || `<li class="today-item"><p class="today-item-text">No registered agents.</p></li>`}</ul>${top ? `<h2 class="today-subheading">Most recalled this week</h2><ul class="today-list">${top}</ul>` : ""}`;
+      }
+      const agents = `<section class="today-card" aria-labelledby="today-agents"><h2 id="today-agents">Your agents</h2><p class="card-lede">How your agents used MegaBrain. Counts only; your messages are never recorded.</p>${agentsBody}</section>`;
+
+      const twoWeeks = Date.now() - 14 * 86400000;
+      const recentItems = DATA.memories.filter(memory => new Date(memory.created_at).getTime() >= twoWeeks).slice(0, 8).map(memory => {
+        const who = agentNames[memory.created_by] || "an agent";
+        const note = confidenceNote(memory);
+        const meta = `${who} · ${relativeTime(memory.created_at)}${note ? ` · ${note}` : ""}`;
+        if (memory.kind === "tombstone") return todayItem("Forgotten", "forgotten", subjectLabel(memory.subject), "", meta, "");
+        const previous = (memory.supersedes || []).map(id => byId[id]).find(Boolean);
+        if (previous) return todayItem("Changed", "changed", subjectLabel(memory.subject), memory.summary, meta, memory.status === "current" ? memory.id : "", `<p class="today-item-text was">Before: “${escapeHtml(previous.summary)}”</p>`);
+        return todayItem("New", "", subjectLabel(memory.subject), memory.summary, meta, memory.status === "current" ? memory.id : "");
+      });
+      const recent = `<section class="today-card wide" aria-labelledby="today-recent"><h2 id="today-recent">Recently learned and changed</h2><p class="card-lede">The last two weeks, newest first.</p>${recentItems.length ? `<ul class="today-list">${recentItems.join("")}</ul>` : `<p class="today-empty">Nothing new in the last two weeks.${newest ? ` The last change was ${escapeHtml(relativeTime(newest))}.` : ""}</p>`}<button class="today-link" data-today-view="timeline">See the full timeline</button></section>`;
+
+      const rank = memory => (memory.importance === "always" ? 0 : memory.importance === "core" ? 1 : 2) * 10 + (["preference", "decision", "commitment", "project-state", "fact", "resource"].indexOf(memory.kind) + 1) + (memory.confidence === "confirmed" ? 0 : 5);
+      const known = current.slice().sort((a, b) => rank(a) - rank(b) || String(b.created_at).localeCompare(String(a.created_at))).slice(0, 8);
+      const knows = `<section class="today-card wide" aria-labelledby="today-knows"><h2 id="today-knows">What MegaBrain knows</h2><p class="card-lede">Your most important current knowledge: core items, preferences, decisions and commitments first.${isLive ? " Live Home shows general knowledge only." : ""}</p>${known.length ? `<ul class="today-list">${known.map(memory => todayItem(label(memory.kind), "", subjectLabel(memory.subject), memory.summary, `${agentNames[memory.created_by] || "an agent"} · ${relativeTime(memory.created_at)}${confidenceNote(memory) ? ` · ${confidenceNote(memory)}` : ""}`, memory.id)).join("")}</ul>` : `<p class="today-empty">Your first durable memory will appear here.</p>`}<button class="today-link" data-today-view="explore">Explore all ${escapeHtml(plural(current.length, "memory", "memories"))}</button></section>`;
+
+      content.className = "today";
+      content.innerHTML = `<header class="today-hero"><h1 id="today-title" tabindex="-1" class="${stale ? "attention" : ""}">${escapeHtml(headline)}</h1><p class="today-lede">${escapeHtml(lede)}</p><div class="today-freshness ${stale ? "stale" : ""}"><span class="sync-dot" aria-hidden="true"></span><span>${escapeHtml(freshnessText)}</span></div></header><div class="today-grid">${needs}${agents}${recent}${knows}</div>`;
+      content.querySelectorAll("[data-today-view]").forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.todayView)));
     }
 
     function renderTimeline() {
@@ -690,10 +906,16 @@
       panel.scrollIntoView({ block: "nearest", behavior: reducedMotion.matches ? "auto" : "smooth" });
     }
 
+    function agentUsage(agent) {
+      const stats = (DATA.activity?.agents || []).find(item => item.agent_id === agent.id);
+      if (!DATA.activity?.available) return "Registered. Usage appears once this agent runs a MegaBrain release with automatic recall.";
+      return stats?.last_used_at ? `Used ${plural(stats.lookups_7d, "time")} this week · last used ${relativeTime(stats.last_used_at)}` : "No use recorded in the last two weeks.";
+    }
+
     function renderAgents() {
       resultsMeta.textContent = `${DATA.agents.length} ${DATA.agents.length === 1 ? "agent" : "agents"}`;
       content.className = "agent-grid";
-      content.innerHTML = DATA.agents.length ? DATA.agents.map(agent => `<article class="agent-card"><h2 class="agent-name">${escapeHtml(agent.display_name)}</h2><div class="agent-detail">${escapeHtml(label(agent.harness))} · ${escapeHtml(shortId(agent.id))}</div><div class="agent-detail">${agent.private_policy ? "Private read policy configured. Scope and deny rules still apply." : "No private read policy configured."}</div><div class="agent-detail">Registered, not a live connectivity check. Ask this agent to run MegaBrain status.</div><div class="import-counts"><div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div><div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div></div></article>`).join("") : emptyState("No registered agents");
+      content.innerHTML = DATA.agents.length ? DATA.agents.map(agent => `<article class="agent-card"><h2 class="agent-name">${escapeHtml(agent.display_name)}</h2><div class="agent-detail">${escapeHtml(label(agent.harness))} · ${escapeHtml(shortId(agent.id))}</div><div class="agent-detail">${agent.private_policy ? "Private read policy configured. Scope and deny rules still apply." : "No private read policy configured."}</div><div class="agent-detail">${escapeHtml(agentUsage(agent))}</div><div class="import-counts"><div class="import-count"><strong>${escapeHtml(agent.contributions)}</strong>Contributions</div><div class="import-count"><strong>${escapeHtml(formatDate(agent.created_at).split(",")[0])}</strong>Registered</div></div></article>`).join("") : emptyState("No registered agents");
     }
 
     function renderImports() {
@@ -717,13 +939,15 @@
       document.getElementById("page-title").textContent = titles[state.view];
       document.querySelectorAll(".nav-button").forEach(button => { const active = button.dataset.view === state.view; button.classList.toggle("active", active); if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current"); });
       const overview = state.view === "overview";
+      const today = state.view === "today";
       const isMemoryView = ["explore", "timeline", "conflicts"].includes(state.view);
       workspace.classList.toggle("graph-mode", overview);
-      pageChrome.classList.toggle("hidden", overview);
+      pageChrome.classList.toggle("hidden", overview || today);
       toolbar.classList.toggle("hidden", !isMemoryView);
       document.getElementById("domain-filter").classList.toggle("hidden", !["explore", "timeline", "conflicts", "resources", "review"].includes(state.view));
       document.getElementById("filter-kind").disabled = !isMemoryView && !overview;
-      resultsMeta.classList.toggle("hidden", overview);
+      resultsMeta.classList.toggle("hidden", overview || today);
+      if (today) renderToday();
       if (overview) renderOverview();
       if (state.view === "explore") renderMemories(["current"], "No current memories");
       if (state.view === "timeline") renderTimeline();
@@ -744,8 +968,9 @@
     function focusDestination(memoryId) {
       requestAnimationFrame(() => {
         const card = memoryId ? document.querySelector(`[data-memory-card="${CSS.escape(memoryId)}"]`) : null;
-        const destination = card || document.getElementById("page-title");
+        const destination = card || (state.view === "today" ? document.getElementById("today-title") : document.getElementById("page-title"));
         destination.focus({ preventScroll: true });
+        if (!card && state.view === "today") { workspace.scrollTo(0, 0); window.scrollTo(0, 0); return; }
         destination.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: card ? "center" : "start" });
         if (!card) return;
         card.classList.add("targeted");
@@ -886,6 +1111,7 @@
 
     function applyLive(result) {
       const previous = DATA.snapshot_commit;
+      const previousActivity = JSON.stringify(DATA.activity || null);
       const wasAvailable = liveAvailable;
       liveAvailable = result.available;
       const info = result.live;
@@ -895,7 +1121,7 @@
       }
       DATA = { ...result.data, live: info };
       liveStatus(info);
-      if (wasAvailable && previous === DATA.snapshot_commit) return;
+      if (wasAvailable && previous === DATA.snapshot_commit && previousActivity === JSON.stringify(DATA.activity || null)) return;
       const focused = document.activeElement;
       const focusIndex = [...content.querySelectorAll("button, a, summary, [tabindex]")].indexOf(focused);
       const focusSignature = focused?.outerHTML;
@@ -946,8 +1172,27 @@
       pollLive();
     }
 
+    const themeToggle = document.getElementById("theme-toggle");
+    const systemLight = window.matchMedia("(prefers-color-scheme: light)");
+    function effectiveTheme() { return document.documentElement.dataset.theme || (systemLight.matches ? "light" : "dark"); }
+    function applyTheme(theme) {
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
+      const next = effectiveTheme() === "light" ? "dark" : "light";
+      themeToggle.textContent = next === "light" ? "Light theme" : "Dark theme";
+      themeToggle.setAttribute("aria-label", `Switch to the ${next} theme`);
+    }
+    let storedTheme = null;
+    try { storedTheme = localStorage.getItem("megabrain-theme"); } catch { storedTheme = null; }
+    applyTheme(storedTheme);
+    systemLight.addEventListener("change", () => applyTheme(document.documentElement.dataset.theme || null));
+    themeToggle.addEventListener("click", () => {
+      const next = effectiveTheme() === "light" ? "dark" : "light";
+      try { localStorage.setItem("megabrain-theme", next); } catch { /* Private windows may block storage; the choice still applies now. */ }
+      applyTheme(next);
+    });
+
     document.getElementById("navigation").addEventListener("click", event => { const button = event.target.closest("[data-view]"); if (button) navigateTo(button.dataset.view); });
-    document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; if (state.view === "overview" && state.query.trim()) state.view = "explore"; render(); });
+    document.getElementById("search").addEventListener("input", event => { state.query = event.target.value; if (["overview", "today"].includes(state.view) && state.query.trim()) state.view = "explore"; render(); });
     for (const [id, key] of filterFields) document.getElementById(id).addEventListener("change", event => { state[key] = event.target.value; render(); });
     document.addEventListener("keydown", event => {
       const target = event.target;

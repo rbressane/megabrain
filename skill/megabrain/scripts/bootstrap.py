@@ -245,7 +245,7 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
             if not (skill / relative).is_file():
                 raise BootstrapError("RUNTIME_INVALID", "The MegaBrain Live Home runtime is incomplete.")
     if semantic_version(version) >= (2, 6, 0):
-        for relative in ("scripts/recall.py", "scripts/integrations.py"):
+        for relative in ("scripts/recall.py", "scripts/integrations.py", "scripts/activity.py"):
             if not (skill / relative).is_file():
                 raise BootstrapError("RUNTIME_INVALID", "The MegaBrain automatic recall runtime is incomplete.")
     inventory_path = root / "release-files.json"

@@ -1,6 +1,6 @@
 ---
 name: "MegaBrain Home"
-description: "A compact, graph-first instrument for inspecting the shape, evidence, and provenance of a private Brain."
+description: "A readable home for a private Brain: Today answers whether it is working and what changed; Map, Explore and the evidence views keep the full shape and provenance."
 colors:
   canvas: "#0b0c0e"
   surface: "#111317"
@@ -19,25 +19,25 @@ colors:
 typography:
   headline:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "18px"
+    fontSize: "21px"
     fontWeight: 650
     lineHeight: 1.2
     letterSpacing: "-0.02em"
   title:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "14px"
+    fontSize: "16px"
     fontWeight: 650
     lineHeight: 1.25
     letterSpacing: "-0.01em"
   body:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "13px"
+    fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.58
     letterSpacing: "normal"
   label:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "10px"
+    fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.8
     letterSpacing: "normal"
@@ -129,7 +129,18 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Brain Itself"**
+**Creative North Star: "The Brain, Answered"** (revised 8 November 2026 by owner decision)
+
+Home opens on **Today**, which answers in plain sentences:
+- Is my Brain up to date?
+- What needs me?
+- How did my agents use it this week?
+- What was learned, changed or forgotten?
+- What does it know?
+
+The graph-first landing proved hard to read and process, so the graph now lives under **Map**. The principles below still govern Map, Explore and the evidence views. Type is one step larger everywhere, and Home follows the system light or dark theme with a viewer toggle. Light values are defined in `assets/browser.html` as theme tokens beside the dark ones, with the same roles.
+
+Earlier north star: "The Brain Itself"
 
 MegaBrain Home is direct visual access to the owner's knowledge, not a dashboard that summarizes it. The graph replaces hero copy, stat cards, and presentation framing: show the whole knowledge shape first, isolate direct relationships on selection, reveal evidence and history in the inspector, then provide a quiet path to immutable Markdown.
 
@@ -194,7 +205,7 @@ The palette is a warm graphite field with one cool violet signal, one coral exce
 - **Body** (`typography.body`): Search, navigation, memory summaries, evidence names, and the main reading layer. Long summaries stay near 78ch.
 - **Label** (`typography.label`): Metadata, counts, badges, ranks, legend labels, and snapshot notes. Use tabular numerals for counts and dates.
 
-**The Density Must Stay Legible Rule.** Compact type may reduce size only when hierarchy, contrast, and line height preserve scanning.
+**The Density Must Stay Legible Rule.** Body text is at least 15px and labels at least 12px. Today uses 17px reading text and 30px page headings. Compact type may shrink only when hierarchy, contrast and line height still allow scanning.
 
 ## Layout
 
@@ -204,7 +215,7 @@ At 1050px and below, the rail contracts to 164px and the inspector to 280px. At 
 
 The spacing rhythm is compact and incremental. Use 2–12px gaps inside controls and dense groups, 14–20px for record and inspector padding, and 24–28px for non-graph workspace framing. Structure should be felt through alignment and tone, not a grid of boxed cards.
 
-**The Whole Shape First Rule.** Desktop opens on the graph; evidence follows selection in the persistent inspector.
+**The Plain Answer First Rule.** Home opens on Today: sentences, counts and the owner's next decisions before structure. The whole shape stays one click away in Map, where evidence follows selection in the persistent inspector.
 
 ## Elevation & Depth
 
