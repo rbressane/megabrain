@@ -117,6 +117,33 @@ class FasterReadTests(unittest.TestCase):
         self.assertEqual(second["reason"], "validation_failed")
         self.assertEqual(validate.call_count, 2)
 
+    def test_prefetched_remote_is_integrated_without_moving_backwards(self) -> None:
+        self.network.clone("writer", "codex")
+        newer = self.network.remember("writer", subject="sync.prefetched", summary="A synthetic prefetched change.")
+        self.assertTrue(mb.prefetch_remote(self.clone, 10))
+        self.assertTrue(mb.sync_repo(self.clone, prefetched=True)["synced"])
+        self.assertTrue(any(newer["memory_id"] in path.name for path in (self.clone / "brain" / "memories").rglob("*.md")))
+        stale = run(["git", "rev-parse", "HEAD~1"], self.clone).stdout.strip()
+        run(["git", "update-ref", mb.PREFETCH_REF, stale], self.clone)
+        before = run(["git", "rev-parse", "origin/main"], self.clone).stdout.strip()
+        self.assertTrue(mb.sync_repo(self.clone, prefetched=True)["synced"])
+        self.assertEqual(run(["git", "rev-parse", "origin/main"], self.clone).stdout.strip(), before)
+
+    def test_failed_prefetch_never_touches_the_network_under_the_lock(self) -> None:
+        result, calls = self.git_commands(mb.sync_repo, self.clone, prefetched=False)
+        self.assertEqual(result["reason"], "remote_unavailable")
+        self.assertFalse(any(command[:2] in (["git", "fetch"], ["git", "push"]) for command in calls))
+
+    def test_pending_upload_can_be_left_for_a_later_sync(self) -> None:
+        remote = run(["git", "remote", "get-url", "origin"], self.clone).stdout.strip()
+        run(["git", "remote", "set-url", "origin", str(self.network.root / "missing.git")], self.clone)
+        self.network.remember("agent", subject="sync.later", summary="A synthetic save waits for a later upload.")
+        run(["git", "remote", "set-url", "origin", remote], self.clone)
+        result, calls = self.git_commands(mb.sync_repo, self.clone, push_pending=False)
+        self.assertEqual(result["reason"], "upload_pending")
+        self.assertFalse(any(command[:2] == ["git", "push"] for command in calls))
+        self.assertTrue(mb.pending_local_commits(self.clone))
+
     def test_successful_sync_records_freshness(self) -> None:
         mb.sync_repo(self.clone)
         age = mb.sync_age_seconds(self.clone)
@@ -281,6 +308,25 @@ class AutomaticRecallHookTests(unittest.TestCase):
         self.assertEqual(status["automatic_recall"]["hooks"], "installed")
         self.assertEqual(status["automatic_recall"]["automatic_lookups_7d"], 2)
 
+    def test_hooks_never_push_inline_and_hand_uploads_to_the_background(self) -> None:
+        remote = run(["git", "remote", "get-url", "origin"], self.clone).stdout.strip()
+        run(["git", "remote", "set-url", "origin", str(self.network.root / "missing.git")], self.clone)
+        self.network.remember("agent", subject="work.reporting_owner", summary="Synthetic weekly reports are owned by the editor.", tags=["reporting"])
+        run(["git", "remote", "set-url", "origin", remote], self.clone)
+        set_sync_age(self.clone, 3600)
+        output, _ = hook(self.network, "agent", "prompt", {"prompt": "Who owns the weekly reports?"})
+        self.assertIn("local saves still uploading", output["systemMessage"])
+        self.assertTrue((self.clone / ".megabrain" / "refresh.json").exists())
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and mb.pending_local_commits(self.clone):
+            time.sleep(0.2)
+        self.assertFalse(mb.pending_local_commits(self.clone))
+
+    def test_activity_hides_private_subjects_without_trusted_context(self) -> None:
+        hook(self.network, "agent", "prompt", {"prompt": "How should the weekly reports be structured?"})
+        untrusted = recall.summarize(mb, self.clone, 7, None)
+        self.assertEqual(untrusted["top_memories"][0]["subject"], "private memory")
+
     def test_activity_keeps_three_months(self) -> None:
         directory = self.clone / ".megabrain" / "activity"
         directory.mkdir(parents=True, exist_ok=True)
@@ -316,7 +362,7 @@ class IntegrationTests(unittest.TestCase):
         prompt_groups = value["hooks"]["UserPromptSubmit"]
         self.assertEqual(prompt_groups[0], {"hooks": [foreign]})
         self.assertEqual(len(prompt_groups), 2)
-        self.assertTrue(prompt_groups[1]["hooks"][0]["command"].endswith("megabrain.py hook prompt"))
+        self.assertIn("megabrain.py hook prompt", prompt_groups[1]["hooks"][0]["command"])
         self.assertEqual(integrations.hook_state(self.home, "claude"), "installed")
 
     def test_remove_strips_only_megabrain_hooks(self) -> None:
@@ -349,6 +395,53 @@ class IntegrationTests(unittest.TestCase):
         integrations.install_hooks(self.home, "claude")
         self.assertTrue(link.is_symlink())
         self.assertIn("UserPromptSubmit", json.loads(dotfiles.read_text(encoding="utf-8"))["hooks"])
+
+    def test_hook_command_never_blocks_a_message(self) -> None:
+        missing = self.home / ".claude" / "skills" / "megabrain" / "scripts" / "megabrain.py"
+        for argument in ("prompt", "session-start"):
+            completed = subprocess.run(["sh", "-c", integrations.hook_command(missing, argument)], capture_output=True, text=True)
+            self.assertEqual((completed.returncode, completed.stdout), (0, ""))
+        old_runtime = self.home / "old" / "skills" / "megabrain" / "scripts" / "megabrain.py"
+        old_runtime.parent.mkdir(parents=True)
+        old_runtime.write_text("import sys\nsys.stderr.write('invalid choice')\nsys.exit(2)\n", encoding="utf-8")
+        completed = subprocess.run(["sh", "-c", integrations.hook_command(old_runtime, "prompt")], capture_output=True, text=True)
+        self.assertEqual((completed.returncode, completed.stdout), (0, ""))
+
+    def test_unwritable_settings_are_reported_and_retried_later(self) -> None:
+        directory = self.home / ".claude"
+        directory.mkdir()
+        (directory / "settings.json").write_text("{ not json", encoding="utf-8")
+        config = self.home / ".megabrain" / "config.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({"schema": "megabrain.user.v1", "clones": {"claude": "/synthetic/clone"}}), encoding="utf-8")
+        first = integrations.ensure_current(self.home, "claude")
+        self.assertEqual(first["hooks"], "settings_invalid")
+        self.assertIsNone(integrations.ensure_current(self.home, "claude"))
+        (directory / "settings.json").write_text("{}", encoding="utf-8")
+        os.chmod(directory, 0o500)
+        try:
+            blocked = integrations.ensure_current(self.home, "claude")
+            self.assertEqual(blocked["hooks"], "settings_unwritable")
+            self.assertIn("cannot be written", blocked["notice"])
+            self.assertEqual((directory / "settings.json").read_text(encoding="utf-8"), "{}")
+        finally:
+            os.chmod(directory, 0o700)
+        fixed = integrations.ensure_current(self.home, "claude")
+        self.assertEqual(fixed["hooks"], "installed")
+        self.assertEqual(integrations.hook_state(self.home, "claude"), "installed")
+
+    def test_conflict_instruction_and_both_claims_survive_the_budget(self) -> None:
+        def memory(index: int, conflict: bool = False) -> dict:
+            return {"kind": "memory", "citation": {"memory_id": f"m{index}"}, "title": "t" * 80,
+                    "excerpt": "e" * 280, "confidence": "confirmed", "created_at": "2026-01-01T00:00:00Z", "conflict": conflict}
+        items = [memory(index) for index in range(5)] + [memory(index, True) for index in range(5, 9)]
+        groups = [{"subject": "person timezone", "memory_ids": ["m5", "m6", "m7", "m8"]}]
+        lines, included = recall.render(items, groups, recall.CONTEXT_CHARACTERS)
+        text = "\n".join(lines)
+        self.assertTrue(lines[0].startswith("- Conflict on person timezone"))
+        for memory_id in ("m5", "m6", "m7", "m8"):
+            self.assertIn(f"memory {memory_id} ", text)
+        self.assertEqual(len(included), len(lines) - 1)
 
     def test_codex_hooks_need_owner_trust_and_are_removed_cleanly(self) -> None:
         result = integrations.install_hooks(self.home, "codex")

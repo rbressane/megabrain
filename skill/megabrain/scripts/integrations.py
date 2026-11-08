@@ -37,6 +37,8 @@ HOOK_EVENTS = (
     ("UserPromptSubmit", "prompt", 20, "Checking MegaBrain"),
 )
 HOOK_SIGNATURE = re.compile(r"skills/megabrain/scripts/megabrain\.py['\"]?\s+hook\s+(?:session-start|prompt)\b")
+# States worth retrying on a later read once the owner fixes the settings file.
+RETRYABLE_STATES = {"settings_invalid", "settings_unwritable"}
 
 
 def helper_path(home: Path, harness: str) -> Path:
@@ -81,6 +83,8 @@ def replace_block(path: Path, block: str | None) -> None:
     text = pattern.sub("\n", text).strip()
     if block:
         text = f"{text}\n\n{block}".strip()
+    if path.exists() and text and path.read_text(encoding="utf-8") == text + "\n":
+        return
     if text:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text + "\n", encoding="utf-8")
@@ -164,7 +168,14 @@ def _without_megabrain(settings: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def hook_command(helper: Path, argument: str) -> str:
-    return f"python3 {shlex.quote(str(helper))} hook {argument}"
+    """A hook that can never block the agent.
+
+    Claude Code treats exit code 2 from a prompt hook as "block this message".
+    Python exits 2 when the script is missing, and an older runtime exits 2 on
+    an unknown command, so a missing helper or a rollback must exit 0 instead.
+    """
+    quoted = shlex.quote(str(helper))
+    return f"[ -f {quoted} ] && python3 {quoted} hook {argument} || true"
 
 
 def install_hooks(home: Path, harness: str) -> dict[str, Any]:
@@ -185,7 +196,10 @@ def install_hooks(home: Path, harness: str) -> dict[str, Any]:
         hooks.setdefault(event, []).append({"hooks": [handler]})
     changed = updated != settings
     if changed:
-        _write(path, updated)
+        try:
+            _write(path, updated)
+        except OSError:
+            return {"hooks": "settings_unwritable", "settings_file": f"~/{relative}"}
     return {
         "hooks": "installed",
         "changed": changed,
@@ -209,10 +223,13 @@ def remove_hooks(home: Path, harness: str) -> dict[str, Any]:
         del updated["hooks"]
     if updated == settings:
         return {"hooks": "removed", "changed": False}
-    if harness == "codex" and not updated and not path.is_symlink():
-        path.unlink()
-    else:
-        _write(path, updated)
+    try:
+        if harness == "codex" and not updated and not path.is_symlink():
+            path.unlink()
+        else:
+            _write(path, updated)
+    except OSError:
+        return {"hooks": "settings_unwritable", "settings_file": f"~/{relative}"}
     return {"hooks": "removed", "changed": True}
 
 
@@ -228,7 +245,7 @@ def hook_state(home: Path, harness: str | None) -> str:
     for event, argument, *_ in HOOK_EVENTS:
         groups = hooks.get(event) if isinstance(hooks.get(event), list) else []
         if not any(
-            _ours(handler) and helper in handler["command"] and handler["command"].endswith(f" hook {argument}")
+            _ours(handler) and helper in handler["command"] and f" hook {argument}" in handler["command"]
             for group in groups if isinstance(group, dict) and isinstance(group.get("hooks"), list)
             for handler in group["hooks"]
         ):
@@ -266,6 +283,9 @@ def notice(harness: str, result: dict[str, Any]) -> str | None:
     if state == "settings_invalid":
         return (f"MegaBrain could not turn on automatic recall because {result.get('settings_file')} is not valid "
                 "JSON. The file was left unchanged.")
+    if state == "settings_unwritable":
+        return (f"MegaBrain could not turn on automatic recall because {result.get('settings_file')} cannot be "
+                "written. Nothing was changed.")
     return None
 
 
@@ -284,7 +304,10 @@ def ensure_current(home: Path, harness: str) -> dict[str, Any] | None:
     if not isinstance(config, dict) or not config.get("clones", {}).get(harness):
         return None
     record = config.get("integrations", {}).get(harness) if isinstance(config.get("integrations"), dict) else None
-    if isinstance(record, dict) and record.get("version") == INTEGRATION_VERSION:
+    if (
+        isinstance(record, dict) and record.get("version") == INTEGRATION_VERSION
+        and record.get("hooks") not in RETRYABLE_STATES
+    ):
         return None
     try:
         with operations.lock(home, name="runtime", timeout=0):
@@ -301,6 +324,11 @@ def ensure_current(home: Path, harness: str) -> dict[str, Any] | None:
                 result = {"hooks": "removed_by_owner", "changed": False}
             else:
                 result = apply(home, harness)
+            if (
+                isinstance(previous, dict) and previous.get("version") == INTEGRATION_VERSION
+                and previous_hooks == result["hooks"]
+            ):
+                return None  # A retry that changed nothing: no write, no repeated notice.
             integrations = config.get("integrations") if isinstance(config.get("integrations"), dict) else {}
             integrations[harness] = {"version": INTEGRATION_VERSION, "hooks": result["hooks"]}
             config["integrations"] = integrations

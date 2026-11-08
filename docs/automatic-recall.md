@@ -14,7 +14,7 @@ MegaBrain: nothing relevant
 | Codex | Hooks in `~/.codex/hooks.json` | Open `/hooks` in Codex once and trust MegaBrain's two hooks. Codex skips new or changed hooks until the owner trusts them. |
 | Hermes | Not available | Keeps instruction-driven retrieval. |
 
-Setup and connect install the hooks. An existing connection receives them on its first ordinary read after updating to a release that includes automatic recall, and reports a one-time `automatic_recall_update.notice`. Disconnect removes only MegaBrain's entries. Other settings and hooks are preserved. A settings file that is not valid JSON is left untouched and reported. A linked settings file is edited in place, keeping the link.
+Setup and connect install the hooks. An existing connection receives them on its first ordinary read after updating to a release that includes automatic recall, and reports a one-time `automatic_recall_update.notice`. Disconnect removes only MegaBrain's entries. Other settings and hooks are preserved. A settings file that is not valid JSON, or that cannot be written, is left untouched and reported. MegaBrain tries again on a later read once it is fixed. A linked settings file is edited in place, keeping the link.
 
 ## What the hooks do
 
@@ -33,7 +33,7 @@ The hooks skip:
 - short acknowledgements such as "ok" or "go", and slash commands;
 - any message that looks like it contains a secret. The receipt reports the skip and nothing is recorded.
 
-A hook never blocks the agent's turn. On any failure it reports `MegaBrain: unavailable this turn` and the conversation continues.
+A hook never blocks the agent's turn. On any failure it reports `MegaBrain: unavailable this turn` and the conversation continues. The installed command exits successfully even when the helper is missing or an older runtime doesn't recognize it, because Claude Code treats one specific failure code as "block this message".
 
 ## Freshness
 
@@ -48,7 +48,7 @@ Agents keep writing exactly as before: every save is pushed immediately. Explici
 
 Session start always synchronizes. An agent can therefore miss something another agent saved in the last few minutes of an active conversation. The receipt shows the local copy's age whenever it is older than two minutes. Ask the agent to search MegaBrain to synchronize immediately.
 
-Network fetches made by hooks are bounded to a few seconds; local Git operations are never interrupted. Only one background refresh starts per 30 seconds.
+Hooks download from the remote before taking the Brain lock, bounded to a few seconds, and only then integrate the result locally. A slow network therefore never makes another session or a save wait, and local Git operations are never interrupted. Hooks never upload inline. When a save is still waiting to upload, the receipt says so and a background refresh sends it. At most one background refresh starts every 30 seconds.
 
 ## Activity and "is it working?"
 

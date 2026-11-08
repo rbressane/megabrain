@@ -188,13 +188,17 @@ def lookup(
     limit: int,
     synchronize: bool,
 ) -> dict[str, Any]:
+    # Network time happens before the Brain lock, and hooks never push inline, so
+    # a slow remote cannot make other sessions or writes wait.
+    prefetched = mb.prefetch_remote(root, FETCH_BUDGET_SECONDS) if synchronize else None
     with operations.lock(root, timeout=LOCK_WAIT_SECONDS):
         return mb.command_search(
             root,
             {"query": query, "limit": limit},
             trusted_context=trusted,
             synchronize=synchronize,
-            fetch_timeout=FETCH_BUDGET_SECONDS,
+            prefetched=prefetched,
+            push_pending=False,
         )
 
 
@@ -255,14 +259,26 @@ def item_line(item: dict[str, Any]) -> str:
     )
 
 
-def bounded_lines(lines: list[str], budget: int) -> list[str]:
-    kept, used = [], 0
-    for line in lines:
+def render(items: list[dict[str, Any]], groups: list[dict[str, Any]], budget: int) -> tuple[list[str], list[dict[str, Any]]]:
+    """Lay out recalled items within a budget, never dropping either side of a conflict.
+
+    Conflict instructions and every conflicting claim come first and are always
+    kept (conflict expansion is already bounded); other items fill what remains.
+    """
+    conflicted = {memory_id for group in groups for memory_id in group.get("memory_ids", [])}
+    first = [item for item in items if item.get("citation", {}).get("memory_id") in conflicted]
+    rest = [item for item in items if item.get("citation", {}).get("memory_id") not in conflicted]
+    lines = conflict_lines(groups) + [item_line(item) for item in first]
+    included = list(first)
+    used = sum(len(line) + 1 for line in lines)
+    for item in rest:
+        line = item_line(item)
         if used + len(line) + 1 > budget:
             break
-        kept.append(line)
+        lines.append(line)
+        included.append(item)
         used += len(line) + 1
-    return kept
+    return lines, included
 
 
 def conflict_lines(groups: list[dict[str, Any]]) -> list[str]:
@@ -282,6 +298,8 @@ def freshness(sync: dict[str, Any], age: float | None) -> tuple[str, str]:
         return "local", "" if age is not None and age <= 2 * FRESH_SECONDS else (
             f" · local copy {duration(age)} old" if age is not None else " · local copy"
         )
+    if reason == "upload_pending":
+        return "synced", " · local saves still uploading"
     if reason == "remote_unavailable":
         return "offline", " · offline, using local copy" + (f" from {duration(age)} ago" if age is not None else "")
     if reason == "dirty_worktree":
@@ -329,15 +347,16 @@ def prompt_hook(
     synchronize = age is None or age > REFRESH_SECONDS
     result = lookup(mb, root, query, trusted, limit=PROMPT_RESULTS * 3, synchronize=synchronize)
     sync = result.get("sync", {})
-    if sync.get("synced"):
+    if sync.get("synced") or sync.get("reason") == "upload_pending":
         age = 0.0
-    elif not synchronize and age is not None and age > FRESH_SECONDS:
+    if sync.get("reason") == "upload_pending" or (not synchronize and age is not None and age > FRESH_SECONDS):
         spawn_refresh(root, helper)
     mode, suffix = freshness(sync, age)
     evidence = result.get("evidence", [])
-    items, groups = with_conflict_companions(
+    candidates, groups = with_conflict_companions(
         relevant(evidence, include_always=False, limit=PROMPT_RESULTS), evidence, result.get("conflicts", {})
     )
+    lines, items = render(candidates, groups, CONTEXT_CHARACTERS)
     memories, resources = evidence_ids(items)
     record_activity(root, {
         "event": "prompt", "trigger": "automatic", "agent": invoked_harness(helper), "mode": mode,
@@ -345,7 +364,6 @@ def prompt_hook(
         "duration_ms": round((time.perf_counter() - started) * 1000),
     })
     if items:
-        lines = bounded_lines([item_line(item) for item in items] + conflict_lines(groups), CONTEXT_CHARACTERS)
         context = "\n".join([
             f"MegaBrain recall for this message, from the owner's private memory. {INSTRUCTION_BOUNDARY} "
             "Cite memory IDs when you rely on them.",
@@ -399,18 +417,23 @@ def session_hook(
         result = lookup(mb, root, project, trusted, limit=SESSION_RESULTS * 2, synchronize=True)
         sync = result.get("sync", {})
         evidence = result.get("evidence", [])
-        items, groups = with_conflict_companions(
+        candidates, groups = with_conflict_companions(
             relevant(evidence, include_always=True, limit=SESSION_RESULTS), evidence, result.get("conflicts", {})
         )
+        lines, items = render(candidates, groups, CONTEXT_CHARACTERS)
     else:
+        lines = []
         compatibility = mb.require_compatible_runtime(root, writing=False)
+        prefetched = mb.prefetch_remote(root, FETCH_BUDGET_SECONDS)
         with operations.lock(root, timeout=LOCK_WAIT_SECONDS):
             sync = mb.sync_repo(
-                root, allow_push=mb.runtime_can_write(compatibility), fetch_timeout=FETCH_BUDGET_SECONDS
+                root, allow_push=mb.runtime_can_write(compatibility), prefetched=prefetched, push_pending=False,
             )
         if sync.get("reason") == "validation_failed":
             raise mb.BrainError("BRAIN_INVALID", "The local brain failed validation")
-    age = 0.0 if sync.get("synced") else mb.sync_age_seconds(root)
+    if sync.get("reason") == "upload_pending":
+        spawn_refresh(root, helper)
+    age = 0.0 if sync.get("synced") or sync.get("reason") == "upload_pending" else mb.sync_age_seconds(root)
     mode, suffix = freshness(sync, age)
     counts = brain_counts(mb, root, allow_rebuild=sync.get("reason") != "dirty_worktree")
     memories, resources = evidence_ids(items)
@@ -429,9 +452,7 @@ def session_hook(
     ]
     if items:
         context_lines.append(f"Briefing for {clean(project, 60)}:")
-        context_lines.extend(bounded_lines(
-            [item_line(item) for item in items] + conflict_lines(groups), CONTEXT_CHARACTERS
-        ))
+        context_lines.extend(lines)
     status = "MegaBrain: connected" + (" · synced" if mode == "synced" else "") + suffix
     if counts:
         status += f" · {counts['memories']} memories"
@@ -461,7 +482,7 @@ def spawn_refresh(root: Path, helper: Path) -> bool:
     try:
         operations.atomic_write(marker, json.dumps({"started": now}))
         subprocess.Popen(  # noqa: S603 - fixed argument list, no shell.
-            [sys.executable, str(helper), "sync", "--fetch-timeout", str(int(FETCH_BUDGET_SECONDS * 2))],
+            [sys.executable, str(helper), "sync", "--prefetch-timeout", str(int(FETCH_BUDGET_SECONDS * 2))],
             cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True, close_fds=True,
         )
@@ -550,7 +571,10 @@ def summarize(
         record = mb.indexed_record(root, memory_id)
         if record is None:
             label = "no longer current"
-        elif record.meta.get("sensitivity", "general") == "general" or trusted is not None:
+        elif mb.memory_authorized(root, record, 1, trusted):
+            # The owner is asking about these recalled memories, which supplies
+            # relevance; the current read policy still decides, so a revoked
+            # policy hides private subjects again.
             label = str(record.meta.get("subject"))
         else:
             label = "private memory"

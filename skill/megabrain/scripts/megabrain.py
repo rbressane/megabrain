@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import functools
 import hashlib
 import json
@@ -828,13 +827,42 @@ def has_remote(root: Path) -> bool:
     return run(["git", "remote", "get-url", "origin"], root).returncode == 0
 
 
-def rebase_remote(root: Path, *, fetch_timeout: float | None = None) -> tuple[bool, str | None]:
-    # Only the network fetch is bounded. A deadline must never interrupt a local
-    # rebase or its abort, which could leave the managed clone mid-operation.
-    with operations.deadline(fetch_timeout) if fetch_timeout else contextlib.nullcontext():
-        fetched = run(["git", "fetch", "origin", "main"], root)
+def rebase_remote(root: Path) -> tuple[bool, str | None]:
+    fetched = run(["git", "fetch", "origin", "main"], root)
     if fetched.returncode != 0:
         return False, "remote_unavailable"
+    rebased = run(["git", "rebase", "origin/main"], root)
+    if rebased.returncode != 0:
+        run(["git", "rebase", "--abort"], root)
+        return False, "rebase_conflict"
+    return True, None
+
+
+PREFETCH_REF = "refs/megabrain/prefetch/main"
+
+
+def prefetch_remote(root: Path, timeout: float) -> bool:
+    """Download the remote's main branch without holding the Brain lock.
+
+    Only objects and a private ref are written, so a slow network never blocks
+    other operations on this clone. The bounded process is the fetch alone; local
+    integration happens later under the lock.
+    """
+    with operations.deadline(timeout):
+        fetched = run(["git", "fetch", "--no-write-fetch-head", "origin", f"+refs/heads/main:{PREFETCH_REF}"], root)
+    return fetched.returncode == 0
+
+
+def rebase_prefetched(root: Path) -> tuple[bool, str | None]:
+    """Integrate a prefetched remote state locally. Never moves origin/main backwards."""
+    tracked = run(["git", "rev-parse", "--verify", "refs/remotes/origin/main"], root)
+    if tracked.returncode != 0 or run(
+        ["git", "merge-base", "--is-ancestor", "refs/remotes/origin/main", PREFETCH_REF], root
+    ).returncode == 0:
+        if run(["git", "update-ref", "refs/remotes/origin/main", PREFETCH_REF], root).returncode != 0:
+            return False, "remote_unavailable"
+    elif run(["git", "merge-base", "--is-ancestor", PREFETCH_REF, "refs/remotes/origin/main"], root).returncode != 0:
+        return False, "remote_unavailable"  # Diverged: leave it to an ordinary synchronization.
     rebased = run(["git", "rebase", "origin/main"], root)
     if rebased.returncode != 0:
         run(["git", "rebase", "--abort"], root)
@@ -941,7 +969,19 @@ def local_sync_state(root: Path) -> dict[str, Any]:
 
 
 @operations.locked
-def sync_repo(root: Path, *, allow_push: bool = True, fetch_timeout: float | None = None) -> dict[str, Any]:
+def sync_repo(
+    root: Path,
+    *,
+    allow_push: bool = True,
+    prefetched: bool | None = None,
+    push_pending: bool = True,
+) -> dict[str, Any]:
+    """Synchronize the managed clone.
+
+    `prefetched=None` fetches here. True integrates a `prefetch_remote` result and
+    False reports the remote unavailable, so callers can keep network time outside
+    the Brain lock. `push_pending=False` leaves local commits for a later sync.
+    """
     if not is_git_repo(root):
         return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
     dirty = changed_files(root)
@@ -952,7 +992,12 @@ def sync_repo(root: Path, *, allow_push: bool = True, fetch_timeout: float | Non
     blocked = operations.outgoing_guard(root, detect_secret)
     if blocked:
         return {"synced": False, "stale": True, "reason": "validation_failed", "guard": blocked}
-    rebased, reason = rebase_remote(root, fetch_timeout=fetch_timeout)
+    if prefetched is None:
+        rebased, reason = rebase_remote(root)
+    elif prefetched:
+        rebased, reason = rebase_prefetched(root)
+    else:
+        rebased, reason = False, "remote_unavailable"
     if not rebased:
         if reason == "remote_unavailable":
             validation = validate_committed(root)
@@ -983,6 +1028,9 @@ def sync_repo(root: Path, *, allow_push: bool = True, fetch_timeout: float | Non
             "reason": "runtime_update_required" if pending else None,
             "pending_local_commits": pending,
         }
+    if pending and not push_pending:
+        record_sync(root)
+        return {"synced": False, "stale": False, "reason": "upload_pending", "pending_local_commits": True}
     if pending:
         # Push only when there is something to send: a no-op push costs a full
         # network round trip on every read.
@@ -1578,7 +1626,8 @@ def command_search(
     *,
     trusted_context: dict[str, Any] | None = None,
     synchronize: bool = True,
-    fetch_timeout: float | None = None,
+    prefetched: bool | None = None,
+    push_pending: bool = True,
 ) -> dict[str, Any]:
     """Return bounded, citation-ready evidence across memories and resource sections."""
     import canonical
@@ -1611,7 +1660,9 @@ def command_search(
     task_tokens = tokens(task)
     sync_started = time.perf_counter()
     sync = (
-        sync_repo(root, allow_push=runtime_can_write(compatibility), fetch_timeout=fetch_timeout)
+        sync_repo(
+            root, allow_push=runtime_can_write(compatibility), prefetched=prefetched, push_pending=push_pending,
+        )
         if synchronize else local_sync_state(root)
     )
     sync_elapsed = time.perf_counter() - sync_started
@@ -2993,7 +3044,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="megabrain", description="Local-first Markdown brain helper")
     subparsers = parser.add_subparsers(dest="command", required=True)
     sync = subparsers.add_parser("sync")
-    sync.add_argument("--fetch-timeout", type=float, default=None, help=argparse.SUPPRESS)
+    sync.add_argument("--prefetch-timeout", type=float, default=None, help=argparse.SUPPRESS)
     context = subparsers.add_parser("context")
     context.add_argument("--stdin", action="store_true", help="read task JSON from stdin")
     context.add_argument("--limit", type=int, default=12)
@@ -3079,8 +3130,11 @@ def execute_command(args: argparse.Namespace) -> int:
         started = time.perf_counter()
         if args.command == "sync":
             require_compatible_runtime(root, writing=True)
-            fetch_timeout = args.fetch_timeout if args.fetch_timeout and 0 < args.fetch_timeout <= 60 else None
-            sync = sync_repo(root, fetch_timeout=fetch_timeout)
+            prefetched = None
+            if args.prefetch_timeout and 0 < args.prefetch_timeout <= 60:
+                # Background refresh: network time stays outside the Brain lock.
+                prefetched = prefetch_remote(root, args.prefetch_timeout)
+            sync = sync_repo(root, prefetched=prefetched)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}
         elif args.command == "context":
             if not 1 <= args.limit <= 100:

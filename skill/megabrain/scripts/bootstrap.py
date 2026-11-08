@@ -1515,9 +1515,10 @@ def _disconnect(args: argparse.Namespace) -> dict[str, Any]:
     link_rel, _ = HARNESS_PATHS[harness]
     link = home / link_rel
     target = current_runtime(home) / "skill" / "megabrain"
+    # Remove hooks before the skill link they call, so no hook outlives its helper.
+    automatic_recall = integrations.remove(home, harness)
     if link.is_symlink() and link.resolve() == target.resolve():
         link.unlink()
-    automatic_recall = integrations.remove(home, harness)
     config.setdefault("clones", {}).pop(harness, None)
     if isinstance(config.get("integrations"), dict):
         config["integrations"].pop(harness, None)
