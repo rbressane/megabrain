@@ -149,7 +149,7 @@ def main():
             cdp.call("Runtime.enable")
             cdp.call("Page.navigate", url=Path(browsed["path"]).as_uri())
             deadline = time.monotonic() + 10
-            while not cdp.evaluate("document.readyState === 'complete' && !!document.querySelector('#today-title')"):
+            while not cdp.evaluate("document.readyState === 'complete' && document.fonts.status === 'loaded' && !!document.querySelector('#today-title')"):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Synthetic Home did not render")
                 time.sleep(0.1)

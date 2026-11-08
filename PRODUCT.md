@@ -46,7 +46,7 @@ MegaBrain Home is a generated private local snapshot. It opens on a plain-langua
 
 The product name is **MegaBrain**. Its voice is plain, calm, direct, and confidence-inspiring. It should make privacy, ownership, provenance, and freshness legible without making a nontechnical owner learn implementation language.
 
-The product must feel like an owner-controlled knowledge instrument, not an autonomous personality, surveillance system, social network, or opaque AI dashboard. No binding logo, typeface, palette, testimonial, or external brand asset has been established.
+The product must feel like an owner-controlled knowledge instrument, not an autonomous personality, surveillance system, social network, or opaque AI dashboard. The owner approved the Synapse visual direction on 9 November 2026 ("from the future"): an orbit mark, Mona Sans with Martian Mono, and an ink, ice-cyan, violet and rose palette, defined in [DESIGN.md](DESIGN.md). Both typefaces are SIL Open Font License fonts bundled with their licenses. No testimonial or external brand asset has been established.
 
 ## Evidence on Hand
 

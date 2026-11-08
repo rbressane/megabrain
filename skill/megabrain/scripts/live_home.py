@@ -251,7 +251,7 @@ def shell() -> str:
             "review": [], "stats": {"current": 0, "history": 0, "conflicts": 0, "agents": 0, "imports": 0},
             "live": {"mode": "live", "interval_seconds": 15, "stale": True, "reason": "connecting"},
             "sync": {"stale": True}}
-    html = (ASSETS / "browser.html").read_text(encoding="utf-8").replace("__MEGABRAIN_DATA__", json.dumps(data))
+    html = megabrain.home_template().replace("__MEGABRAIN_DATA__", json.dumps(data))
     return re.sub(r'  <meta http-equiv="Content-Security-Policy"[^>]+>\n', "", html)
 
 
@@ -262,7 +262,7 @@ def content_policy(html: str) -> str:
     scripts, styles = hashes("script") or "'none'", hashes("style") or "'none'"
     return (f"default-src 'none'; script-src {scripts}; "
             f"style-src {styles}; connect-src 'self'; "
-            "img-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
+            "img-src data:; font-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
 
 
 class LiveServer(ThreadingHTTPServer):
@@ -280,7 +280,7 @@ class LiveServer(ThreadingHTTPServer):
         self.tls = tls
         self.slots = threading.BoundedSemaphore(16)
         self.html = shell()
-        self.login_html = (ASSETS / "live-login.html").read_text(encoding="utf-8")
+        self.login_html = megabrain.inline_fonts((ASSETS / "live-login.html").read_text(encoding="utf-8"))
         super().__init__(address, LiveHandler)
 
     def process_request(self, request, client_address):
