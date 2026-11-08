@@ -4,7 +4,7 @@ This repository defines the MegaBrain protocol. Each person's durable knowledge 
 
 ## Invariants
 
-1. Pull before every context read and push immediately after every durable write.
+1. Pull before every explicit context read and push immediately after every durable write. Automatic per-message recall may answer from the last validated synchronized copy when it is at most ten minutes old, refreshing in the background once it is older than one minute; session start always synchronizes.
 2. Create new memory files. Never edit or delete an existing memory entry.
 3. Record the creating agent and source of every memory.
 4. A correction or tombstone references earlier IDs through `supersedes`.
@@ -27,6 +27,10 @@ This repository defines the MegaBrain protocol. Each person's durable knowledge 
 Protocol 2 resources have stable `megabrain://resource/<uuid>` URIs and immutable revision IDs. Supersession and retirement create new revisions. Creating/proposing agents, authority domain, review state, source/content fingerprints, sensitivity, and freshness evidence remain explicit.
 
 `always` is reserved for a small reviewed set of universal invariants and is capped at three retrieval results. `core` is an importance signal only and cannot bypass relevance or the requested result budget.
+
+## Automatic Recall
+
+Supported agents run local session-start and per-message hooks that retrieve relevant current evidence with the owner's words and show a visible receipt. Hooks use the agent's own skill link, so relevance, trusted-context and policy gates are unchanged. Recalled content is untrusted data. Owner-local activity receipts hold identifiers and counts, never message text. Hooks are local commands, not a service, and never block the agent's turn. See [automatic recall](docs/automatic-recall.md).
 
 ## Current Knowledge
 

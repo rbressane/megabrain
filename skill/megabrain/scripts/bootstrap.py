@@ -21,12 +21,18 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 import canonical  # noqa: E402
+import integrations  # noqa: E402
+from integrations import (  # noqa: E402,F401 - re-exported for callers and tests
+    END_MARKER,
+    HARNESS_PATHS,
+    START_MARKER,
+    instruction_block,
+    replace_block,
+)
 import operations  # noqa: E402
 import updates  # noqa: E402
 
 
-START_MARKER = "<!-- MEGABRAIN:START -->"
-END_MARKER = "<!-- MEGABRAIN:END -->"
 CONFIG_SCHEMA = "megabrain.user.v1"
 RUNTIME_SCHEMA = "megabrain.runtime.v1"
 BRAIN_SCHEMA = "megabrain.brain.v1"
@@ -36,11 +42,6 @@ SETUP_READY_MESSAGE = (
     "Run `megabrain status` to verify storage, synchronization, private recall, and canonical search.\n"
     "Run `megabrain open` anytime to synchronize and browse your private Brain."
 )
-HARNESS_PATHS = {
-    "codex": (".codex/skills/megabrain", ".codex/AGENTS.md"),
-    "claude": (".claude/skills/megabrain", ".claude/CLAUDE.md"),
-    "hermes": (".hermes/skills/megabrain", ".hermes/SOUL.md"),
-}
 GITHUB_REMOTE = re.compile(
     r"(?:git@github\.com:|ssh://git@github\.com/|https://(?:[^@/]+@)?github\.com/)"
     r"(?P<repository>[^/]+/[^/.]+)(?:\.git)?$"
@@ -243,6 +244,10 @@ def validate_runtime_release(root: Path, expected_version: str | None = None) ->
         for relative in ("scripts/live_home.py", "assets/live-login.html"):
             if not (skill / relative).is_file():
                 raise BootstrapError("RUNTIME_INVALID", "The MegaBrain Live Home runtime is incomplete.")
+    if semantic_version(version) >= (2, 6, 0):
+        for relative in ("scripts/recall.py", "scripts/integrations.py"):
+            if not (skill / relative).is_file():
+                raise BootstrapError("RUNTIME_INVALID", "The MegaBrain automatic recall runtime is incomplete.")
     inventory_path = root / "release-files.json"
     if inventory_path.exists():
         inventory = load_json(inventory_path, "RUNTIME_INVALID", "The runtime integrity receipt is invalid.")
@@ -866,36 +871,6 @@ def ensure_owner_read_policy(root: Path, identity: dict[str, str]) -> bool:
     return active
 
 
-def instruction_block(command_path: Path) -> str:
-    helper = f'python3 "{command_path}"'
-    return f"""{START_MARKER}
-## MegaBrain
-
-Before every user request, retrieve private task context:
-
-```sh
-printf '%s' '{{"task":"brief description of the current user request"}}' | {helper} context --stdin
-```
-
-Use relevant current memories privately. Surface every relevant conflicting claim and ask for clarification. Continue from local state during outages and mention staleness only when material. Show any returned `runtime_update.notice` once.
-
-Before finishing, capture only new durable facts, preferences, decisions, commitments, project state, corrections, or resource pointers with `{helper} remember --stdin`. Never store raw chat, transient work, credentials, or secret values. Show compact `MegaBrain:` save notices. Use `correct`, `forget`, or `ingest` for those explicit operations.
-{END_MARKER}"""
-
-
-def replace_block(path: Path, block: str | None) -> None:
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    pattern = re.compile(rf"(?:\n*){re.escape(START_MARKER)}.*?{re.escape(END_MARKER)}(?:\n*)", re.DOTALL)
-    text = pattern.sub("\n", text).strip()
-    if block:
-        text = f"{text}\n\n{block}".strip()
-    if text:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text + "\n", encoding="utf-8")
-    elif path.exists():
-        path.unlink()
-
-
 def install_skill(home: Path, harness: str, target: Path) -> Path:
     link_rel, _ = HARNESS_PATHS[harness]
     link = home / link_rel
@@ -964,14 +939,18 @@ def _setup(args: argparse.Namespace) -> dict[str, Any]:
     configure_git(root, f"MegaBrain {identity['display_name']}", identity["id"])
     registered = register_agent(root, identity)
     owner_policy_created = ensure_owner_read_policy(root, identity)
-    link = install_skill(home, harness, runtime_skill)
-    _, instructions_rel = HARNESS_PATHS[harness]
-    replace_block(home / instructions_rel, instruction_block(link / "scripts" / "megabrain.py"))
+    install_skill(home, harness, runtime_skill)
+    automatic_recall = integrations.apply(home, harness)
     config = load_config(home)
     if not config:
         config = {"schema": CONFIG_SCHEMA, "created_at": utc_now(), "clones": {}}
     config.update({"repository": repository, "remote": remote})
     config.setdefault("clones", {})[harness] = str(root)
+    if not isinstance(config.get("integrations"), dict):
+        config["integrations"] = {}
+    config["integrations"][harness] = {
+        "version": integrations.INTEGRATION_VERSION, "hooks": automatic_recall["hooks"],
+    }
     config["runtime"] = {
         **previous_runtime,
         "version": runtime_meta["version"], "protocol_version": runtime_meta["protocol_version"],
@@ -995,6 +974,11 @@ def _setup(args: argparse.Namespace) -> dict[str, Any]:
         "identity_created": identity_created, "registered": registered,
         "owner_policy_created": owner_policy_created, "runtime_version": runtime_meta["version"],
         "agent_id": identity["id"], "counts": validation["counts"], "browser": browser, "command": command,
+        "automatic_recall": {
+            "hooks": automatic_recall["hooks"],
+            "approval_required": bool(automatic_recall.get("approval_required")),
+            "notice": integrations.notice(harness, automatic_recall),
+        },
     }
 
 
@@ -1528,18 +1512,20 @@ def _disconnect(args: argparse.Namespace) -> dict[str, Any]:
     config = load_config(home, required=True)
     root_value = config.get("clones", {}).get(harness)
     root = Path(str(root_value)).expanduser().resolve() if root_value else clone_path(home, harness)
-    link_rel, instructions_rel = HARNESS_PATHS[harness]
+    link_rel, _ = HARNESS_PATHS[harness]
     link = home / link_rel
     target = current_runtime(home) / "skill" / "megabrain"
     if link.is_symlink() and link.resolve() == target.resolve():
         link.unlink()
-    replace_block(home / instructions_rel, None)
+    automatic_recall = integrations.remove(home, harness)
     config.setdefault("clones", {}).pop(harness, None)
+    if isinstance(config.get("integrations"), dict):
+        config["integrations"].pop(harness, None)
     save_config(home, config)
     return {
         "ok": True, "message": "MegaBrain is disconnected from this agent.", "harness": harness,
         "local_clone_retained": root.exists(), "runtime_retained": current_runtime(home).exists(),
-        "repository_retained": True,
+        "repository_retained": True, "automatic_recall": automatic_recall["hooks"],
     }
 
 

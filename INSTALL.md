@@ -23,7 +23,7 @@ If a user gives you this repository and asks to install it, including with a sho
 5. If setup returns `GITHUB_AUTH_REQUIRED`, obtain the user's approval, complete `gh auth login`, and retry.
 6. Do not select a repository or clone path for the user. Setup creates or finds the authenticated account's private `megabrain-data` repository automatically.
 7. Remove the temporary source checkout after setup succeeds.
-8. Report the compact completion message from setup. It says MegaBrain is connected, directs the owner to `megabrain status` for capability-specific readiness, and teaches `megabrain open` for browsing.
+8. Report the compact completion message from setup. It says MegaBrain is connected, directs the owner to `megabrain status` for capability-specific readiness, and teaches `megabrain open` for browsing. If setup returns `automatic_recall.notice`, relay it once. For Codex, it asks the owner to open `/hooks` and trust MegaBrain's two hooks, which turns on [automatic recall](docs/automatic-recall.md).
 
 Setup installs the selected runtime under `~/.megabrain/runtime/releases/`, activates it through `~/.megabrain/runtime/current`, installs `~/.local/bin/megabrain`, creates an isolated private brain clone for the active agent, registers provenance, installs the skill link, validates synchronization, and opens the local brain browser. The command resolves through the managed current-runtime link so later activations switch it atomically. Setup refuses to overwrite an unrelated executable. Setup still opens a private static snapshot. `Synchronize and open my MegaBrain` uses `megabrain open`: it opens the approved Live Home URL if configured, otherwise synchronizes, validates, regenerates and opens the local snapshot. `megabrain open --local` always keeps that local path. The optional [Live Home service](docs/live-home.md) requires separate approved hosting, owner sign-in and deployment verification; setup never provisions or exposes one automatically.
 
@@ -43,7 +43,8 @@ For an installed agent:
 - `megabrain update --json` returns the stable `megabrain.update.v1` output schema.
 - `megabrain open` synchronizes, validates, regenerates, and opens the private local MegaBrain Home.
 - `megabrain feedback --stdin` renders a privacy-checked Product Bake Candidate offline and writes nowhere by default.
-- `bootstrap.py disconnect --harness <harness>` removes only MegaBrain-managed links and instructions. It retains the runtime, private repository, and local brain clone.
+- `megabrain activity` summarizes this agent's recent lookups without showing message text.
+- `bootstrap.py disconnect --harness <harness>` removes only MegaBrain-managed links, instructions and hooks. It retains the runtime, private repository, and local brain clone.
 
 ### One-time transition from v1.0.2
 

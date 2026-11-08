@@ -30,11 +30,14 @@ Talk normally after installation:
 Remember that I prefer concise weekly reports with decisions first.
 ```
 
-MegaBrain retrieves relevant current context before each request and captures only new durable learning afterward. Questions that span memories and long-form resources use one bounded, citation-ready evidence search. It reports writes compactly:
+MegaBrain recalls relevant current context automatically. In Claude Code and Codex, it does this at the start of every session and with every message, and shows what it used. It captures only new durable learning afterward. Questions that span memories and long-form resources use one bounded, citation-ready evidence search. Reads and writes are reported compactly:
 
 ```text
+MegaBrain: recalled 2 memories and 1 document
 MegaBrain: saved 1 durable memory.
 ```
+
+In Codex, open `/hooks` once after setup and trust MegaBrain's two hooks. Run `megabrain activity` to see how often this agent used MegaBrain and what it found. See [automatic recall](docs/automatic-recall.md).
 
 Other natural actions include:
 
@@ -55,6 +58,7 @@ megabrain open
 megabrain update --check
 megabrain update
 megabrain status
+megabrain activity
 megabrain review
 ```
 

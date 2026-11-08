@@ -21,6 +21,10 @@ Memory retrieval combines subject, tag, and body overlap with inverse document f
 
 This is lexical hybrid retrieval, not semantic embedding search. It improves exact technical terms and long-document activation without adding a model, service, package dependency, or external disclosure path.
 
+## Automatic activation
+
+In supported agents, local hooks run this unified search for every owner message, using the message itself rather than an agent-written summary. Weak single-term matches below a score floor are not injected. Conflict companions are always kept. See [automatic recall](automatic-recall.md).
+
 ## Section context
 
 The resource index splits Markdown at ATX headings. A winning section returns its own bounded excerpt plus the preceding and following sections, capped to a bounded context size. This preserves prerequisites and verification steps that chunk-only retrieval can separate.

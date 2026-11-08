@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import functools
 import hashlib
 import json
 import math
@@ -826,8 +828,11 @@ def has_remote(root: Path) -> bool:
     return run(["git", "remote", "get-url", "origin"], root).returncode == 0
 
 
-def rebase_remote(root: Path) -> tuple[bool, str | None]:
-    fetched = run(["git", "fetch", "origin", "main"], root)
+def rebase_remote(root: Path, *, fetch_timeout: float | None = None) -> tuple[bool, str | None]:
+    # Only the network fetch is bounded. A deadline must never interrupt a local
+    # rebase or its abort, which could leave the managed clone mid-operation.
+    with operations.deadline(fetch_timeout) if fetch_timeout else contextlib.nullcontext():
+        fetched = run(["git", "fetch", "origin", "main"], root)
     if fetched.returncode != 0:
         return False, "remote_unavailable"
     rebased = run(["git", "rebase", "origin/main"], root)
@@ -851,8 +856,92 @@ def push_with_retry(root: Path, attempts: int = 3) -> tuple[bool, str | None]:
     return False, "push_rejected"
 
 
+VALIDATION_CACHE_SCHEMA = "megabrain.validation-cache.v1"
+SYNC_STATE_SCHEMA = "megabrain.sync-state.v1"
+
+
+@functools.lru_cache(maxsize=1)
+def validator_fingerprint() -> str:
+    """Identify the validation rules in this exact runtime, so a cache never outlives them."""
+    digest = hashlib.sha256()
+    for name in ("megabrain.py", "canonical.py", "operations.py", "projection.py"):
+        digest.update(name.encode("utf-8") + b"\0" + (SCRIPT_DIRECTORY / name).read_bytes())
+    return digest.hexdigest()
+
+
+def validate_committed(root: Path) -> dict[str, Any]:
+    """Validate a clean committed tree once per tree and runtime.
+
+    Callers guarantee a clean worktree, so the files on disk are exactly the
+    committed tree. Only successful validations are remembered; any new commit,
+    pull or runtime change validates again in full.
+    """
+    tree = run(["git", "rev-parse", "HEAD^{tree}"], root)
+    key = tree.stdout.strip() if tree.returncode == 0 else ""
+    path = root / ".megabrain" / "validation.json"
+    expected = {"schema": VALIDATION_CACHE_SCHEMA, "tree": key, "validator": validator_fingerprint(), "ok": True}
+    if key and not path.is_symlink():
+        try:
+            if json.loads(path.read_text(encoding="utf-8")) == expected:
+                return {"ok": True, "errors": [], "warnings": [], "cached": True}
+        except (OSError, ValueError):
+            pass
+    validation = command_validate(root)
+    if key and validation["ok"] and not path.is_symlink():
+        try:
+            operations.atomic_write(path, json.dumps(expected, sort_keys=True))
+        except (OSError, operations.OperationError):
+            pass
+    return validation
+
+
+def record_sync(root: Path) -> None:
+    """Remember when this clone last matched the remote. Ignored local state, never Brain data."""
+    try:
+        operations.atomic_write(
+            root / ".megabrain" / "sync-state.json",
+            json.dumps({"schema": SYNC_STATE_SCHEMA, "synced_at": utc_now()}, sort_keys=True),
+        )
+    except (OSError, operations.OperationError):
+        pass
+
+
+def sync_age_seconds(root: Path, *, now: datetime | None = None) -> float | None:
+    path = root / ".megabrain" / "sync-state.json"
+    try:
+        if path.is_symlink():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if value.get("schema") != SYNC_STATE_SCHEMA:
+            return None
+        synced_at = datetime.fromisoformat(str(value["synced_at"]).replace("Z", "+00:00"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    age = ((now or datetime.now(timezone.utc)) - synced_at).total_seconds()
+    return age if age >= 0 else None
+
+
+def local_sync_state(root: Path) -> dict[str, Any]:
+    """Describe the local copy without touching the network, for fast automatic recall."""
+    if not is_git_repo(root):
+        return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
+    dirty = changed_files(root)
+    if dirty:
+        return {"synced": False, "stale": True, "reason": "dirty_worktree", "files": dirty}
+    validation = validate_committed(root)
+    if not validation["ok"]:
+        return {"synced": False, "stale": True, "reason": "validation_failed", "error_count": len(validation["errors"])}
+    return {
+        "synced": False,
+        "stale": True,
+        "reason": "local_copy",
+        "age_seconds": sync_age_seconds(root),
+        "pending_local_commits": pending_local_commits(root),
+    }
+
+
 @operations.locked
-def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
+def sync_repo(root: Path, *, allow_push: bool = True, fetch_timeout: float | None = None) -> dict[str, Any]:
     if not is_git_repo(root):
         return {"synced": False, "stale": True, "reason": "not_a_git_repository"}
     dirty = changed_files(root)
@@ -863,10 +952,10 @@ def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
     blocked = operations.outgoing_guard(root, detect_secret)
     if blocked:
         return {"synced": False, "stale": True, "reason": "validation_failed", "guard": blocked}
-    rebased, reason = rebase_remote(root)
+    rebased, reason = rebase_remote(root, fetch_timeout=fetch_timeout)
     if not rebased:
         if reason == "remote_unavailable":
-            validation = command_validate(root)
+            validation = validate_committed(root)
             if not validation["ok"]:
                 return {
                     "synced": False,
@@ -875,7 +964,7 @@ def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
                     "error_count": len(validation["errors"]),
                 }
         return {"synced": False, "stale": True, "reason": reason}
-    validation = command_validate(root)
+    validation = validate_committed(root)
     if not validation["ok"]:
         return {
             "synced": False,
@@ -883,18 +972,24 @@ def sync_repo(root: Path, *, allow_push: bool = True) -> dict[str, Any]:
             "reason": "validation_failed",
             "error_count": len(validation["errors"]),
         }
+    ahead = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
+    pending = ahead.returncode != 0 or ahead.stdout.strip() != "0"
     if not allow_push:
-        ahead = run(["git", "rev-list", "--count", "origin/main..HEAD"], root)
-        pending = ahead.returncode != 0 or ahead.stdout.strip() != "0"
+        if not pending:
+            record_sync(root)
         return {
             "synced": not pending,
             "stale": pending,
             "reason": "runtime_update_required" if pending else None,
             "pending_local_commits": pending,
         }
-    pushed, reason = push_with_retry(root)
-    if not pushed:
-        return {"synced": False, "stale": True, "reason": reason, "pending_local_commits": True}
+    if pending:
+        # Push only when there is something to send: a no-op push costs a full
+        # network round trip on every read.
+        pushed, reason = push_with_retry(root)
+        if not pushed:
+            return {"synced": False, "stale": True, "reason": reason, "pending_local_commits": True}
+    record_sync(root)
     return {"synced": True, "stale": False, "reason": None, "pending_local_commits": False}
 
 
@@ -1482,6 +1577,8 @@ def command_search(
     payload: dict[str, Any],
     *,
     trusted_context: dict[str, Any] | None = None,
+    synchronize: bool = True,
+    fetch_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Return bounded, citation-ready evidence across memories and resource sections."""
     import canonical
@@ -1513,7 +1610,10 @@ def command_search(
     task = compiled_task({"task": query})
     task_tokens = tokens(task)
     sync_started = time.perf_counter()
-    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    sync = (
+        sync_repo(root, allow_push=runtime_can_write(compatibility), fetch_timeout=fetch_timeout)
+        if synchronize else local_sync_state(root)
+    )
     sync_elapsed = time.perf_counter() - sync_started
     if sync.get("reason") == "validation_failed":
         raise BrainError("BRAIN_INVALID", "The local brain failed validation", sync)
@@ -1612,6 +1712,7 @@ def command_search(
             "title": record.meta["subject"],
             "excerpt": summary_text(record),
             "content_trust": "approved_memory",
+            "confidence": record.meta.get("confidence"),
             "sensitivity": record.meta["sensitivity"],
             "importance": record.meta["importance"],
             "authority_domain": record.meta.get("authority_domain"),
@@ -2642,8 +2743,16 @@ def command_status(root: Path, *, trusted_context: dict[str, Any] | None = None)
         "validation": {"errors": len(validation["errors"]), "warnings": len(validation["warnings"])},
         "trusted_owner_context": trusted_context is not None,
         "capture": knowledge.capture_state(root),
+        "automatic_recall": automatic_recall_status(root),
         "next_action": next_action,
     }
+
+
+def automatic_recall_status(root: Path) -> dict[str, Any]:
+    import integrations
+    import recall
+
+    return recall.status(root, integrations.hook_state(Path.home().resolve(), invoked_harness()))
 
 
 def command_doctor(root: Path, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -2836,6 +2945,22 @@ def command_benchmark() -> dict[str, Any]:
     }
 
 
+def invoked_harness() -> str | None:
+    invoked = Path(os.path.abspath(__file__))
+    return next((name for name in ("codex", "claude", "hermes") if f".{name}" in invoked.parts), None)
+
+
+def automatic_integration_refresh() -> dict[str, Any] | None:
+    """Finish integration upgrades that the previous runtime's updater could not know about."""
+    home = Path.home().resolve()
+    harness = invoked_harness()
+    if harness is None or home / ".megabrain" / "runtime" not in SCRIPT_DIRECTORY.parents:
+        return None
+    import integrations
+
+    return integrations.ensure_current(home, harness)
+
+
 def automatic_runtime_update() -> dict[str, Any] | None:
     home = Path.home().resolve()
     runtime_root = home / ".megabrain" / "runtime"
@@ -2845,10 +2970,30 @@ def automatic_runtime_update() -> dict[str, Any] | None:
     return automatic_update(home)
 
 
+def record_agent_lookup(root: Path, command: str, result: dict[str, Any], started: float) -> None:
+    """Owner-local receipt for an agent-initiated lookup: identifiers and counts, never the query."""
+    import recall
+
+    if command == "context":
+        memories = [str(item["id"]) for item in result.get("memories", [])]
+        resources: list[dict[str, str]] = []
+    else:
+        memories, resources = recall.evidence_ids(result.get("evidence", []))
+    sync = result.get("sync", {})
+    mode, _ = recall.freshness(sync, sync.get("age_seconds"))
+    recall.record_activity(root, {
+        "event": command, "trigger": "agent", "agent": invoked_harness(), "mode": mode,
+        "found": bool(memories or resources), "memories": memories, "resources": resources,
+        "conflicts": len(result.get("conflicts", []) if command == "context" else result.get("conflicts", {}).get("memories", [])),
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+    })
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="megabrain", description="Local-first Markdown brain helper")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("sync")
+    sync = subparsers.add_parser("sync")
+    sync.add_argument("--fetch-timeout", type=float, default=None, help=argparse.SUPPRESS)
     context = subparsers.add_parser("context")
     context.add_argument("--stdin", action="store_true", help="read task JSON from stdin")
     context.add_argument("--limit", type=int, default=12)
@@ -2892,11 +3037,19 @@ def build_parser() -> argparse.ArgumentParser:
     capture = subparsers.add_parser("capture")
     capture.add_argument("action", choices=("pause", "resume", "status"))
     subparsers.add_parser("benchmark")
+    activity = subparsers.add_parser("activity", help="Summarize this agent's recent MegaBrain lookups")
+    activity.add_argument("--days", type=int, default=7)
+    hook = subparsers.add_parser("hook", help="Automatic recall for agent harness hooks")
+    hook.add_argument("event", choices=("session-start", "prompt"))
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.command == "hook":
+        import recall
+
+        return recall.hook_main(sys.modules[__name__], args.event, Path(os.path.abspath(__file__)))
     home = Path.home().resolve()
     managed = home / ".megabrain" / "runtime" in SCRIPT_DIRECTORY.parents
     # Durable writes are never update triggers, and activation cannot interrupt
@@ -2915,14 +3068,19 @@ def execute_command(args: argparse.Namespace) -> int:
     try:
         root = repo_root()
         runtime_update = automatic_runtime_update() if args.command in updates.READ_COMMANDS else None
+        integration_update = (
+            automatic_integration_refresh() if args.command in updates.READ_COMMANDS | {"status"} else None
+        )
         trusted_context = (
             trusted_local_context(root)
-            if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "doctor", "review", "handoff", "capture"}
+            if args.command in {"context", "search", "resources", "resource-read", "browse", "status", "doctor", "review", "handoff", "capture", "activity"}
             else None
         )
+        started = time.perf_counter()
         if args.command == "sync":
             require_compatible_runtime(root, writing=True)
-            sync = sync_repo(root)
+            fetch_timeout = args.fetch_timeout if args.fetch_timeout and 0 < args.fetch_timeout <= 60 else None
+            sync = sync_repo(root, fetch_timeout=fetch_timeout)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}
         elif args.command == "context":
             if not 1 <= args.limit <= 100:
@@ -2988,10 +3146,18 @@ def execute_command(args: argparse.Namespace) -> int:
                 result = knowledge.set_capture(root, args.action, trusted_context)
         elif args.command == "benchmark":
             result = command_benchmark()
+        elif args.command == "activity":
+            import recall
+
+            result = recall.summarize(sys.modules[__name__], root, args.days, trusted_context)
         else:
             raise BrainError("UNKNOWN_COMMAND", "Unknown MegaBrain command.")
+        if args.command in {"context", "search"} and result.get("ok"):
+            record_agent_lookup(root, args.command, result, started)
         if runtime_update and runtime_update.get("notify"):
             result["runtime_update"] = runtime_update
+        if integration_update:
+            result["automatic_recall_update"] = integration_update
         result.setdefault("schema", "megabrain.result.v1")
         emit(result)
         return 0 if result.get("ok", False) else 1
