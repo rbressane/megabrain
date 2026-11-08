@@ -8,6 +8,7 @@ The installed `megabrain` executable dispatches data operations to the existing 
 | Always use the local snapshot | `megabrain open --local` |
 | Save or remove the approved Live Home link on this device | `megabrain live link --url https://brain.example.invalid`, `megabrain live unlink` |
 | Check health or inspect problems | `megabrain status`, `megabrain doctor` |
+| See whether this agent is using MegaBrain | `megabrain activity`, `megabrain activity --days 30` |
 | Synchronize local commits | `megabrain sync` |
 | Retrieve evidence | `megabrain search --stdin` |
 | Retrieve memory-only context | `megabrain context --stdin` |
@@ -26,6 +27,8 @@ With multiple configured agents and no detectable active harness, data commands 
 ## Readiness
 
 `status` reports storage, synchronization, private-recall and canonical-search readiness separately. Its top-level `ready` is true only when all four are ready. A successful save or valid repository does not prove private recall. Protocol 1 reports canonical search unavailable, and read commands describe the required migration as a read prerequisite rather than a write failure. Missing trusted host context or an owner-approved policy keeps private recall unavailable without disclosing whether denied records exist. `doctor` includes the same recall checks.
+
+`status` also reports `automatic_recall`: whether this agent's hooks are installed, how many automatic lookups ran in the last seven days and when the last one happened. It is reported separately and does not affect `ready`. The internal `hook` command is run by the agent harness, not by people. See [automatic recall](automatic-recall.md).
 
 Historical source coverage is reported by `coverage`; retrieval ranking and authorization are separate. A missing result does not prove missing storage or reviewed source coverage.
 

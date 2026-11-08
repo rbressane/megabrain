@@ -30,6 +30,8 @@ If first setup creates a local seed but the initial push fails, rerunning setup 
 
 ## Optional Live Home
 
+`recall.py` implements the session-start and per-message hooks, freshness tiers, receipts and owner-local activity. `integrations.py` owns instruction blocks and hook settings for each harness and finishes integration upgrades on the new runtime's first ordinary read. Reads validate each committed tree once per runtime (`.megabrain/validation.json`) and push only when local commits are pending. See [automatic recall](automatic-recall.md).
+
 `live_home.py` serves the existing Home UI from a dedicated read-only replica. A bounded fetch loop captures `origin/main`, checks compatibility and validation in a safe committed snapshot, then atomically swaps an in-memory projection. It never checks out, rebases, commits or pushes, and refuses dirty/local-unique state. HTTP requests do not invoke Git. Markdown routes use an exact projection allowlist; no filesystem paths are served directly. Payloads and source bodies have a bounded 128 MiB combined limit.
 
 Owner passphrase verification and in-memory browser sessions are independent of agent identity and permissions. The first viewer is general-only, with no trusted agent context, private records, sensitive content or raw imports. Its read-only HTTP API cannot change canonical knowledge. Polling preserves browser state and reports the last successful synchronization. Runtime code and assets stay pinned until an operator restarts the service. See the [operator and deployment runbook](live-home.md).
