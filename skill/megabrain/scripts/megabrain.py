@@ -2480,15 +2480,27 @@ def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[s
     return payload
 
 
-def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[str, Any] | None = None,
+                     owner_view: bool = False) -> dict[str, Any]:
+    """Home data. ``owner_view`` is the signed-in owner reading their own Brain in Live Home.
+
+    Agent policies restrict agents, not the owner, so the owner view includes private records without
+    an agent context. It never includes sensitive records or raw imports, and it grants no agent anything.
+    """
     import canonical
+
+    def readable(meta: dict[str, Any]) -> bool:
+        sensitivity = meta.get("sensitivity")
+        if sensitivity == "general":
+            return True
+        if sensitivity != "private":
+            return False
+        return owner_view or (trusted_context is not None and bool(
+            canonical.authorize(root, meta=meta, trusted_context=trusted_context, capability="read")))
 
     all_records = load_memories(root)
     active, conflicts = current_memories(all_records)
-    records = [record for record in all_records if record.meta.get("sensitivity") == "general" or (
-        record.meta.get("sensitivity") == "private" and trusted_context is not None
-        and canonical.authorize(root, meta=record.meta, trusted_context=trusted_context, capability="read")
-    )]
+    records = [record for record in all_records if readable(record.meta)]
     allowed_ids = {record.meta["id"] for record in records}
     active = [record for record in active if record.meta["id"] in allowed_ids]
     conflicts = {subject: [item for item in ids if item in allowed_ids] for subject, ids in conflicts.items() if allowed_ids.intersection(ids)}
@@ -2564,10 +2576,7 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
     if trusted_context is None:
         imports = []
     resources, resource_conflicts = canonical.current_resources(canonical.load_resources(root))
-    resources = [record for record in resources if record.meta["sensitivity"] == "general" or (
-        record.meta["sensitivity"] == "private" and trusted_context is not None
-        and canonical.authorize(root, meta=record.meta, trusted_context=trusted_context, capability="read")
-    )]
+    resources = [record for record in resources if readable(record.meta)]
     resource_items = [{**canonical.resource_metadata(record), "content": record.body,
                        "content_trust": "untrusted_data", "path": relative(root, record.path),
                        "conflict": record.meta["resource_id"] in resource_conflicts} for record in resources]

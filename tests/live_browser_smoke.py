@@ -100,6 +100,27 @@ def main():
                 assert cdp.evaluate("document.documentElement.scrollWidth <= innerWidth"), name
                 assert cdp.evaluate("getComputedStyle(document.querySelector('#live-detail')).display !== 'none'")
                 (output / f"live-{name}.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
+            # General-only by default. The operator's owner-private opt-in adds private records, never sensitive ones.
+            before = cdp.evaluate("DATA.snapshot_commit")
+            network.remember("writer", subject="synthetic.private-note", summary="Synthetic private browser evidence.", sensitivity="private")
+            network.remember("writer", subject="synthetic.sensitive-note", summary="Synthetic sensitive browser pointer.", sensitivity="sensitive")
+            network.remember("writer", subject="synthetic.scope-marker", summary="Synthetic scope marker one.")
+            wait(cdp, "DATA.memories.some(item => item.summary === 'Synthetic scope marker one.')")
+            assert cdp.evaluate(f"DATA.snapshot_commit !== {json.dumps(before)} && DATA.live.scope === 'general_only' && !JSON.stringify(DATA).includes('browser evidence') && !JSON.stringify(DATA).includes('browser pointer')")
+            assert cdp.evaluate("document.getElementById('live-detail').textContent.includes('General knowledge only')")
+            view.owner_private = True
+            network.remember("writer", subject="synthetic.scope-marker", summary="Synthetic scope marker two.")
+            wait(cdp, "DATA.live.scope === 'owner_private' && DATA.memories.some(item => item.summary === 'Synthetic private browser evidence.' && item.sensitivity === 'private')")
+            assert cdp.evaluate("!JSON.stringify(DATA).includes('browser pointer') && DATA.memories.every(item => item.sensitivity !== 'sensitive')"), "Sensitive record reached the owner view"
+            assert cdp.evaluate("document.getElementById('live-detail').textContent.includes('General and private knowledge')")
+            cdp.evaluate("document.querySelector('[data-view=today]').click(); window.scrollTo(0, 0)")
+            assert cdp.evaluate("[...document.querySelectorAll('#today-recent ~ ul .today-item-meta, .today-item-meta')].some(item => item.textContent.includes('· private'))"), "Private records are not marked on Today"
+            assert cdp.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            (output / "live-owner-private.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
+            view.owner_private = False
+            network.remember("writer", subject="synthetic.scope-marker", summary="Synthetic scope marker three.")
+            wait(cdp, "DATA.live.scope === 'general_only' && DATA.memories.some(item => item.summary === 'Synthetic scope marker three.')")
+            assert cdp.evaluate("!JSON.stringify(DATA).includes('browser evidence') && !document.body.innerText.includes('browser evidence')"), "Private record stayed after the owner view was withdrawn"
             cdp.evaluate("document.querySelector('[data-view=resources]').click(); document.querySelector('details').open = true; window.scrollTo(0, 0)")
             resource_uri = cdp.evaluate("document.querySelector('[data-resource]').dataset.resource")
             resource_commit = cdp.evaluate("DATA.snapshot_commit")
@@ -136,7 +157,7 @@ def main():
             wait(cdp, "location.pathname === '/login' && !!document.querySelector('#password')")
             assert not cdp.errors, "Browser emitted runtime errors"
             print(json.dumps({"ok": True, "synthetic": True, "transport": "loopback development HTTP",
-                "viewports": 4, "checks": ["owner sign-in", "HttpOnly", "responsive status", "resource disclosure retained",
+                "viewports": 4, "checks": ["owner sign-in", "HttpOnly", "responsive status", "general-only default", "owner-private scope without sensitive records", "resource disclosure retained",
                 "cross-agent correction", "graph selection and zoom retained", "search and focus retained", "inert source route",
                 "offline recovery", "dirty clone fail-closed", "sign-out", "back navigation reauthentication"],
                 "screenshots": ".impeccable/review/live-*.png"}, indent=2))

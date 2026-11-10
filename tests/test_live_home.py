@@ -14,7 +14,10 @@ from urllib.parse import urlencode
 from unittest import mock
 
 from tests.test_megabrain import BrainNetwork, run, SCRIPTS
+from tests.test_canonical import canonical_local
+import canonical
 import live_home
+import megabrain
 import cli
 import operations
 
@@ -153,6 +156,46 @@ class ProjectionTests(unittest.TestCase):
             self.assertNotIn(b"Synthetic private evidence.", record)
             self.assertNotIn(b"Synthetic sensitive pointer.", record)
 
+    def test_owner_private_view_adds_private_never_sensitive_or_imports(self):
+        self.network.remember("writer", subject="synthetic.private", summary="Synthetic private evidence.", sensitivity="private")
+        self.network.remember("writer", subject="synthetic.sensitive", summary="Synthetic sensitive pointer.", sensitivity="sensitive")
+        body = "# Synthetic private note\n\nSynthetic private resource text."
+        canonical_local.create_or_revise_resource(self.writer, {
+            "resource_type": "runbook", "title": "Synthetic private runbook", "owner": "synthetic-owner",
+            "authority_domain": "synthetic-project", "sensitivity": "private", "source_at": "2020-01-01T00:00:00Z",
+            "verified_at": "2020-01-01T00:00:00Z", "freshness_at": None,
+            "source": {"type": "user-statement", "locator": "synthetic://private", "fingerprint": canonical.content_fingerprint(body)}, "body": body,
+        }, trusted_local=True)
+        self.view.refresh()
+        general = self.view.data()
+        self.assertEqual(general["live"]["scope"], "general_only")
+        self.assertNotIn("Synthetic private", json.dumps(general))
+        owner = live_home.LiveView(self.root, owner_private=True)
+        owner.refresh()
+        value = owner.data()
+        self.assertTrue(value["available"])
+        self.assertEqual(value["live"]["scope"], "owner_private")
+        serialized = json.dumps(value)
+        self.assertIn("Synthetic private evidence.", serialized)
+        self.assertIn("Synthetic private resource text.", serialized)
+        self.assertNotIn("Synthetic sensitive pointer.", serialized)
+        self.assertEqual(value["data"]["imports"], [])
+        self.assertEqual({item["sensitivity"] for item in value["data"]["memories"]}, {"general", "private"})
+        documents = b"".join(owner.projection.documents.values())
+        self.assertIn(b"Synthetic private evidence.", documents)
+        self.assertNotIn(b"Synthetic sensitive pointer.", documents)
+        for path in (".git/config", "megabrain.json", "brain/policies/.gitkeep"):
+            self.assertIsNone(owner.document(path))
+        # The owner view is not an agent permission: nothing was written, checked out or pushed.
+        self.assertEqual(self.git("status", "--porcelain"), "")
+
+    def test_projection_outside_scope_is_refused(self):
+        self.network.remember("writer", subject="synthetic.private", summary="Synthetic private evidence.", sensitivity="private")
+        leaked = megabrain._browser_payload
+        with mock.patch.object(megabrain, "_browser_payload", side_effect=lambda root, sync, **_: leaked(root, sync, owner_view=True)):
+            self.view.refresh()
+        self.assertFalse(self.view.data()["available"])
+
     def test_invalid_committed_tree_clears_previous_projection(self):
         self.view.refresh()
         run(["git", "config", "user.name", "Synthetic"], self.writer)
@@ -279,6 +322,18 @@ class HTTPTests(unittest.TestCase):
             self.assertIn("no-store", response_headers["Cache-Control"])
             self.assertNotIn(b"Synthetic visible evidence", body)
 
+    def test_sign_in_page_names_the_scope_without_brain_data(self):
+        body = self.request("GET", "/login")[2]
+        self.assertIn(live_home.GENERAL_NOTE.encode(), body)
+        self.assertNotIn(b"Synthetic visible evidence", body)
+        view = live_home.LiveView(Path(self.temp.name), owner_private=True)
+        server = live_home.LiveServer(("127.0.0.1", 0), view, self.server.auth, "https://brain.example.invalid")
+        try:
+            self.assertIn(live_home.PRIVATE_NOTE, server.login_html)
+            self.assertNotIn(live_home.GENERAL_NOTE, server.login_html)
+        finally:
+            server.server_close()
+
     def test_bad_password_and_form_bounds(self):
         headers = {"Content-Type": "application/x-www-form-urlencoded", "Origin": self.server.origin}
         status, _, body = self.request("POST", "/login", "password=wrong", headers)
@@ -307,6 +362,11 @@ class ConfigurationTests(unittest.TestCase):
         with mock.patch.object(os, "isatty", return_value=False):
             with self.assertRaises(live_home.LiveError):
                 live_home.command(argparse.Namespace(live_action="owner"))
+        serve = ["live", "serve", "--root", "/synthetic", "--auth-file", "/synthetic-owner",
+                 "--origin", "https://brain.example.invalid", "--behind-proxy"]
+        self.assertFalse(parser.parse_args(serve).owner_private)
+        self.assertTrue(parser.parse_args([*serve, "--owner-private"]).owner_private)
+        self.assertFalse(live_home.LiveView(Path("/synthetic"), owner_private="yes").owner_private)
 
 
 if __name__ == "__main__":

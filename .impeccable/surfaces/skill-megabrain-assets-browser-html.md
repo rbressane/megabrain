@@ -18,7 +18,7 @@ Chosen composition: Graph First, approved from `.impeccable/mocks/decision/techn
 
 Memorable interaction: Selecting a topic or memory isolates its direct relationships and turns the inspector into the fastest path from the map to evidence.
 
-Constraints: Local snapshots remain private and offline. Optional Live Home is an owner-authenticated, read-only, general-only committed-Git view; private/sensitive policy gates remain intact. Both are standard-library-only, dependency-free, accessible, reduced-motion aware and responsive. Mobile becomes a ranked topic and memory list rather than a squeezed graph. Live mode adds a visible last-sync/scope strip and sign-out, retaining search, graph selection, open resources and scroll during refresh. The sign-in form contains no Brain data and uses the same graphite/violet identity with readable mobile input.
+Constraints: Local snapshots remain private and offline. Optional Live Home is an owner-authenticated, read-only committed-Git view, general-only by default with an owner-approved owner view that adds private records; sensitive records are never shown and agent policy gates remain intact. Both are standard-library-only, dependency-free, accessible, reduced-motion aware and responsive. Mobile becomes a ranked topic and memory list rather than a squeezed graph. Live mode adds a visible last-sync/scope strip and sign-out, retaining search, graph selection, open resources and scroll during refresh. The sign-in form contains no Brain data and uses the same graphite/violet identity with readable mobile input.
 
 Implementation inventory:
 

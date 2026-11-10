@@ -15,7 +15,8 @@ Use `megabrain open --local` for the existing local snapshot, including its exis
 ### What you can see
 
 - Today: status, what needs you, agent activity from the shared activity branch, recent changes and current knowledge. Also the topic map, mobile topic list, current memories, history, conflicts, resources, agents and review reminders.
-- **General knowledge only**, still behind owner authentication. Private and sensitive records, raw imports, policy documents, attachments and repository files are not served. Sign-in cannot impersonate an agent or supply a trusted private-read context. Use an authorized local agent for excluded evidence.
+- **General knowledge only by default**, still behind owner authentication. Private and sensitive records, raw imports, policy documents, attachments and repository files are not served. Sign-in cannot impersonate an agent or supply a trusted private-read context. Use an authorized local agent for excluded evidence.
+- **Your private records too, when you approve the owner view.** The operator starts the viewer with `--owner-private` after your explicit approval. You then see general and private memories and resources, each private one marked. Sensitive records, raw imports, policy documents, attachments and repository files are still never served. The status strip and the sign-in page name the active scope. This is your own view of your own Brain: it gives no agent any permission, and agent read policies are unchanged.
 - Committed corrections and tombstones after the creating agent pushes them. Offline or uncommitted work on another agent cannot appear yet.
 - Markdown sources from the same captured commit, served as inert plain text through an exact allowlist, not a filesystem route.
 - Copyable correction, forgetting and resource-review requests. These remain proposals for an agent, never browser writes.
@@ -49,6 +50,8 @@ Keep Git credentials in the host's existing credential system. Do not use creden
      --origin https://brain.example.invalid \
      --port 8765 --behind-proxy
    ```
+
+   Add `--owner-private` only after the owner explicitly approves seeing private records in this viewer. Without it the viewer is general-only. The flag is fixed for the life of the process; removing it and restarting returns to general-only and signs everyone out. Because the page then carries private text, treat the owner passphrase, the host and any screen the page is open on accordingly.
 
    The backend binds only to `127.0.0.1`. Proxy to it on the same host, preserving the exact public `Host` and request `Origin`. Do not cache any response, including errors, redirects or Markdown. Do not log request bodies, cookies or authorization headers. Apply public connection/header/body timeouts and upstream rate limits. Do not rewrite browser identity into an owner permission header; such headers are not trusted by MegaBrain.
 
@@ -124,13 +127,37 @@ sudo /bin/launchctl bootstrap system /Library/LaunchDaemons/com.example.brain-vi
 
 `bootout` unloads the job but does not remove its installed plist; it may load again on a later boot. Permanent decommission requires separate authorization to remove that exact service definition and its route, not a global Funnel reset or deletion of the replica/verifier. Loading the viewer does not recreate a removed Funnel route. Keep both identities and their restart/stop procedures in private operator records. These commands were not executed by the coding agent during closeout.
 
+### Linux supervision reference
+
+Names below are fictitious. Use the privately recorded service definition, never these placeholders. A systemd unit should run the viewer as the dedicated unprivileged account, with absolute paths and no secrets in the unit, its environment or its logs:
+
+```ini
+# /etc/systemd/system/brain-viewer.service
+[Unit]
+Description=MegaBrain Live Home (read-only viewer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=brainviewer
+ExecStart=/home/brainviewer/.local/bin/megabrain live serve --root /srv/megabrain-viewer/replica --auth-file /srv/megabrain-state/owner.json --origin https://brain.example.invalid --port 8765 --behind-proxy
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The replica and the account's own MegaBrain state must stay writable: `git fetch` updates the replica and the viewer takes a lock there. It still never checks out, commits or pushes. Add further systemd sandboxing only after testing it against a synthetic replica. Restart with `sudo systemctl restart brain-viewer` after a runtime update or a scope change; existing sessions then require sign-in again. `sudo systemctl disable --now brain-viewer` stops it and keeps the replica and verifier. On a Linux host the Funnel steps above apply unchanged, using the distribution's `tailscaled` service instead of the macOS variants.
+
 ### Local synthetic development
 
 Use a disposable synthetic clone and verifier, then run `live serve` with `--local-http --origin http://127.0.0.1:8765`. This opt-in mode can bind **only** to `127.0.0.1` and cannot be saved as a remote owner link. Never forward this port to the internet. Normal owner access requires HTTPS.
 
 ## Authentication and transport boundary
 
-Sessions are random 256-bit bearer values held only in process memory. In HTTPS mode the browser uses a `__Host-` cookie with Secure, HttpOnly, SameSite=Strict, Path=/ and an eight-hour absolute lifetime. No session is persisted by the service; restart signs everyone out. Removing, rotating or making the owner verifier unsafe revokes sessions. A valid password is not an agent policy, and the service accepts no agent identity or private-scope claims from HTTP headers, query parameters or environment variables.
+Sessions are random 256-bit bearer values held only in process memory. In HTTPS mode the browser uses a `__Host-` cookie with Secure, HttpOnly, SameSite=Strict, Path=/ and an eight-hour absolute lifetime. No session is persisted by the service; restart signs everyone out. Removing, rotating or making the owner verifier unsafe revokes sessions. A valid password is not an agent policy, and the service accepts no agent identity or private-scope claims from HTTP headers, query parameters or environment variables. The scope is set only by the operator's start-up flag: general-only, or general plus private with `--owner-private`. No request can widen it, and the viewer refuses to serve a projection that contains anything outside its scope.
 
 Sign-in is limited globally to five attempts per minute, with at most sixteen sessions. This intentionally favors bounded password work over availability; a hostile caller can temporarily exhaust this budget. Use upstream rate limits and a high-entropy unique passphrase. The service does not implement MFA or claim independent security certification.
 

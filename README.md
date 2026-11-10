@@ -68,7 +68,7 @@ To connect another supported agent or computer, give it the same setup message. 
 
 ## Browse from anywhere
 
-[Live Home](docs/live-home.md) adds a separate owner sign-in, automatic committed-Git refresh and a shared HTTPS link for normal phone and desktop browsers. The first release is read-only and general-only. Private/sensitive evidence stays behind existing agent policy gates; corrections and forgetting remain agent-driven.
+[Live Home](docs/live-home.md) adds a separate owner sign-in, automatic committed-Git refresh and a shared HTTPS link for normal phone and desktop browsers. It is read-only and general-only by default. With the owner's approval, the operator can turn on the owner view, which also shows private records to the signed-in owner; sensitive records are never served. Agent policy gates are unchanged, and corrections and forgetting remain agent-driven.
 
 It requires an explicitly approved always-on host and TLS setup. No hosted service is provisioned by installation or this repository. Once deployed and approved, ask an agent to save the same URL on each device. All agents on that OS account share it. `megabrain open --local` always keeps the offline snapshot path available. See the runbook for deployment gates and honest freshness/recovery behavior.
 
