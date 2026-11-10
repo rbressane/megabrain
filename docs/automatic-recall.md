@@ -67,7 +67,7 @@ megabrain activity --days 30
 megabrain status              # includes automatic_recall: hooks state and recent use
 ```
 
-These receipts are per agent and device for now. A later release will share them through the private Brain repository so MegaBrain Home can show activity across agents.
+Background refreshes and `megabrain open` also publish these receipts to the `megabrain-activity` branch of the private Brain repository, at most every 30 minutes and only when they changed. Home and Live Home then show every agent's use on Today. See [owner workflows](owner-workflows.md#agent-activity).
 
 ## Privacy
 

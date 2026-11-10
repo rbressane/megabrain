@@ -26,6 +26,8 @@ MegaBrain product code is distributed from the public official repository. Appro
 - Setup installs only a MegaBrain-managed `~/.local/bin/megabrain` symlink and refuses to overwrite an unrelated command. It never edits shell profiles automatically.
 - Product feedback is local proposal generation, never telemetry. The renderer performs no network operation, writes nowhere by default, rejects transcript/secret/private-path-shaped input without echo, and cannot publish product work.
 - Automatic-recall hooks run the installed helper through the agent's own skill link with unchanged trust, relevance and policy checks. They never store message text. Activity receipts are ignored, mode-0600 local state with identifiers and counts only. Hook installation edits only MegaBrain's own entries and never overwrites settings that are not valid JSON.
+- Shared activity lives on the private repository's `megabrain-activity` branch: identifiers, counts and times only. Each agent replaces only its own directory, with a single-commit lease, never plain force. Readers validate other agents' receipts strictly and name only memories they are already allowed to show. The branch is never used for recall or as Brain knowledge.
+- Home and Live Home bundle one SIL OFL font (Geist Mono) and inline it as a `data:` URL, so nothing loads from the network. Live Home's Content Security Policy permits only `font-src data:` for it; scripts and styles stay hash-pinned.
 - Revoke a compromised environment through its GitHub credential. Agent registry entries do not enforce access.
 
 ## Optional Live Home

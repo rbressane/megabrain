@@ -28,7 +28,7 @@ Natural conversation is the primary interface. Before a request, a connected age
 
 The public MegaBrain repository is the source of truth for product code and protocol. Each owner has a separate private GitHub repository as the source of truth for personal Brain data. Codex, Claude Code, Hermes, and other capable coding agents operate isolated local clones of that private repository.
 
-MegaBrain Home is a generated private local snapshot. It provides a graph-first overview, topic exploration, canonical resources, owner review, history, conflicts, agents, imports, provenance, and links to immutable Markdown sources. Project filters narrow evidence. Review and correction actions prepare owner-approved requests, not browser writes. Automatic capture can be paused per owner-local agent/device; explicit remember requests and don't-remember controls remain distinct. It communicates freshness as of generation time and never presents an old tab as continuously synchronized.
+MegaBrain Home is a generated private local snapshot. It opens on a plain-language Today page (status, what needs the owner, agent use, recent changes and current knowledge), with a topic map, topic exploration, canonical resources, owner review, history, conflicts, agents, imports, provenance, and links to immutable Markdown sources. Project filters narrow evidence. Review and correction actions prepare owner-approved requests, not browser writes. Automatic capture can be paused per owner-local agent/device; explicit remember requests and don't-remember controls remain distinct. It communicates freshness as of generation time and never presents an old tab as continuously synchronized.
 
 ## Capabilities and Constraints
 
@@ -46,7 +46,7 @@ MegaBrain Home is a generated private local snapshot. It provides a graph-first 
 
 The product name is **MegaBrain**. Its voice is plain, calm, direct, and confidence-inspiring. It should make privacy, ownership, provenance, and freshness legible without making a nontechnical owner learn implementation language.
 
-The product must feel like an owner-controlled knowledge instrument, not an autonomous personality, surveillance system, social network, or opaque AI dashboard. No binding logo, typeface, palette, testimonial, or external brand asset has been established.
+The product must feel like an owner-controlled knowledge instrument, not an autonomous personality, surveillance system, social network, or opaque AI dashboard. On 10 November 2026 the owner chose a retro-futuristic control-panel direction from a reference image: sage paper, ink outlines, a ticked-dial mark, Geist Mono throughout and one signal orange, defined in [DESIGN.md](DESIGN.md). Geist Mono is a SIL Open Font License font bundled with its license. No testimonial or external brand asset has been established.
 
 ## Evidence on Hand
 

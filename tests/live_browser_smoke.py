@@ -90,7 +90,7 @@ def main():
                 assert cdp.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 (output / f"live-login-{name}.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
             cdp.evaluate(f"document.getElementById('password').value = {json.dumps(password)}; document.querySelector('form').requestSubmit()")
-            wait(cdp, "location.pathname === '/' && !!document.querySelector('#brain-graph')")
+            wait(cdp, "location.pathname === '/' && !!document.querySelector('#today-title')")
             assert cdp.evaluate("!document.cookie.includes('megabrain')"), "Session cookie is not HttpOnly"
             assert cdp.evaluate("!document.querySelector('#live-bar').hidden && document.querySelector('#live-status').textContent.includes('Read-only')")
             for name, width, height in [("desktop", 1440, 1000), ("wide", 1920, 800), ("mobile", 390, 844), ("tall", 430, 1100)]:

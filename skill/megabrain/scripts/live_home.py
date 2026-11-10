@@ -26,6 +26,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
+import activity
 import megabrain
 import operations
 
@@ -139,6 +140,7 @@ class Projection:
     commit: str
     payload: dict
     documents: dict[str, bytes]
+    activity_commit: str | None = None
 
 
 class LiveView:
@@ -154,7 +156,7 @@ class LiveView:
         self.checked_at = 0.0
         self.stop = threading.Event()
 
-    def capture(self, commit: str) -> Projection:
+    def capture(self, commit: str, activity_commit: str | None = None) -> Projection:
         listing = operations.git_text(self.root, "ls-tree", "-rl", commit, "--", "brain", "megabrain.json")
         sizes = [line.split(None, 4)[3] for line in listing.splitlines()]
         if any(not size.isdigit() for size in sizes) or sum(int(size) for size in sizes) > MAX_CONTENT:
@@ -168,6 +170,8 @@ class LiveView:
             payload = megabrain._browser_payload(snapshot, sync)
             payload["snapshot_commit"] = commit
             visible = {memory["id"] for memory in payload["memories"]}
+            # Shared agent activity from its separate committed branch; only visible memories are named.
+            payload["activity"] = activity.home_activity(megabrain, self.root, visible_ids=set(visible), include_local=False)
             for memory in payload["memories"]:
                 memory["supersedes"] = [item for item in memory["supersedes"] if item in visible]
             documents = {}
@@ -176,7 +180,7 @@ class LiveView:
                 documents[path] = (snapshot / path).read_bytes()
         if len(json.dumps(payload).encode()) + sum(map(len, documents.values())) > MAX_CONTENT:
             raise LiveError("LIVE_SOURCE_TOO_LARGE", "The viewer projection exceeds its safe size limit.")
-        return Projection(commit, payload, documents)
+        return Projection(commit, payload, documents, activity_commit)
 
     def refresh(self) -> None:
         with self.refresh_guard:
@@ -187,13 +191,18 @@ class LiveView:
                     result = operations.run(["git", "fetch", "--no-tags", "origin",
                                              "refs/heads/main:refs/remotes/origin/main"], self.root)
                     offline = result.returncode != 0
+                    if not offline:
+                        activity.fetch_remote(self.root, 10)
+                    shared = operations.run(["git", "rev-parse", "--verify", "--quiet", f"{activity.REMOTE_REF}^{{commit}}"], self.root)
+                    activity_commit = shared.stdout.strip() if shared.returncode == 0 else None
                     commit = operations.git_text(self.root, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
                     if operations.run(["git", "merge-base", "--is-ancestor", "HEAD", commit], self.root).returncode:
                         raise LiveError("LIVE_LOCAL_COMMITS", "Use a dedicated viewer clone without local commits.")
                     previous = self.projection
                     if previous and operations.run(["git", "merge-base", "--is-ancestor", previous.commit, commit], self.root).returncode:
                         raise LiveError("LIVE_HISTORY_CHANGED", "Remote history changed. Owner review is required.")
-                    projection = previous if previous and previous.commit == commit else self.capture(commit)
+                    unchanged = previous and previous.commit == commit and previous.activity_commit == activity_commit
+                    projection = previous if unchanged else self.capture(commit, activity_commit)
                     with self.guard:
                         self.projection = projection
                         self.reason = "remote_unavailable" if offline else None
@@ -242,7 +251,7 @@ def shell() -> str:
             "review": [], "stats": {"current": 0, "history": 0, "conflicts": 0, "agents": 0, "imports": 0},
             "live": {"mode": "live", "interval_seconds": 15, "stale": True, "reason": "connecting"},
             "sync": {"stale": True}}
-    html = (ASSETS / "browser.html").read_text(encoding="utf-8").replace("__MEGABRAIN_DATA__", json.dumps(data))
+    html = megabrain.home_template().replace("__MEGABRAIN_DATA__", json.dumps(data))
     return re.sub(r'  <meta http-equiv="Content-Security-Policy"[^>]+>\n', "", html)
 
 
@@ -253,7 +262,7 @@ def content_policy(html: str) -> str:
     scripts, styles = hashes("script") or "'none'", hashes("style") or "'none'"
     return (f"default-src 'none'; script-src {scripts}; "
             f"style-src {styles}; connect-src 'self'; "
-            "img-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
+            "img-src data:; font-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
 
 
 class LiveServer(ThreadingHTTPServer):
@@ -271,7 +280,7 @@ class LiveServer(ThreadingHTTPServer):
         self.tls = tls
         self.slots = threading.BoundedSemaphore(16)
         self.html = shell()
-        self.login_html = (ASSETS / "live-login.html").read_text(encoding="utf-8")
+        self.login_html = megabrain.inline_fonts((ASSETS / "live-login.html").read_text(encoding="utf-8"))
         super().__init__(address, LiveHandler)
 
     def process_request(self, request, client_address):

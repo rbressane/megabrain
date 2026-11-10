@@ -2470,6 +2470,11 @@ def browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[s
         payload = _browser_payload(snapshot, sync, trusted_context=trusted_context)
     payload["snapshot_commit"] = commit
     payload["capture"] = knowledge.capture_state(root)
+    import activity
+
+    payload["activity"] = activity.home_activity(
+        sys.modules[__name__], root, visible_ids={str(memory["id"]) for memory in payload["memories"]}, include_local=True,
+    )
     payload["sync"] = safe_browser_sync(root, sync)
     payload["freshness"]["pending_local_commits"] = payload["sync"]["pending_local_commits"]
     return payload
@@ -2626,6 +2631,32 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
     }
 
 
+HOME_FONTS = (
+    ("Geist Mono", "GeistMono-Variable.woff2", "font-weight: 100 900;"),
+)
+
+
+def home_template() -> str:
+    """The Home page with its bundled open-licensed fonts inlined, so it works offline and under Live Home's CSP."""
+    return inline_fonts((SCRIPT_DIRECTORY.parent / "assets" / "browser.html").read_text(encoding="utf-8"))
+
+
+def inline_fonts(html: str) -> str:
+    import base64
+
+    assets = SCRIPT_DIRECTORY.parent / "assets"
+    faces = []
+    for family, filename, axes in HOME_FONTS:
+        path = assets / "fonts" / filename
+        if path.is_file() and not path.is_symlink():
+            data = base64.b64encode(path.read_bytes()).decode("ascii")
+            faces.append(
+                f'@font-face {{ font-family: "{family}"; src: url(data:font/woff2;base64,{data}) format("woff2"); '
+                f"{axes} font-style: normal; font-display: swap; }}"
+            )
+    return html.replace("/*__MEGABRAIN_FONTS__*/", "\n    ".join(faces), 1)
+
+
 @operations.locked
 def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
     compatibility = require_compatible_runtime(root, writing=False)
@@ -2637,9 +2668,18 @@ def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any]
             "The local brain must pass validation before it can be browsed",
             {"error_count": len(validation["errors"])},
         )
-    template = SCRIPT_DIRECTORY.parent / "assets" / "browser.html"
-    if not template.exists():
+    if not (SCRIPT_DIRECTORY.parent / "assets" / "browser.html").exists():
         raise BrainError("BROWSER_TEMPLATE_MISSING", "The local browser template is missing")
+    import activity
+
+    if sync.get("reason") != "remote_unavailable":
+        try:
+            # Share this agent's receipts and read every other agent's for the Today page.
+            published = activity.publish(sys.modules[__name__], root, timeout=8)
+            if not published.get("published") and published.get("reason") not in {"remote_unavailable", "already_current"}:
+                activity.fetch_remote(root, 8)
+        except operations.OperationError:
+            pass
     payload = browser_payload(root, sync, trusted_context=trusted_context)
     serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     serialized = (
@@ -2649,7 +2689,7 @@ def command_browse(root: Path, no_open: bool, *, trusted_context: dict[str, Any]
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
     )
-    html = template.read_text(encoding="utf-8").replace("__MEGABRAIN_DATA__", serialized)
+    html = home_template().replace("__MEGABRAIN_DATA__", serialized)
     output = root / ".megabrain" / "browser" / "index.html"
     operations.atomic_write(output, html)
     opened = False if no_open else webbrowser.open(output.resolve().as_uri())
@@ -3136,6 +3176,14 @@ def execute_command(args: argparse.Namespace) -> int:
                 prefetched = prefetch_remote(root, args.prefetch_timeout)
             sync = sync_repo(root, prefetched=prefetched)
             result = {"ok": sync.get("reason") != "validation_failed", **sync}
+            if args.prefetch_timeout and result["ok"]:
+                import activity
+
+                try:
+                    # Throttled to every 30 minutes and only when receipts changed.
+                    result["activity"] = activity.publish(sys.modules[__name__], root, timeout=args.prefetch_timeout)
+                except operations.OperationError:
+                    result["activity"] = {"published": False, "reason": "publish_failed"}
         elif args.command == "context":
             if not 1 <= args.limit <= 100:
                 raise BrainError("INVALID_LIMIT", "limit must be between 1 and 100")

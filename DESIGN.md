@@ -1,301 +1,141 @@
 ---
-name: "MegaBrain Home"
-description: "A compact, graph-first instrument for inspecting the shape, evidence, and provenance of a private Brain."
+name: "MegaBrain Home · Console"
+description: "A flat, retro-futuristic instrument panel for a private Brain: sage paper, ink outlines, bar meters, ring gauges and one dial. Today answers in sentences; Map, Explore and the evidence views keep the full shape and provenance."
 colors:
-  canvas: "#0b0c0e"
-  surface: "#111317"
-  surface-raised: "#17191d"
-  surface-hover: "#1c1f24"
-  border: "#25282e"
-  border-strong: "#343840"
-  text: "#f3f4f6"
-  text-secondary: "#b7bbc3"
-  text-muted: "#8b9099"
-  accent: "#7c6ef6"
-  accent-muted: "#aaa2ff"
-  success: "#69b9af"
-  warning: "#d7a95f"
-  danger: "#f06a6a"
+  paper: "#e9eee3"
+  paper-2: "#dde4d5"
+  ink: "#20221f"
+  ink-2: "#454942"
+  ink-3: "#5d6259"
+  hair: "rgba(32, 34, 31, 0.18)"
+  hair-strong: "rgba(32, 34, 31, 0.45)"
+  track: "rgba(32, 34, 31, 0.2)"
+  signal: "#b33a08"
+  night-paper: "#151714"
+  night-ink: "#e2e8da"
+  night-signal: "#ff8a4f"
 typography:
-  headline:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "18px"
-    fontWeight: 650
-    lineHeight: 1.2
-    letterSpacing: "-0.02em"
-  title:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "14px"
-    fontWeight: 650
-    lineHeight: 1.25
-    letterSpacing: "-0.01em"
-  body:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "13px"
+  display:
+    fontFamily: "Geist Mono"
+    fontSize: "clamp(32px, 4.1vw, 60px)"
     fontWeight: 400
-    lineHeight: 1.58
+    lineHeight: 1.04
+    letterSpacing: "-0.05em"
+  readout:
+    fontFamily: "Geist Mono"
+    fontSize: "clamp(56px, 10.5vw, 148px)"
+    fontWeight: 400
+    lineHeight: 0.98
+    letterSpacing: "-0.04em"
+  instrument:
+    fontFamily: "Geist Mono"
+    fontSize: "22px"
+    fontWeight: 500
+    lineHeight: 1.2
+    letterSpacing: "0.01em uppercase"
+  body:
+    fontFamily: "Geist Mono"
+    fontSize: "15–17px"
+    fontWeight: 400
+    lineHeight: 1.6
     letterSpacing: "normal"
   label:
-    fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "10px"
-    fontWeight: 400
-    lineHeight: 1.8
-    letterSpacing: "normal"
+    fontFamily: "Geist Mono"
+    fontSize: "12px"
+    fontWeight: 500
+    lineHeight: 1.5
+    letterSpacing: "0.08em uppercase"
 rounded:
-  compact: "3px"
-  panel: "4px"
-  control: "5px"
-  circle: "50%"
+  control: "999px"
+  card: "28px"
+  inner: "22px"
+  notice: "0 0 0 44px"
 spacing:
-  hairline-gap: "2px"
-  micro: "4px"
-  tight: "6px"
-  control: "8px"
-  compact: "10px"
-  rhythm: "12px"
-  section: "14px"
-  panel: "16px"
-  block: "18px"
-  inspector: "20px"
-  workspace-y: "24px"
-  workspace-x: "28px"
-components:
-  search-field:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    typography: "{typography.body}"
-    rounded: "{rounded.control}"
-    padding: "0 9px"
-    height: "34px"
-  navigation-default:
-    backgroundColor: "transparent"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.body}"
-    rounded: "{rounded.control}"
-    padding: "0 9px"
-    height: "36px"
-  navigation-active:
-    backgroundColor: "{colors.surface-raised}"
-    textColor: "{colors.text}"
-    typography: "{typography.body}"
-    rounded: "{rounded.control}"
-    padding: "0 9px"
-    height: "36px"
-  memory-card:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.control}"
-    padding: "14px 16px"
-  evidence-row:
-    backgroundColor: "transparent"
-    textColor: "{colors.text-secondary}"
-    typography: "{typography.body}"
-    padding: "7px 9px"
-    height: "42px"
-  evidence-row-hover:
-    backgroundColor: "{colors.surface-raised}"
-    textColor: "{colors.text}"
-  owner-action:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.accent-muted}"
-    rounded: "{rounded.panel}"
-    padding: "8px 12px"
-    height: "44px"
-  inspector-action:
-    backgroundColor: "transparent"
-    textColor: "{colors.accent-muted}"
-    rounded: "{rounded.panel}"
-    padding: "0 8px"
-    height: "34px"
-  badge-current:
-    backgroundColor: "{colors.surface-raised}"
-    textColor: "{colors.accent-muted}"
-    rounded: "{rounded.compact}"
-    padding: "0 6px"
-    height: "20px"
-  mobile-topic:
-    backgroundColor: "transparent"
-    textColor: "{colors.text-secondary}"
-    typography: "{typography.body}"
-    padding: "0 14px"
-    height: "48px"
-  graph-node-selected:
-    backgroundColor: "#282442"
-    textColor: "{colors.text}"
-    rounded: "{rounded.circle}"
+  workspace: "34px 40px"
+  card: "28px 30px"
+  section-gap: "44px"
+  stroke: "2px"
 ---
 
-# Design System: MegaBrain Home
+# Design System: MegaBrain Home · Console
 
-## Overview
+## North star
 
-**Creative North Star: "The Brain Itself"**
+**"A control panel for your memory."** On 10 November 2026 the owner replaced the earlier glowing "Synapse" direction with a retro-futuristic one, from a reference image of a home-energy control panel: pale sage background, near-black ink, a mono typeface, capsule outlines, bar meters, ring gauges, a ticked dial and a very large digital readout.
 
-MegaBrain Home is direct visual access to the owner's knowledge, not a dashboard that summarizes it. The graph replaces hero copy, stat cards, and presentation framing: show the whole knowledge shape first, isolate direct relationships on selection, reveal evidence and history in the inspector, then provide a quiet path to immutable Markdown.
+Home is a flat instrument panel printed on paper. Nothing glows, and there are no gradients, shadows or blur. Structure comes from 2px ink outlines and generous spacing. One signal orange is reserved for what needs the owner.
 
-The atmosphere is precise, calm, compact, and confidence-inspiring. Warm graphite chrome recedes around the knowledge map. Violet identifies selection and current attention; coral preserves the visibility of conflict. Every surface should make ownership, provenance, uncertainty, and snapshot freshness legible without forcing the owner to learn repository mechanics.
+## Signature instruments
 
-**Key Characteristics:**
+- **Verdict:** Today opens with two lines in display type: a muted lead-in ("Your Brain is") and the verdict ("up to date."). The verdict turns signal orange when the Brain needs the owner or may be out of date.
+- **Notice:** an inverted block (ink background, paper text) hangs from the top bar, square except for a 44px bottom-left corner. It carries the time, the freshness state, one plain sentence and, when there are conflicts, one action.
+- **Meters:** three outlined capsules with a solid ink bar, each with an uppercase name, a caption in words and a percentage:
+  - Recall: lookups that found something this week.
+  - Confirmed: current memories that are confirmed.
+  - In use: current memories recalled this week. It falls back to "New", the share learned in two weeks, when activity is unavailable.
+- **Gauges:** one capsule per agent with a ring. The ring's ink arc is the share of that agent's lookups that found something.
+- **Dial:** the last 14 days as an arc of 57 ticks, one every six hours, with a longer tick each day. A dot marks each six-hour stretch in which a memory was learned, changed or forgotten:
+  - a larger dot means more memories;
+  - the newest dot is ringed;
+  - a signal dot is in conflict;
+  - hovering names the memory, and clicking opens it.
+- **Readout:** inside the dial, a clock counts up from the last synchronization in Live Home, or shows the snapshot's age in local Home.
 
-- Graph-first desktop composition with receding navigation and persistent evidence.
-- Compact neutral typography, exact spacing, and 1px graphite hairlines.
-- A whole shape → evidence → Markdown interaction path.
-- Violet selection, coral conflict, and explicit text for every meaningful state.
-- A ranked topic list on mobile, not a compressed graph.
+## Color
 
-## Colors
+Day (sage paper) is the default regardless of the system setting, because it is the direction the owner chose. The toggle switches to night, which inverts paper and ink, and the choice is stored per browser.
 
-The palette is a warm graphite field with one cool violet signal, one coral exception, and restrained operational status colors.
-
-### Primary
-
-- **Selection Violet** (`colors.accent`): Marks the selected graph node, targeted records, focus within fields, and the current legend state.
-- **Evidence Violet** (`colors.accent-muted`): Carries active icons, current badges, evidence dots, links, carets, and visible focus rings.
-
-### Secondary
-
-- **Conflict Coral** (`colors.danger`): Marks unresolved conflict nodes, edges, badges, and conflict headings. It is semantic evidence, never decoration.
-
-### Tertiary
-
-- **Synchronized Teal** (`colors.success`): Confirms synchronization at snapshot generation time.
-- **Stale Amber** (`colors.warning`): Signals that a generated snapshot may be stale or synchronization was incomplete.
-
-### Neutral
-
-- **Brain Canvas** (`colors.canvas`): The dominant graph field and page background.
-- **Knowledge Surface** (`colors.surface`): Search, filters, memory records, and quiet hover fills.
-- **Raised Evidence** (`colors.surface-raised`): Selected navigation, selected evidence rows, badges, and active compact surfaces.
-- **Hover Graphite** (`colors.surface-hover`): Interactive hover feedback for controls.
-- **Graphite Hairline** (`colors.border`): Default separators, panel boundaries, and record outlines.
-- **Strong Graphite Hairline** (`colors.border-strong`): Input outlines, graph controls, scrollbar thumbs, and stronger hover boundaries.
-- **Primary Text** (`colors.text`): Headings, selected content, and high-priority labels.
-- **Secondary Text** (`colors.text-secondary`): Summaries, evidence names, graph labels, and readable operational copy.
-- **Muted Text** (`colors.text-muted`): Metadata, counts, timestamps, inactive navigation, and supporting status.
-
-**The Selection Is Signal Rule.** Violet marks the current point of attention and current knowledge. It is not decoration.
-
-**The Conflict Is Evidence Rule.** Coral is reserved for unresolved conflict and danger states, always paired with explicit text.
+- **Paper and ink:** every surface is paper; every outline, bar, dot and heading is ink. Secondary text is `ink-2`; captions and labels are `ink-3`.
+- **Signal** (`colors.signal`): conflicts, staleness and forgotten items only, always paired with words.
+- **Inversion:** the active navigation item, current and core badges, the notice and hovered buttons swap paper and ink. Inversion is the only emphasis besides signal.
+- **Contrast:** all text is WCAG AA or better in both themes (captions 5.3:1 on day paper, signal 5.0:1).
 
 ## Typography
 
-**Display Font:** The system sans-serif stack (`typography.headline`)
-
-**Body Font:** The system sans-serif stack (`typography.body`)
-
-**Label Font:** The system sans-serif stack (`typography.label`)
-
-**Character:** One neutral sans-serif family keeps the interface fast, native, and operational. Hierarchy comes from weight, size, contrast, and alignment rather than decorative type changes.
-
-### Hierarchy
-
-- **Headline** (`typography.headline`): Inspector titles and primary page headings. Keep it rare and left aligned.
-- **Title** (`typography.title`): Product identity and compact section emphasis.
-- **Body** (`typography.body`): Search, navigation, memory summaries, evidence names, and the main reading layer. Long summaries stay near 78ch.
-- **Label** (`typography.label`): Metadata, counts, badges, ranks, legend labels, and snapshot notes. Use tabular numerals for counts and dates.
-
-**The Density Must Stay Legible Rule.** Compact type may reduce size only when hierarchy, contrast, and line height preserve scanning.
+- **One family:** Geist Mono (Vercel, SIL OFL), a variable font, for everything.
+- **Display and readout:** regular weight with tight tracking (-0.04em to -0.05em).
+- **Instrument names:** uppercase, medium weight, 19–22px.
+- **Labels:** uppercase, 12px, tracked 0.08em. Nothing is smaller than 11px, and only short uppercase status chips use 11px.
+- **Reading text:** 15–17px at a 1.6 line height, in sentence case.
+- **Bundling:** the font is bundled in `assets/fonts/` with its license and inlined as a `data:` URL at render time. Nothing loads from the network, and Live Home's CSP allows `font-src data:` only.
 
 ## Layout
 
-Desktop is a full-viewport instrument. A 52px utility bar spans the top. Below it, a 184px dim rail frames a graph workspace split into a fluid canvas and a persistent 304px evidence inspector; a 36px status and legend strip spans both columns. The graph uses a 900 × 820 coordinate field and owns the clear majority of usable space.
+- **Chrome:** a 64px top bar with a 2px ink rule (ticked-dial mark, pill search with a `/` hint, scope filter, sync state, theme toggle) and a 232px rail of 44px pill navigation in uppercase.
+- **Content width:** content is centered at up to 1240px.
+- **Today, top to bottom:**
+  1. The verdict beside the hanging notice.
+  2. Needs you: a card with a signal outline when something is open, or a single capsule line when clear.
+  3. Meters beside agent gauges.
+  4. The dial and readout.
+  5. Most recalled, recent changes and current knowledge as full-width cards.
+- **Below 1050px:** the notice moves above the verdict and spans the full width; meters and gauges stack.
+- **Below 760px:** the rail becomes a sticky horizontal strip, and the readout sits under the dial instead of inside it.
 
-At 1050px and below, the rail contracts to 164px and the inspector to 280px. At 760px and below, the composition becomes a document flow: the rail becomes horizontally scrollable navigation, the SVG graph and zoom controls disappear, ranked 48px topic rows become the overview, and the evidence inspector follows below. At 520px and below, secondary hints and legend detail recede further.
+## Surfaces
 
-The spacing rhythm is compact and incremental. Use 2–12px gaps inside controls and dense groups, 14–20px for record and inspector padding, and 24–28px for non-graph workspace framing. Structure should be felt through alignment and tone, not a grid of boxed cards.
+- **Cards:** a 2px ink outline, a 28px radius and no fill. Hover fills with `paper-2`.
+- **Inner chips:** recall and knowledge chips use a 1px `hair-strong` outline with a 22px radius. Core knowledge gets the full 2px ink outline.
+- **Attention:** conflict cards and claim panels use a signal outline. Claim panels add a faint signal wash.
+- **Controls:** buttons and selects are capsules with a 2px ink outline and uppercase labels. They invert on hover.
+- **Badges:** capsule chips. Current and core are inverted, conflict is signal-outlined, private and sensitive are dashed.
 
-**The Whole Shape First Rule.** Desktop opens on the graph; evidence follows selection in the persistent inspector.
+## Motion
 
-## Elevation & Depth
+- Today's first render raises each section over 640ms, staggered 70ms apart, and fills the meters over 900ms. Live refreshes never replay either.
+- The freshness dot in the notice blinks slowly.
+- The clock changes once a second.
+- Everything else is still, and all animation stops under `prefers-reduced-motion`.
 
-This is a flat system with no shadows. Depth comes from graphite tonal steps, 1px borders, dimmed non-adjacent graph relationships, and a restrained raised surface for selected or hovered content. The canvas, chrome, inspector, and status strip remain physically quiet.
+## Map and evidence views
 
-**The Flat Instrument Rule.** Surfaces stay flat. Use tonal separation and 1px hairlines to establish hierarchy; do not add shadows.
+- **Map:** topics are open ink circles with uppercase labels on a faint dot grid. Current memories are solid ink dots, historical ones are open, and conflicts are signal. The selected topic is filled.
+- **Timeline:** an ink spine with solid dots for current records and open dots for history.
+- **Sign-in:** one outlined card with the mark, "Welcome back.", a capsule field and an inverted capsule button.
 
-## Shapes
+## Accessibility
 
-Controls and containers use gently compact corners: 3px for badges, 4px for evidence containers and inspector actions, and 5px for fields, navigation rows, cards, and empty states. Graph nodes and status dots are circular because their geometry carries meaning; circles do not become a general component style. Authored icons use 1.5px rounded strokes at 14–17px.
-
-Topic nodes scale from a 20px to 34px radius according to evidence count. Memory nodes stay much smaller at a 4.5px to 7px radius, with size and outline distinguishing history, current state, conflict, and selection.
-
-**The Curve Is Restraint Rule.** Use 3–5px corners for controls and containers; reserve circles for graph and status semantics.
-
-## Components
-
-Components are compact, quiet, and evidence-led. Hover and focus states clarify operation without lifting surfaces or adding decorative motion.
-
-### Search and Filters
-
-- **Search:** A 34px graphite field with a 5px radius, strong hairline, 13px input, inline 17px search icon, and small keyboard hint.
-- **Filters:** Match the search field's height, surface, outline, and corner treatment.
-- **Hover / Focus:** Hover shifts to the hover graphite; focus changes the border to violet. Keyboard focus uses a 2px evidence-violet outline with 2px offset.
-
-### Navigation
-
-- **Default:** A transparent 36px row with muted text, 17px authored icon, compact count, and a 5px radius.
-- **Active:** Use the raised graphite surface, default hairline, primary text, and evidence-violet icon.
-- **Mobile:** Convert the rail to a sticky horizontal strip. Preserve labels, counts, active state, and keyboard operation.
-
-### Knowledge Map
-
-- **Topics:** Large dark circular nodes with centered 12px labels; node size reflects tagged-memory count.
-- **Memories:** Small neutral circles. Historical memories recede; conflict memories retain coral visibility even when unrelated nodes dim. Memory labels appear on selection, hover or keyboard focus to avoid obscuring topic labels.
-- **Relationships:** Shared-tag edges are faint and dotted. Supersession edges are directional. Active direct relationships shift to evidence violet.
-- **Selection:** The selected node uses a dark violet fill and a strong violet outline; direct neighbors remain legible while unrelated nodes recede.
-- **Controls:** Zoom in, zoom out, and reset form one flat segmented control in the lower-left corner.
-
-### Evidence Inspector
-
-- **Container:** A persistent flat panel separated from the graph by one hairline and padded by 20px horizontally on desktop.
-- **Rows:** Evidence rows are at least 42px high, use a status dot plus name plus explicit state, and switch to raised graphite on hover or selection.
-- **Facts:** Confidence, updated date, history count, agent, source, and tags remain compact but readable.
-- **Actions:** Violet text actions are 34px high and use a 4px corner. They lead to topic exploration, the relevant list view, or immutable Markdown.
-
-### Memory Cards and Tags
-
-- **Cards:** Flat knowledge surfaces with a 5px radius, default hairline, and 14px × 16px padding. Conflict and targeted states change the border color rather than adding elevation.
-- **Badges / Tags:** Compact 20px labels with a 3px radius. Use raised graphite by default, evidence violet for current knowledge, and coral for conflict or tombstone states.
-
-### Resources and Owner Review
-
-- **Resources and review rows:** Flat, vertically separated evidence with 16px block spacing. Resource bodies use native disclosure controls, wrapped plain text, and the existing body family rather than executable Markdown.
-- **Owner actions:** 44px minimum height, 4px corners, surface fill, strong graphite border and evidence-violet text. Actions prepare requests, never imply a completed Brain mutation.
-- **Handoff panel:** An inline bordered section with a labeled read-only request, copy and dismiss actions, and explicit status feedback. Clipboard failure offers manual selection. Avoid an interrupting modal.
-- **Scope:** A labeled project selector narrows the current view. Mobile retains horizontally scrollable navigation and keeps the selected destination visible.
-
-### Ranked Mobile Topics
-
-- **Rows:** Full-width 48px buttons with a two-digit rank, topic name, and tabular count.
-- **State:** The selected topic uses raised graphite and primary text. Its evidence inspector follows immediately below the list.
-
-### Status and Legend
-
-- **Structure:** A 36px graphite strip carries the relationship legend and record/topic/conflict totals.
-- **Meaning:** Pair every dot or line with a text label. Freshness language must state that synchronization is true only when the snapshot was generated.
-
-### Optional Live Home states
-
-Live mode inherits the same graph, list, inspector, tokens and proposal actions. A flat status strip below the utility bar keeps last synchronization, read-only scope and sign-out visible on desktop and mobile. Text distinguishes connecting, delayed, offline and unavailable states; amber supplements, never replaces, that text. Quiet background updates preserve search, selection, open resource disclosures and reading position rather than replaying entrance motion.
-
-Owner sign-in uses a narrow single-column form on the same graphite canvas, existing violet focus/action color, visible labels and 48px form controls. Readable 16px input text avoids mobile input zoom. The 24px sign-in heading is a form-specific hierarchy step, not a replacement display system. The sign-in screen carries no knowledge or decorative preview. Local snapshots retain their explicit snapshot boundary; live freshness is never implied by a static export.
-
-**The Evidence Path Rule.** Every selection should lead from shape to evidence to immutable Markdown.
-
-## Do's and Don'ts
-
-### Do:
-
-- **Do** let the knowledge graph dominate the desktop overview and let surrounding chrome recede.
-- **Do** use violet for selection, focus, and current evidence; use coral only for conflict and danger.
-- **Do** preserve provenance, history, uncertainty, and snapshot freshness in plain language.
-- **Do** pair color-coded states with labels, maintain visible keyboard focus, and honor reduced motion.
-- **Do** replace the graph with a ranked topic list on narrow screens while preserving selection and evidence.
-
-### Don't:
-
-- **Don't** turn MegaBrain Home into a hero page, KPI dashboard, bento grid, or collection of large stat cards.
-- **Don't** add gradients, glassmorphism, glow, neon, shadows, decorative illustration, or presentation theater.
-- **Don't** use an anatomical brain, neural-network cliché, person, or physical knowledge metaphor.
-- **Don't** round every element into pills or soften the compact 3–5px form language.
-- **Don't** hide conflicts, provenance, immutable Markdown access, or the local snapshot boundary.
-- **Don't** imply that a generated local snapshot is continuously synchronized.
+- **Never color alone:** every state has words; signal only reinforces them.
+- **Focus:** a 2px ink outline with a 3px offset, in paper color on the notice.
+- **Instruments:** each meter states its value in text. Each gauge and the dial have a text alternative. Everything the dial shows is also listed under "Recently learned and changed".
+- **Navigation:** keyboard navigation everywhere. Headings that receive programmatic focus show no ring.

@@ -3,30 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light">
   <title>Sign in · MegaBrain Live Home</title>
   <style>
-    :root { --canvas: #0b0c0e; --surface: #111317; --border: #343840; --field-border: #6b7079; --text: #f3f4f6; --secondary: #b7bbc3; --accent: #aaa2ff; --danger: #f06a6a; }
+    /*__MEGABRAIN_FONTS__*/
+    :root { --paper: #e9eee3; --paper-2: #dde4d5; --ink: #20221f; --ink-2: #454942; --ink-3: #5d6259; --hair: rgba(32, 34, 31, 0.18); --signal: #b33a08; color-scheme: light; }
     * { box-sizing: border-box; }
-    html { background: var(--canvas); color: var(--text); font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; padding: 32px 24px; }
-    main { margin: 12vh auto 0; max-width: 440px; }
-    h1 { font-size: 24px; line-height: 1.3; margin: 0 0 16px; }
-    p { color: var(--secondary); margin: 0 0 24px; }
-    label { display: block; margin-bottom: 8px; }
-    input, button { border: 1px solid var(--border); border-radius: 4px; font: inherit; min-height: 48px; padding: 8px 16px; width: 100%; }
-    input { background: var(--surface); border-color: var(--field-border); caret-color: var(--accent); color: var(--text); }
-    button { background: var(--surface); color: var(--accent); cursor: pointer; margin: 16px 0 24px; }
-    button:hover { border-color: var(--accent); }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-    ::selection { background: var(--accent); color: var(--canvas); }
-    #login-status { color: var(--danger); }
-    .note { border-top: 1px solid var(--border); font-size: 14px; padding-top: 24px; }
+    html { background: var(--paper); color: var(--ink); font: 15px/1.65 "Geist Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; min-height: 100vh; overflow-x: hidden; padding: 32px 20px; }
+    main { border: 1.5px solid var(--ink); border-radius: 36px; margin: 9vh auto 0; max-width: 480px; padding: 36px 34px 30px; }
+    .mark { display: block; height: 44px; margin-bottom: 26px; width: 44px; }
+    .mark .ticks { fill: none; stroke: var(--ink); stroke-dasharray: 1.3 4.983; stroke-width: 4; }
+    .mark .core { fill: var(--ink); }
+    .overline { color: var(--ink-3); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; margin: 0 0 12px; text-transform: uppercase; }
+    h1 { font-size: 40px; font-weight: 400; letter-spacing: -0.05em; line-height: 1.04; margin: 0 0 16px; }
+    p { color: var(--ink-2); margin: 0 0 24px; }
+    label { color: var(--ink); display: block; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; margin-bottom: 10px; text-transform: uppercase; }
+    input, button { border: 1.5px solid var(--ink); border-radius: 999px; font: inherit; min-height: 54px; padding: 8px 22px; width: 100%; }
+    input { background: transparent; caret-color: var(--ink); color: var(--ink); }
+    input:focus { background: var(--paper-2); outline: 2px solid var(--ink); outline-offset: 3px; }
+    button { background: var(--ink); color: var(--paper); cursor: pointer; font-size: 13px; font-weight: 500; letter-spacing: 0.08em; margin: 16px 0 24px; text-transform: uppercase; transition: background 160ms ease, color 160ms ease; }
+    button:hover { background: transparent; color: var(--ink); }
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    ::selection { background: var(--ink); color: var(--paper); }
+    #login-status { color: var(--signal); font-weight: 500; margin: 0; min-height: 0; }
+    #login-status:not(:empty) { margin-bottom: 18px; }
+    .note { border-top: 1px solid var(--hair); color: var(--ink-3); font-size: 13px; margin: 0; padding-top: 20px; }
+    @media (max-width: 520px) { main { border-radius: 28px; margin-top: 4vh; padding: 28px 22px 24px; } h1 { font-size: 34px; } }
   </style>
 </head>
 <body>
   <main>
-    <h1>MegaBrain Live Home</h1>
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="ticks" cx="16" cy="16" r="12"></circle><circle class="core" cx="12.4" cy="14" r="3.3"></circle></svg>
+    <p class="overline">MegaBrain · Live Home</p>
+    <h1>Welcome back.</h1>
     <p>Sign in to browse your Brain. This page can read knowledge, never change it.</p>
     <p id="login-status" role="status"></p>
     <form method="post" action="/login">
@@ -34,7 +44,7 @@
       <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
       <button type="submit">Sign in</button>
     </form>
-    <p class="note">This sign-in is separate from your agents. First release: general knowledge only. Private and sensitive records stay outside this viewer. For corrections or forgetting, ask a connected agent.</p>
+    <p class="note">This sign-in is separate from your agents. Private and sensitive records stay outside this viewer until your owner view is enabled. For corrections or forgetting, ask a connected agent.</p>
   </main>
 </body>
 </html>
