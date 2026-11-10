@@ -103,8 +103,10 @@ class SharedActivityTests(unittest.TestCase):
         self.assertEqual(set(agents), {self.agent_id(self.first), self.agent_id(self.second)})
         self.assertEqual(summary["totals_7d"]["lookups"], 2)
         self.assertEqual(summary["top_memories"][0]["id"], self.memory["memory_id"])
+        self.assertEqual(summary["memories_used_7d"], 1)
         hidden = activity.home_activity(mb, self.first, visible_ids=set(), include_local=True)
         self.assertEqual(hidden["top_memories"], [])
+        self.assertEqual(hidden["memories_used_7d"], 0)
 
     def test_untrusted_receipts_from_the_branch_are_validated(self) -> None:
         bad_agent = "00000000-0000-4000-8000-0000000000ff"

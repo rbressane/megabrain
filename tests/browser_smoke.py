@@ -156,24 +156,26 @@ def main():
             for name, width, height in [("desktop", 1440, 1000), ("wide", 1920, 800), ("mobile", 390, 844), ("tall", 430, 1100)]:
                 cdp.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=width < 760)
                 cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
-                for scheme in ("dark", "light"):
-                    cdp.call("Emulation.setEmulatedMedia", features=[
-                        {"name": "prefers-reduced-motion", "value": "reduce"}, {"name": "prefers-color-scheme", "value": scheme},
-                    ])
+                for scheme in ("light", "dark"):
+                    cdp.evaluate(f"applyTheme('{scheme}')")
+                    assert cdp.evaluate(f"effectiveTheme() === '{scheme}'"), f"Theme did not apply: {scheme}"
                     for view in ("today", "overview", "resources", "review"):
-                        if scheme == "light" and view not in ("today", "overview"):
+                        if scheme == "dark" and view not in ("today", "overview"):
                             continue
                         cdp.evaluate(f"document.querySelector('[data-view={view}]').click(); window.scrollTo(0, 0)")
                         assert cdp.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"Horizontal overflow: {name}/{view}/{scheme}"
                         assert cdp.evaluate("!window.syntheticInjection"), "Resource instructions executed"
                         screenshot = cdp.call("Page.captureScreenshot", format="png")["data"]
                         suffix = "" if view == "today" else f"-{'map' if view == 'overview' else view}"
-                        filename = f"{name}{suffix}{'-light' if scheme == 'light' else ''}.png"
+                        filename = f"{name}{suffix}{'-night' if scheme == 'dark' else ''}.png"
                         (output / filename).write_bytes(base64.b64decode(screenshot))
+                cdp.evaluate("applyTheme('light')")
                 cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
                 cdp.evaluate("document.querySelector('[data-view=today]').click()")
                 assert cdp.evaluate("state.view === 'today' && ['#today-needs', '#today-agents', '#today-recent', '#today-knows'].every(selector => !!document.querySelector(selector))"), "Today sections missing"
                 assert cdp.evaluate("document.querySelector('#today-agents').closest('section').textContent.includes('lookups this week')"), "Agent usage missing from Today"
+                assert cdp.evaluate("document.querySelectorAll('#brain-dial .dial-tick').length === 57 && document.querySelectorAll('.meter').length === 3 && document.querySelectorAll('.gauge .ring').length >= 1"), "Today instruments missing"
+                assert cdp.evaluate("/^\\d\\d:\\d\\d:\\d\\d$/.test(document.getElementById('dial-clock').textContent)"), "Dial clock is not running"
                 cdp.evaluate("document.querySelector('[data-view=explore]').click(); document.querySelector('[data-handoff]').click()")
                 (output / f"{name}-handoff.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
                 assert cdp.evaluate("!document.getElementById('handoff-panel').hidden && document.getElementById('handoff-text').value.includes('confirmation')")
@@ -186,7 +188,7 @@ def main():
                 assert cdp.evaluate("!!document.querySelector('.empty-state')")
             assert not cdp.errors, "Browser emitted runtime errors"
             print(json.dumps({"ok": True, "synthetic": True, "viewports": 4, "views_per_viewport": 6,
-                              "checks": ["render", "today", "agent usage", "light theme", "overflow", "inert resource text", "handoff", "dismiss", "empty search", "reduced motion"],
+                              "checks": ["render", "today", "instruments", "agent usage", "night theme", "overflow", "inert resource text", "handoff", "dismiss", "empty search", "reduced motion"],
                               "screenshots": ".impeccable/review"}, indent=2))
             cdp.socket.close()
             os.killpg(process.pid, signal.SIGTERM)

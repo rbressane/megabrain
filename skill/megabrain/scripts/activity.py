@@ -301,6 +301,7 @@ def summary(
         "agents": sorted(per_agent.values(), key=lambda item: item["last_used_at"] or "", reverse=True),
         "totals_7d": {"lookups": totals["lookups"], "found": totals["found"], "nothing_found": totals["lookups"] - totals["found"]},
         "daily": [{"date": date, "lookups": daily[date], "found": daily_found[date]} for date in days],
+        "memories_used_7d": len(uses),
         "top_memories": [{"id": memory_id, "uses": count} for memory_id, count in uses.most_common(5)],
     }
 

@@ -1,144 +1,141 @@
 ---
-name: "MegaBrain Home · Synapse"
-description: "A luminous instrument for a private Brain. Today answers in sentences around a living constellation of the owner's memories; Map, Explore and the evidence views keep the full shape and provenance."
+name: "MegaBrain Home · Console"
+description: "A flat, retro-futuristic instrument panel for a private Brain: sage paper, ink outlines, bar meters, ring gauges and one dial. Today answers in sentences; Map, Explore and the evidence views keep the full shape and provenance."
 colors:
-  void: "#05060b"
-  void-raised: "#0b0d16"
-  glass: "rgba(16, 19, 32, 0.66)"
-  line: "rgba(160, 180, 255, 0.11)"
-  line-strong: "rgba(170, 190, 255, 0.22)"
-  ink: "#eef1ff"
-  ink-2: "#b9c0dc"
-  ink-3: "#848cab"
-  ion: "#7ce7ff"
-  plasma: "#a68bff"
-  flare: "#ff7ab8"
-  mint: "#5ff2c4"
-  amber: "#ffc56b"
-  coral: "#ff6b81"
+  paper: "#e9eee3"
+  paper-2: "#dde4d5"
+  ink: "#20221f"
+  ink-2: "#454942"
+  ink-3: "#5d6259"
+  hair: "rgba(32, 34, 31, 0.18)"
+  hair-strong: "rgba(32, 34, 31, 0.45)"
+  track: "rgba(32, 34, 31, 0.2)"
+  signal: "#b33a08"
+  night-paper: "#151714"
+  night-ink: "#e2e8da"
+  night-signal: "#ff8a4f"
 typography:
   display:
-    fontFamily: "Mona Sans (width 110–125%)"
-    fontSize: "clamp(40px, 5.2vw, 72px)"
-    fontWeight: 640
+    fontFamily: "Geist Mono"
+    fontSize: "clamp(32px, 4.1vw, 60px)"
+    fontWeight: 400
+    lineHeight: 1.04
+    letterSpacing: "-0.05em"
+  readout:
+    fontFamily: "Geist Mono"
+    fontSize: "clamp(56px, 10.5vw, 148px)"
+    fontWeight: 400
     lineHeight: 0.98
-    letterSpacing: "-0.035em"
-  heading:
-    fontFamily: "Mona Sans (width 115%)"
-    fontSize: "24px"
-    fontWeight: 640
+    letterSpacing: "-0.04em"
+  instrument:
+    fontFamily: "Geist Mono"
+    fontSize: "22px"
+    fontWeight: 500
     lineHeight: 1.2
-    letterSpacing: "-0.02em"
+    letterSpacing: "0.01em uppercase"
   body:
-    fontFamily: "Mona Sans"
-    fontSize: "17px"
+    fontFamily: "Geist Mono"
+    fontSize: "15–17px"
     fontWeight: 400
     lineHeight: 1.6
     letterSpacing: "normal"
-  numeral:
-    fontFamily: "Mona Sans (width 125%)"
-    fontSize: "48px"
-    fontWeight: 280
-    lineHeight: 1.05
-    letterSpacing: "-0.02em"
-  data:
-    fontFamily: "Martian Mono"
-    fontSize: "11px"
+  label:
+    fontFamily: "Geist Mono"
+    fontSize: "12px"
     fontWeight: 500
-    lineHeight: 1.6
-    letterSpacing: "0.14em uppercase"
+    lineHeight: 1.5
+    letterSpacing: "0.08em uppercase"
 rounded:
-  chip: "999px"
   control: "999px"
-  card: "22px"
-  inner: "16–18px"
+  card: "28px"
+  inner: "22px"
+  notice: "0 0 0 44px"
 spacing:
   workspace: "34px 40px"
-  card: "26px 28px"
-  grid-gap: "18px"
-  section-gap: "28px"
+  card: "28px 30px"
+  section-gap: "44px"
+  stroke: "2px"
 ---
 
-# Design System: MegaBrain Home · Synapse
+# Design System: MegaBrain Home · Console
 
 ## North star
 
-**"The Brain, Answered."** Approved by the owner on 9 November 2026, asking for an interface that looks like it comes from the future while staying readable.
+**"A control panel for your memory."** On 10 November 2026 the owner replaced the earlier glowing "Synapse" direction with a retro-futuristic one, from a reference image of a home-energy control panel: pale sage background, near-black ink, a mono typeface, capsule outlines, bar meters, ring gauges, a ticked dial and a very large digital readout.
 
-Home is a luminous instrument. Light is signal, not decoration: ice-cyan marks what is current and recent, coral marks conflict, violet marks agents. Everything else is ink on deep glass.
+Home is a flat instrument panel printed on paper. Nothing glows, and there are no gradients, shadows or blur. Structure comes from 2px ink outlines and generous spacing. One signal orange is reserved for what needs the owner.
 
-Today opens with plain sentences ("Your Brain is up to date." or "Your Brain needs you.") beside a living constellation of the owner's actual memories.
+## Signature instruments
 
-The graph-first landing of earlier releases proved hard to read and process. The graph now lives under **Map**.
-
-## Signature: the constellation
-
-Each current memory is a point of light on a slowly turning sphere:
-- **Layout:** points are placed on a golden-angle spiral, grouped by topic, so clusters form naturally. Close neighbors are linked by faint neural lines.
-- **Neural dust:** a fixed lattice of dim points keeps the sphere legible for a Brain of any size.
-- **Point colors:** memories created in the last two weeks glow ion; conflicts glow and pulse coral; core items are larger.
-- **Agents:** each agent active this week orbits as a violet satellite on one of two tilted rings.
-- **Interaction:** hovering shows the memory, clicking opens it, and the pointer tilts the sphere.
-- **Accessibility:** the canvas has a full text label. The same information is available in the cards below.
-- **Motion:** with reduced motion it renders once and stays still. It pauses when hidden and is drawn at up to 2× device pixel ratio.
+- **Verdict:** Today opens with two lines in display type: a muted lead-in ("Your Brain is") and the verdict ("up to date."). The verdict turns signal orange when the Brain needs the owner or may be out of date.
+- **Notice:** an inverted block (ink background, paper text) hangs from the top bar, square except for a 44px bottom-left corner. It carries the time, the freshness state, one plain sentence and, when there are conflicts, one action.
+- **Meters:** three outlined capsules with a solid ink bar, each with an uppercase name, a caption in words and a percentage:
+  - Recall: lookups that found something this week.
+  - Confirmed: current memories that are confirmed.
+  - In use: current memories recalled this week. It falls back to "New", the share learned in two weeks, when activity is unavailable.
+- **Gauges:** one capsule per agent with a ring. The ring's ink arc is the share of that agent's lookups that found something.
+- **Dial:** the last 14 days as an arc of 57 ticks, one every six hours, with a longer tick each day. A dot marks each six-hour stretch in which a memory was learned, changed or forgotten:
+  - a larger dot means more memories;
+  - the newest dot is ringed;
+  - a signal dot is in conflict;
+  - hovering names the memory, and clicking opens it.
+- **Readout:** inside the dial, a clock counts up from the last synchronization in Live Home, or shows the snapshot's age in local Home.
 
 ## Color
 
-Dark ("void") is the default; light ("porcelain") follows the system preference, and the viewer can toggle it. The choice is stored per browser.
+Day (sage paper) is the default regardless of the system setting, because it is the direction the owner chose. The toggle switches to night, which inverts paper and ink, and the choice is stored per browser.
 
-Both themes define the same tokens in `assets/browser.html`. The light values (ion `#0b84a8`, plasma `#6a4fe0`, coral `#cf3554`, ink `#0b0e1c`) keep text at WCAG AA or better.
-
-- **Ion** (`colors.ion`): the active view, focus, links, current and recent knowledge. It glows.
-- **Plasma** (`colors.plasma`): agents and private evidence.
-- **Coral** (`colors.coral`): conflict and destructive states, always paired with words.
-- **Amber** (`colors.amber`): staleness and changed wording.
-- **Spectrum** (ion → plasma → flare): reserved for the headline verdict, the tile hairlines, core knowledge edges and the primary sign-in action in dark mode.
-- **Atmosphere:** a slow, blurred aurora (ion, plasma, flare) and a faint 26px dot grid, masked toward the top. Both disappear with reduced transparency; the aurora's motion stops with reduced motion.
+- **Paper and ink:** every surface is paper; every outline, bar, dot and heading is ink. Secondary text is `ink-2`; captions and labels are `ink-3`.
+- **Signal** (`colors.signal`): conflicts, staleness and forgotten items only, always paired with words.
+- **Inversion:** the active navigation item, current and core badges, the notice and hovered buttons swap paper and ink. Inversion is the only emphasis besides signal.
+- **Contrast:** all text is WCAG AA or better in both themes (captions 5.3:1 on day paper, signal 5.0:1).
 
 ## Typography
 
-- **Display and body:** Mona Sans (GitHub, SIL OFL), a variable font. The expanded widths (110–125%) carry headlines and the light, wide numerals; normal width carries reading text.
-- **Data:** Martian Mono (Evil Martians, SIL OFL) for overlines, counts, timestamps, IDs and status chips, always uppercase with wide tracking.
-- **Bundling:** both fonts are bundled in `assets/fonts/` with their licenses and inlined as `data:` URLs at render time. Nothing loads from the network, and Live Home's CSP allows `font-src data:` only.
-- **Legibility floors:** reading text 17px on Today and at least 15px elsewhere. Data labels may go to 10–11px only in Martian Mono uppercase with tracking at 0.08em or more, and never for content.
+- **One family:** Geist Mono (Vercel, SIL OFL), a variable font, for everything.
+- **Display and readout:** regular weight with tight tracking (-0.04em to -0.05em).
+- **Instrument names:** uppercase, medium weight, 19–22px.
+- **Labels:** uppercase, 12px, tracked 0.08em. Nothing is smaller than 11px, and only short uppercase status chips use 11px.
+- **Reading text:** 15–17px at a 1.6 line height, in sentence case.
+- **Bundling:** the font is bundled in `assets/fonts/` with its license and inlined as a `data:` URL at render time. Nothing loads from the network, and Live Home's CSP allows `font-src data:` only.
 
 ## Layout
 
-- **Chrome:** a 64px glass top bar (orbit mark, pill search with a `/` hint, scope filter, sync pill, theme toggle) and a 232px rail of 44px pill navigation. The active item gets an ion glow bar.
+- **Chrome:** a 64px top bar with a 2px ink rule (ticked-dial mark, pill search with a `/` hint, scope filter, sync state, theme toggle) and a 232px rail of 44px pill navigation in uppercase.
 - **Content width:** content is centered at up to 1240px.
 - **Today, top to bottom:**
-  1. A hero: the verdict headline, a sentence, a freshness pill and a legend, with the constellation beside it.
-  2. Four telemetry tiles.
-  3. A grid of named areas: `needs agents`, then `recalled` and `recent` full width, then `knows` full width. Variable content never leaves holes.
-- **Below 1050px:** the hero stacks.
-- **Below 900px:** cards become one column.
-- **Below 760px:** the rail becomes a sticky horizontal strip, and labels collapse to icons where words would not fit.
+  1. The verdict beside the hanging notice.
+  2. Needs you: a card with a signal outline when something is open, or a single capsule line when clear.
+  3. Meters beside agent gauges.
+  4. The dial and readout.
+  5. Most recalled, recent changes and current knowledge as full-width cards.
+- **Below 1050px:** the notice moves above the verdict and spans the full width; meters and gauges stack.
+- **Below 760px:** the rail becomes a sticky horizontal strip, and the readout sits under the dial instead of inside it.
 
-## Surfaces and depth
+## Surfaces
 
-- **Glass:** a 22px radius, a 1px translucent hairline, a soft top sheen and a long, low shadow. Backdrop blur is reserved for the top bar, sidebar, inspector, controls and tooltips, so long pages stay smooth on modest hardware.
-- **Attention cards:** cards that need the owner gain a coral hairline and an outer glow, not a filled background.
-- **Chips:** status chips and tags are pill outlines in Martian Mono. Current knowledge is ion, conflict coral, private plasma.
-- **Inner chips:** knowledge and recall chips are recessed (void at 35%) and lift 2px on hover.
+- **Cards:** a 2px ink outline, a 28px radius and no fill. Hover fills with `paper-2`.
+- **Inner chips:** recall and knowledge chips use a 1px `hair-strong` outline with a 22px radius. Core knowledge gets the full 2px ink outline.
+- **Attention:** conflict cards and claim panels use a signal outline. Claim panels add a faint signal wash.
+- **Controls:** buttons and selects are capsules with a 2px ink outline and uppercase labels. They invert on hover.
+- **Badges:** capsule chips. Current and core are inverted, conflict is signal-outlined, private and sensitive are dashed.
 
 ## Motion
 
-- Today's first render reveals sections with a 760ms rise, staggered 70ms apart. Live refreshes never replay it.
-- Links nudge their arrow on hover, and the freshness dot breathes.
-- Everything stops under `prefers-reduced-motion`.
+- Today's first render raises each section over 640ms, staggered 70ms apart, and fills the meters over 900ms. Live refreshes never replay either.
+- The freshness dot in the notice blinks slowly.
+- The clock changes once a second.
+- Everything else is still, and all animation stops under `prefers-reduced-motion`.
 
-## Components worth keeping consistent
+## Map and evidence views
 
-- **Verdict headline:** a small ink-2 lead-in, then the verdict in the spectrum, or amber to coral when attention is needed.
-- **Telemetry tile:** a mono overline, a wide light numeral and a plain caption, with a spectrum hairline on the top edge.
-- **Claim panels:** each side of a conflict appears as Claim A, Claim B and so on, in coral-tinted panels side by side. The owner always sees every claim.
-- **Agent ring:** a conic ring whose ion share is the agent's found-something rate, around its initials.
-- **Timeline:** glowing node rings on a gradient spine. Changed items are amber and show the previous wording struck through; forgotten items are coral.
-- **Map:** topic orbs with a spectrum stroke, glowing ion memory points, coral conflicts, and an inspector with evidence rows.
+- **Map:** topics are open ink circles with uppercase labels on a faint dot grid. Current memories are solid ink dots, historical ones are open, and conflicts are signal. The selected topic is filled.
+- **Timeline:** an ink spine with solid dots for current records and open dots for history.
+- **Sign-in:** one outlined card with the mark, "Welcome back.", a capsule field and an inverted capsule button.
 
 ## Accessibility
 
-- **Contrast:** AA contrast for all text in both themes. Focus is a 2px ion outline plus a soft ion ring.
-- **Never color alone:** every state has words.
-- **Navigation and labels:** keyboard navigation everywhere. Headings that receive programmatic focus show no ring. The constellation has a text alternative.
-- **User preferences:** reduced motion and reduced transparency are both honored.
+- **Never color alone:** every state has words; signal only reinforces them.
+- **Focus:** a 2px ink outline with a 3px offset, in paper color on the notice.
+- **Instruments:** each meter states its value in text. Each gauge and the dial have a text alternative. Everything the dial shows is also listed under "Recently learned and changed".
+- **Navigation:** keyboard navigation everywhere. Headings that receive programmatic focus show no ring.

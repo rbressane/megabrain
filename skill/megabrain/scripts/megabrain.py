@@ -2632,8 +2632,7 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
 
 
 HOME_FONTS = (
-    ("Mona Sans", "MonaSans-Variable.woff2", "font-weight: 200 900; font-stretch: 75% 125%;"),
-    ("Martian Mono", "MartianMono-Variable.woff2", "font-weight: 100 800;"),
+    ("Geist Mono", "GeistMono-Variable.woff2", "font-weight: 100 900;"),
 )
 
 
