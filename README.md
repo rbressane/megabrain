@@ -1,6 +1,6 @@
 # MegaBrain
 
-MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. The core needs no service, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections. An optional owner-authenticated, read-only [Live Home](docs/live-home.md) viewer is available in stable v2.5.0.
+MegaBrain gives a person's trusted AI agents one private, Git-synchronized canonical repository for durable memory, documents, runbooks, findings, decisions, project state, and approved archive evidence. The core needs no service, hosted relay, or Python package dependencies; its ignored SQLite indexes are disposable standard-library projections. An optional owner-authenticated, read-only [Live Home](docs/live-home.md) viewer is available since stable v2.5.0; v2.6.0 adds the Today page and an optional owner view of private records.
 
 **Status:** protocol 2 is the current stable release for macOS and Linux. Personal knowledge is never stored in this product repository.
 
