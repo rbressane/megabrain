@@ -2,6 +2,9 @@
 
 No agent credentials authorize HTTP reads. No writes, pushes, checkouts, working
 file serving, repository credentials in responses, or on-disk content cache.
+
+General knowledge only by default. With the operator's explicit ``--owner-private``
+opt-in, the signed-in owner also sees private records. Sensitive records are never served.
 """
 from __future__ import annotations
 
@@ -34,6 +37,10 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 ITERATIONS = 600_000
 SESSION_SECONDS = 8 * 60 * 60
 MAX_CONTENT = 128 * 1024 * 1024
+
+
+GENERAL_NOTE = "Private and sensitive records stay outside this viewer until your owner view is enabled."
+PRIVATE_NOTE = "After sign-in you see your general and private records. Sensitive records are never shown here."
 
 
 class LiveError(operations.OperationError):
@@ -144,10 +151,11 @@ class Projection:
 
 
 class LiveView:
-    def __init__(self, root: Path, interval: int = 15):
+    def __init__(self, root: Path, interval: int = 15, *, owner_private: bool = False):
         if not 10 <= interval <= 300:
             raise LiveError("LIVE_INTERVAL_INVALID", "Refresh interval must be between 10 and 300 seconds.")
         self.root, self.interval = root.resolve(), interval
+        self.owner_private = owner_private is True
         self.guard = threading.Lock()
         self.refresh_guard = threading.Lock()
         self.projection: Projection | None = None
@@ -166,8 +174,11 @@ class LiveView:
             megabrain.require_compatible_runtime(snapshot, writing=False)
             if not megabrain.command_validate(snapshot)["ok"]:
                 raise LiveError("LIVE_SOURCE_INVALID", "Committed Brain validation failed.")
-            # Deliberately no trusted_context: owner login is NOT an agent policy.
-            payload = megabrain._browser_payload(snapshot, sync)
+            # Deliberately no trusted_context: owner login is NOT an agent policy. The owner view is a
+            # separate operator opt-in that adds private records and never sensitive ones.
+            payload = megabrain._browser_payload(snapshot, sync, owner_view=self.owner_private)
+            if any(item.get("sensitivity") not in self.scopes() for item in [*payload["memories"], *payload["resources"]]):
+                raise LiveError("LIVE_SOURCE_UNSAFE", "The viewer projection contains records outside its scope.")
             payload["snapshot_commit"] = commit
             visible = {memory["id"] for memory in payload["memories"]}
             # Shared agent activity from its separate committed branch; only visible memories are named.
@@ -215,11 +226,14 @@ class LiveView:
                     self.projection = None
                     self.reason = "viewer_needs_attention"
 
+    def scopes(self) -> set[str]:
+        return {"general", "private"} if self.owner_private else {"general"}
+
     def status(self) -> dict:
         reason = self.reason
         if reason is None and time.monotonic() - self.checked_at > self.interval + 30:
             reason = "refresh_delayed"
-        return {"mode": "live", "read_only": True, "scope": "general_only",
+        return {"mode": "live", "read_only": True, "scope": "owner_private" if self.owner_private else "general_only",
                 "interval_seconds": self.interval, "last_synced_at": self.last_synced,
                 "stale": reason is not None, "reason": reason,
                 "runtime_version": megabrain.runtime_manifest()["version"]}
@@ -281,6 +295,8 @@ class LiveServer(ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(16)
         self.html = shell()
         self.login_html = megabrain.inline_fonts((ASSETS / "live-login.html").read_text(encoding="utf-8"))
+        if view.owner_private:
+            self.login_html = self.login_html.replace(GENERAL_NOTE, PRIVATE_NOTE)
         super().__init__(address, LiveHandler)
 
     def process_request(self, request, client_address):
@@ -456,6 +472,8 @@ def add_parser(subparsers) -> None:
     serve.add_argument("--bind", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--interval", type=int, default=15)
+    serve.add_argument("--owner-private", action="store_true",
+                       help="after the owner's explicit approval, also show private (never sensitive) records to the signed-in owner")
     transport = serve.add_mutually_exclusive_group(required=True)
     transport.add_argument("--cert", type=Path, help="TLS certificate chain supplied by the operator")
     transport.add_argument("--behind-proxy", action="store_true", help="HTTPS reverse proxy to loopback only")
@@ -501,13 +519,14 @@ def command(args) -> str:
     auth_file = args.auth_file.expanduser().absolute()
     if root == auth_file.resolve() or root in auth_file.resolve().parents:
         raise LiveError("LIVE_AUTH_IN_CLONE", "Keep the owner verifier outside the data replica.")
-    view = LiveView(root, args.interval)
+    view = LiveView(root, args.interval, owner_private=getattr(args, "owner_private", False))
     with operations.lock(root, name="live-service", timeout=0):
         server = LiveServer((args.bind, args.port), view, OwnerAuth(auth_file),
                             origin, local_http=args.local_http, tls=tls)
         worker = threading.Thread(target=view.run, daemon=True)
         worker.start()
-        print("Live Home listener started. Owner sign-in required; general-only, read-only. Stop with Ctrl-C.", flush=True)
+        scope = "general and private records, never sensitive" if view.owner_private else "general-only"
+        print(f"Live Home listener started. Owner sign-in required; {scope}, read-only. Stop with Ctrl-C.", flush=True)
         try:
             server.serve_forever(poll_interval=0.5)
         except KeyboardInterrupt:

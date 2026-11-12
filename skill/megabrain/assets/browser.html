@@ -707,6 +707,7 @@
       return days === 1 ? "yesterday" : days < 45 ? `${days} days ago` : formatDate(value).split(",")[0];
     }
     function confidenceNote(memory) { return memory.confidence === "confirmed" ? "" : memory.confidence === "inferred" ? "an agent's inference" : "not yet verified"; }
+    function privacyNote(memory) { return memory.sensitivity && memory.sensitivity !== "general" ? ` · ${memory.sensitivity}` : ""; }
     function todayItem(kicker, kickerClass, title, text, meta, memoryId, extra = "") {
       const heading = memoryId ? `<button class="today-item-title as-link" data-memory-id="${escapeHtml(memoryId)}" title="Open this memory">${escapeHtml(title)}</button>` : `<span class="today-item-title">${escapeHtml(title)}</span>`;
       return `<li class="today-item"><span class="today-kicker ${kickerClass}">${escapeHtml(kicker)}</span>${heading}${text ? `<p class="today-item-text">${escapeHtml(text)}</p>` : ""}${extra}<span class="today-item-meta">${escapeHtml(meta)}</span></li>`;
@@ -810,7 +811,7 @@
       const recentItems = DATA.memories.filter(memory => new Date(memory.created_at).getTime() >= recentCutoff).slice(0, 8).map(memory => {
         const who = agentNames[memory.created_by] || "an agent";
         const note = confidenceNote(memory);
-        const meta = `${who} · ${relativeTime(memory.created_at)}${note ? ` · ${note}` : ""}`;
+        const meta = `${who} · ${relativeTime(memory.created_at)}${note ? ` · ${note}` : ""}${privacyNote(memory)}`;
         if (memory.kind === "tombstone") return todayItem("Forgotten", "forgotten", subjectLabel(memory.subject), "", meta, "").replace('<li class="today-item">', '<li class="today-item forgotten">');
         const previous = (memory.supersedes || []).map(id => byId[id]).find(Boolean);
         if (previous) return todayItem("Changed", "changed", subjectLabel(memory.subject), memory.summary, meta, memory.status === "current" ? memory.id : "", `<p class="today-item-text was">${escapeHtml(previous.summary)}</p>`).replace('<li class="today-item">', '<li class="today-item changed">');
@@ -820,8 +821,8 @@
 
       const rank = memory => (memory.importance === "always" ? 0 : memory.importance === "core" ? 1 : 2) * 10 + (["preference", "decision", "commitment", "project-state", "fact", "resource"].indexOf(memory.kind) + 1) + (memory.confidence === "confirmed" ? 0 : 5);
       const known = current.slice().sort((a, b) => rank(a) - rank(b) || String(b.created_at).localeCompare(String(a.created_at))).slice(0, 9);
-      const chips = known.map(memory => `<li class="knowledge-chip ${["always", "core"].includes(memory.importance) ? "core" : ""}"><span class="today-kicker">${escapeHtml(label(memory.kind))}${["always", "core"].includes(memory.importance) ? " · core" : ""}</span><button class="today-item-title as-link" data-memory-id="${escapeHtml(memory.id)}" title="Open this memory">${escapeHtml(subjectLabel(memory.subject))}</button><p class="today-item-text">${escapeHtml(memory.summary)}</p><span class="today-item-meta">${escapeHtml(`${agentNames[memory.created_by] || "an agent"} · ${relativeTime(memory.created_at)}${confidenceNote(memory) ? ` · ${confidenceNote(memory)}` : ""}`)}</span></li>`).join("");
-      const knows = `<section class="today-card wide" aria-labelledby="today-knows" data-i="6"><div class="card-head"><h2 id="today-knows">What MegaBrain knows</h2><span class="overline">${escapeHtml(plural(current.length, "memory", "memories"))}</span></div><p class="card-lede">Core items, preferences, decisions and commitments first.${isLive ? " Live Home shows general knowledge only." : ""}</p>${known.length ? `<ul class="knowledge-grid">${chips}</ul>` : `<p class="today-empty">Your first durable memory will appear here.</p>`}<button class="today-link" data-today-view="explore">Explore all ${escapeHtml(plural(current.length, "memory", "memories"))}</button></section>`;
+      const chips = known.map(memory => `<li class="knowledge-chip ${["always", "core"].includes(memory.importance) ? "core" : ""}"><span class="today-kicker">${escapeHtml(label(memory.kind))}${["always", "core"].includes(memory.importance) ? " · core" : ""}</span><button class="today-item-title as-link" data-memory-id="${escapeHtml(memory.id)}" title="Open this memory">${escapeHtml(subjectLabel(memory.subject))}</button><p class="today-item-text">${escapeHtml(memory.summary)}</p><span class="today-item-meta">${escapeHtml(`${agentNames[memory.created_by] || "an agent"} · ${relativeTime(memory.created_at)}${confidenceNote(memory) ? ` · ${confidenceNote(memory)}` : ""}${privacyNote(memory)}`)}</span></li>`).join("");
+      const knows = `<section class="today-card wide" aria-labelledby="today-knows" data-i="6"><div class="card-head"><h2 id="today-knows">What MegaBrain knows</h2><span class="overline">${escapeHtml(plural(current.length, "memory", "memories"))}</span></div><p class="card-lede">Core items, preferences, decisions and commitments first.${isLive ? (DATA.live?.scope === "owner_private" ? " Live Home shows your general and private knowledge, never sensitive records." : " Live Home shows general knowledge only.") : ""}</p>${known.length ? `<ul class="knowledge-grid">${chips}</ul>` : `<p class="today-empty">Your first durable memory will appear here.</p>`}<button class="today-link" data-today-view="explore">Explore all ${escapeHtml(plural(current.length, "memory", "memories"))}</button></section>`;
 
       const animate = state.lastView !== "today";
       content.className = `today ${animate ? "animate-in" : "still"}`;
@@ -1137,7 +1138,7 @@
       document.getElementById("live-bar").classList.toggle("stale", stale);
       document.getElementById("live-status").textContent = disconnected ? "Connection lost. Retrying automatically." : info.reason === "connecting" ? "Connecting to your Brain…" : info.reason === "viewer_needs_attention" ? "Viewer needs attention. No content is being served." : info.reason === "refresh_delayed" ? "Refresh delayed. Showing the last committed view." : stale ? "Git is unreachable. Showing the last committed view." : "Live Home · Read-only";
       const checked = info.last_synced_at ? formatDate(info.last_synced_at) : "Not synchronized yet";
-      document.getElementById("live-detail").textContent = `Last synchronized: ${checked} · General knowledge only`;
+      document.getElementById("live-detail").textContent = `Last synchronized: ${checked} · ${info.scope === "owner_private" ? "General and private knowledge · Never sensitive" : "General knowledge only"}`;
       document.getElementById("sync-state").classList.toggle("stale", stale);
       document.getElementById("sync-label").textContent = stale ? "Reconnecting" : "Live";
       document.getElementById("sync-state").title = `Last synchronized: ${checked}`;

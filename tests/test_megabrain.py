@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -85,7 +86,16 @@ class BrainNetwork:
         self._create_seed()
 
     def close(self) -> None:
-        self.temp.cleanup()
+        # A detached background refresh started by a hook may still be writing Git objects.
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                self.temp.cleanup()
+                return
+            except OSError:
+                if time.monotonic() > deadline or not Path(self.temp.name).exists():
+                    raise
+                time.sleep(0.2)
 
     def _create_seed(self) -> None:
         self.seed.mkdir()
