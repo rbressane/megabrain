@@ -46,6 +46,10 @@ A memory is current when no later entry supersedes its ID and it is not a tombst
 
 Capture only information that reduces future re-explanation: durable facts, preferences, decisions, commitments, current project state, recurring pitfalls, and resource locations. Do not capture routine requests, transient progress, raw conversation, temporary errors, or secrets.
 
+## Weekly Digest
+
+Once a week, supported agents offer the owner a digest: likely duplicates to merge, uncertain memories saved that week to confirm, reviews that are due and open conflicts, plus what was learned, changed or forgotten. Home shows the same suggestions on Today. Every suggestion is a proposal built only from records the viewer may already see. An agent applies one through a normal correction or forgetting only after the owner explicitly approves it. The digest never changes the Brain by itself.
+
 ## Optional Live Home
 
 An optional owner-authenticated, read-only service may present committed Git data to normal phone and desktop browsers. It remains a replaceable projection, not authority, an agent relay or a write API. The core and local snapshots remain usable without it. The viewer uses a dedicated read-only replica, never repairs dirty state or pushes, and clearly reports freshness and disconnected states. It is general-only by default: owner sign-in must not impersonate an agent or relax private/sensitive policy gates for any agent. With the owner's explicit approval, the operator may enable an owner view that also shows private records to the signed-in owner. Sensitive records are never served. Corrections and forgetting remain reviewed agent operations. See [Live Home](docs/live-home.md).

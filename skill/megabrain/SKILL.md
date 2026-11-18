@@ -76,6 +76,7 @@ Honor "don't remember this" by skipping capture entirely or using `"capture":"sk
 - "Stop/resume automatic updates": after the owner's request, run `megabrain updates disable` or `enable`. "Keep this version" uses `megabrain updates pin`; `unpin` allows version changes again. Explain that these preferences apply to this user on this device. Enabling updates does not remove a pin, and unpinning does not re-enable disabled updates. `megabrain updates status --json` checks preferences offline.
 - "Pause/resume automatic capture": after the owner's request, run `megabrain capture pause` or `resume`. Explain that this applies to this agent on this device.
 - "What needs review?": run `megabrain review`. These are reminders, not automatic truth changes.
+- Weekly digest: when the session briefing says a digest is ready, offer it once at a natural moment. If the owner agrees, run `megabrain digest` and present one suggestion at a time with its evidence. Apply a suggestion with `correct` or `forget` only after the owner explicitly approves that suggestion; never batch-apply or act on silence.
 - For a correction/forgetting request from Home, run `megabrain handoff --stdin` with its action and immutable ID, reread current evidence, and ask for owner confirmation. Resource writes remain owner-local.
 - Set `authority_domain` on project-specific captures. Use `verified_at` only with real verification evidence and `review_after` for time-sensitive project state/commitments. Do not invent dates or rewrite legacy entries to populate fields.
 

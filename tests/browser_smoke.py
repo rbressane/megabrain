@@ -117,6 +117,7 @@ def main():
             ("gateway.recovery", "Recover the synthetic gateway from a verified snapshot, then check health.", "confirmed"),
             ("gateway.update", "Synthetic fleet updates require a dry run and a rollback checkpoint.", "inferred"),
             ("work.reporting", "Weekly synthetic reports put decisions and next actions first.", "confirmed"),
+            ("work.summaries", "Weekly synthetic reports put the decisions and next actions first.", "confirmed"),
         ]):
             network.remember("browser", subject=subject, summary=summary, tags=[subject.split(".")[0]], confidence=confidence,
                              authority_domain="synthetic-project", review_after="2020-01-01T00:00:00Z" if number == 1 else None)
@@ -176,6 +177,12 @@ def main():
                 assert cdp.evaluate("document.querySelector('#today-agents').closest('section').textContent.includes('lookups this week')"), "Agent usage missing from Today"
                 assert cdp.evaluate("document.querySelectorAll('#brain-dial .dial-tick').length === 57 && document.querySelectorAll('.meter').length === 3 && document.querySelectorAll('.gauge .ring').length >= 1"), "Today instruments missing"
                 assert cdp.evaluate("/^\\d\\d:\\d\\d:\\d\\d$/.test(document.getElementById('dial-clock').textContent)"), "Dial clock is not running"
+                assert cdp.evaluate("['merge', 'confirm', 'review'].every(word => document.querySelector('#today-week').closest('section').textContent.toLowerCase().includes(word))"), "Weekly digest missing from Today"
+                cdp.evaluate("document.querySelector('[data-digest=\"0\"]').click()")
+                assert cdp.evaluate("!document.getElementById('handoff-panel').hidden && document.getElementById('handoff-text').value.includes('only if I approve')"), "Digest request missing"
+                cdp.evaluate("document.querySelector('#today-week').scrollIntoView({block: 'start'})")
+                (output / f"{name}-digest.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
+                cdp.evaluate("document.getElementById('dismiss-handoff').click()")
                 cdp.evaluate("document.querySelector('[data-view=explore]').click(); document.querySelector('[data-handoff]').click()")
                 (output / f"{name}-handoff.png").write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
                 assert cdp.evaluate("!document.getElementById('handoff-panel').hidden && document.getElementById('handoff-text').value.includes('confirmation')")
@@ -188,7 +195,7 @@ def main():
                 assert cdp.evaluate("!!document.querySelector('.empty-state')")
             assert not cdp.errors, "Browser emitted runtime errors"
             print(json.dumps({"ok": True, "synthetic": True, "viewports": 4, "views_per_viewport": 6,
-                              "checks": ["render", "today", "instruments", "agent usage", "night theme", "overflow", "inert resource text", "handoff", "dismiss", "empty search", "reduced motion"],
+                              "checks": ["render", "today", "instruments", "agent usage", "weekly digest", "night theme", "overflow", "inert resource text", "handoff", "dismiss", "empty search", "reduced motion"],
                               "screenshots": ".impeccable/review"}, indent=2))
             cdp.socket.close()
             os.killpg(process.pid, signal.SIGTERM)
