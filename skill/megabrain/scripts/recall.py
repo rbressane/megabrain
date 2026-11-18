@@ -89,6 +89,27 @@ def invoked_harness(invoked: Path) -> str | None:
     return next((name for name in ("codex", "claude", "hermes") if f".{name}" in invoked.parts), None)
 
 
+def weekly_digest_notice(
+    mb: ModuleType, root: Path, sync: dict[str, Any], trusted: dict[str, Any] | None, *, now: datetime | None = None,
+) -> int:
+    """Suggestion count for this week's digest, once per ISO week per clone; 0 otherwise. Never raises."""
+    moment = now or datetime.now(timezone.utc)
+    year, week, _ = moment.isocalendar()
+    label = f"{year}-W{week:02d}"
+    marker = root / ".megabrain" / "digest.json"
+    try:
+        if not marker.is_symlink() and json.loads(marker.read_text(encoding="utf-8")).get("week") == label:
+            return 0
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        operations.atomic_write(marker, json.dumps({"week": label}))
+        count = int(mb.browser_payload(root, sync, trusted_context=trusted)["digest"]["counts"]["suggestions"])
+    except Exception:  # noqa: BLE001 - the digest is a courtesy and must never block a session.
+        return 0
+    return max(count, 0)
+
+
 def search_command(helper: Path) -> str:
     return (
         "printf '%s' '{\"query\":\"the words that matter\",\"limit\":12}' | "
@@ -450,6 +471,14 @@ def session_hook(
         f"or past decisions, search MegaBrain first: {search_command(helper)}",
         "Capture new durable learning as your MegaBrain instructions describe.",
     ]
+    suggestions = weekly_digest_notice(mb, root, sync, trusted) if sync.get("reason") != "dirty_worktree" else 0
+    if suggestions:
+        context_lines.append(
+            f"This week's MegaBrain digest has {plural(suggestions, 'suggestion')} for the owner (merges, confirmations, "
+            "reviews or conflicts). At a natural moment, offer once to go through it. If they agree, run "
+            f"python3 \"{helper}\" digest, present one suggestion at a time with its evidence, and apply only what "
+            "they explicitly approve. Never apply a suggestion on your own."
+        )
     if items:
         context_lines.append(f"Briefing for {clean(project, 60)}:")
         context_lines.extend(lines)
@@ -460,6 +489,8 @@ def session_hook(
             status += f" · {plural(counts['conflicts'], 'conflict')} need{'s' if counts['conflicts'] == 1 else ''} you"
     if items:
         status += f" · {recalled_phrase(items)} for this project"
+    if suggestions:
+        status += f" · weekly digest: {plural(suggestions, 'suggestion')}"
     if notices:
         status += " · " + " ".join(notices)
     return {

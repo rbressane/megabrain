@@ -9,7 +9,7 @@ from typing import Any
 
 import operations
 
-READ_COMMANDS = frozenset({"context", "search", "resources", "resource-read", "browse", "review"})
+READ_COMMANDS = frozenset({"context", "search", "resources", "resource-read", "browse", "review", "digest"})
 INTERVAL = timedelta(hours=24)
 RETRY_MINUTES = 5
 RETRY_CAP_MINUTES = 360
