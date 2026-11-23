@@ -1,12 +1,15 @@
 # Automatic recall
 
-MegaBrain recalls relevant private context without waiting for the agent to remember to ask. Supported agents run two local hooks: one when a session starts and one each time the owner sends a message. Each hook shows a one-line receipt, so the owner can see MegaBrain working:
+MegaBrain recalls relevant private context without waiting for the agent to remember to ask. Supported agents run two local hooks: one when a session starts and one each time the owner sends a message. Session start shows a one-line status. Per-message recall is quiet when routine, because harnesses render hook messages as alerts. A message shows a receipt only when the owner may need to act:
 
 ```text
 MegaBrain: connected · synced · 142 memories · 1 conflict needs you
-MegaBrain: recalled 3 memories and 1 document
-MegaBrain: nothing relevant
+MegaBrain: recalled 3 memories · conflict needs you
+MegaBrain: nothing relevant · offline, using local copy from 1 h ago
+MegaBrain: skipped this message because it looks like it contains a secret.
 ```
+
+Receipts appear for a conflict, a local copy older than two minutes, an offline or unsynchronized copy, saves still uploading, a skipped message and any failure. Run `megabrain activity`, or open Today in Home or Live Home, to see every lookup, including the quiet ones.
 
 | Agent | Automatic recall | First use |
 | --- | --- | --- |

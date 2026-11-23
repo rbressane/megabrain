@@ -30,10 +30,10 @@ Talk normally after installation:
 Remember that I prefer concise weekly reports with decisions first.
 ```
 
-MegaBrain recalls relevant current context automatically. In Claude Code and Codex, it does this at the start of every session and with every message, and shows what it used. It captures only new durable learning afterward. Questions that span memories and long-form resources use one bounded, citation-ready evidence search. Reads and writes are reported compactly:
+MegaBrain recalls relevant current context automatically. In Claude Code and Codex, it does this at the start of every session and with every message. Routine recall is quiet; a one-line notice appears only when something needs the owner, such as a conflict or an offline copy. It captures only new durable learning afterward. Questions that span memories and long-form resources use one bounded, citation-ready evidence search. Reads and writes are reported compactly:
 
 ```text
-MegaBrain: recalled 2 memories and 1 document
+MegaBrain: recalled 2 memories · conflict needs you
 MegaBrain: saved 1 durable memory.
 ```
 
