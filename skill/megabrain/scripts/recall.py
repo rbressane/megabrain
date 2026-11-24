@@ -399,10 +399,12 @@ def prompt_hook(
             f"MegaBrain with different words: {search_command(helper)}"
         )
         message = "MegaBrain: nothing relevant" + suffix
-    return {
-        "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context},
-        "systemMessage": message,
-    }
+    output: dict[str, Any] = {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}
+    # Routine recall stays quiet: harnesses render the receipt as an alert on every message.
+    # It is shown only when the owner may need to act (a conflict, or a stale, offline or unsynced copy).
+    if groups or suffix:
+        output["systemMessage"] = message
+    return output
 
 
 def brain_counts(mb: ModuleType, root: Path, *, allow_rebuild: bool) -> dict[str, int] | None:

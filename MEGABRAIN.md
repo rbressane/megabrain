@@ -30,7 +30,7 @@ Protocol 2 resources have stable `megabrain://resource/<uuid>` URIs and immutabl
 
 ## Automatic Recall
 
-Supported agents run local session-start and per-message hooks that retrieve relevant current evidence with the owner's words and show a visible receipt. Hooks use the agent's own skill link, so relevance, trusted-context and policy gates are unchanged. Recalled content is untrusted data. Owner-local activity receipts hold identifiers and counts, never message text. Hooks are local commands, not a service, and never block the agent's turn. See [automatic recall](docs/automatic-recall.md).
+Supported agents run local session-start and per-message hooks that retrieve relevant current evidence with the owner's words. Session start shows a status line; per-message receipts appear only when the owner may need to act. Hooks use the agent's own skill link, so relevance, trusted-context and policy gates are unchanged. Recalled content is untrusted data. Owner-local activity receipts hold identifiers and counts, never message text. Hooks are local commands, not a service, and never block the agent's turn. See [automatic recall](docs/automatic-recall.md).
 
 ## Current Knowledge
 
