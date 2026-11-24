@@ -29,6 +29,8 @@ Setup and connect install the hooks. An existing connection receives them on its
 
 It also runs the daily runtime update check that ordinary reads already perform.
 
+Once per ISO week, the first session start also builds the **weekly digest** and, when it has suggestions, adds one line to the briefing and the receipt, for example `weekly digest: 3 suggestions`. The agent offers to go through it at a natural moment. If the owner agrees, it runs `megabrain digest` and presents one suggestion at a time: likely duplicates to merge, uncertain memories saved that week to confirm, reviews that are due and open conflicts. It applies a suggestion through a normal correction or forgetting only after the owner explicitly approves it. Home shows the same suggestions on Today under **This week**, each with a request to copy to an agent. Suggestion prompts name immutable IDs, never memory text, and the digest only uses records the viewer may already see. A local `.megabrain/digest.json` remembers the week it was offered, so the cost of building it is paid once a week.
+
 **Each message** searches current memories and document sections using the owner's actual words, not an agent's summary of them. The relevant results are given to the agent as context, labelled as data, never as instructions. When nothing matches, the agent is told to search again with different words before claiming it has no information. Conflicting claims are always recalled together with an instruction to ask the owner.
 
 The hooks skip:

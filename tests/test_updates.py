@@ -201,7 +201,7 @@ class InstalledUpdateTests(unittest.TestCase):
         self.assertEqual(operations.git_text(self.root, "rev-parse", "HEAD"), head)
         self.assertEqual(operations.git_text(self.root, "rev-parse", "HEAD:brain"), tree)
         self.assertEqual(operations.git_text(self.root, "status", "--porcelain"), "")
-        self.assertEqual(updates.READ_COMMANDS, {"context", "search", "resources", "resource-read", "browse", "review"})
+        self.assertEqual(updates.READ_COMMANDS, {"context", "search", "resources", "resource-read", "browse", "review", "digest"})
 
     def test_open_notifies_once_and_inflight_assets_remain_on_original_release(self):
         self.install()

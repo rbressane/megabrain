@@ -344,6 +344,8 @@
     .today-card .card-lede { color: var(--ink-3); font-size: 15px; line-height: 1.55; margin: 4px 0 20px; }
     .claims { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 8px 0 4px; }
     .claim { background: var(--signal-wash); border: var(--stroke) solid var(--signal); border-radius: 22px; display: grid; gap: 8px; padding: 16px 20px; }
+    .claim.alike { background: var(--paper-2); border-color: var(--ink); }
+    .claim.alike .claim-label { color: var(--ink-3); }
     .claim-label { color: var(--signal); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
     .claim-text { color: var(--ink); font-size: 16px; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
     .recall-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); list-style: none; margin: 0; padding: 0; }
@@ -758,6 +760,23 @@
         ? `<section class="today-card ${conflicts.length ? "needs" : ""}" aria-labelledby="today-needs" data-i="1"><div class="card-head"><h2 id="today-needs">Needs you</h2><span class="overline">${escapeHtml(`${needItems.length} open`)}</span></div><p class="card-lede">Decisions only you can make.</p><ul class="today-list">${needItems.join("")}</ul></section>`
         : `<section class="needs-clear" aria-labelledby="today-needs" data-i="1"><h2 class="label" id="today-needs">Needs you</h2><p>Nothing needs you right now. Conflicts and review reminders appear here.</p></section>`;
 
+      const digest = DATA.digest || { suggestions: [], counts: {} };
+      digestPending = (digest.suggestions || []).filter(item => item.type !== "settle_conflict" && item.memory_ids.every(id => byId[id]));
+      const digestKicker = { merge: "Merge", confirm: "Confirm", review_due: "Review" };
+      const digestRows = digestPending.slice(0, 6).map((item, index) => {
+        const records = item.memory_ids.map(id => byId[id]);
+        const body = item.type === "merge"
+          ? `<div class="claims">${records.map(memory => `<div class="claim alike"><span class="claim-label">${escapeHtml(subjectLabel(memory.subject))}</span><p class="claim-text">${escapeHtml(memory.summary)}</p></div>`).join("")}</div>`
+          : `<p class="today-item-text">${escapeHtml(records[0].summary)}</p>`;
+        const title = item.type === "merge" ? `${records.length} memories say nearly the same thing` : subjectLabel(records[0].subject);
+        return `<li class="today-item"><span class="today-kicker">${escapeHtml(digestKicker[item.type] || "Suggestion")}</span><span class="today-item-title">${escapeHtml(title)}</span>${body}<span class="today-item-meta">${escapeHtml((item.type === "merge" ? `${records.map(memory => agentNames[memory.created_by] || "an agent").filter((who, index, all) => all.indexOf(who) === index).join(" and ")} · ${relativeTime(records[records.length - 1].created_at)}` : item.reason) + privacyNote(records[0]))}</span><button class="today-link" data-digest="${index}">Prepare for your agent</button></li>`;
+      });
+      const digestCounts = digest.counts || {};
+      const tally = [`${digestCounts.learned || 0} learned`, `${digestCounts.changed || 0} changed`, `${digestCounts.forgotten || 0} forgotten`]
+        .concat(activity.available ? [`${plural(totals.nothing_found || 0, "lookup")} found nothing`] : []).join(" · ");
+      const weekNumber = String(digest.week || "").split("-W")[1];
+      const weekly = `<section class="today-card wide" aria-labelledby="today-week" data-i="1"><div class="card-head"><h2 id="today-week">This week</h2><span class="overline">${escapeHtml(`${weekNumber ? `Week ${Number(weekNumber)} · ` : ""}${plural(digestPending.length, "suggestion")}`)}</span></div><p class="card-lede">${escapeHtml(digestPending.length ? "Suggestions to keep your Brain tidy. Nothing changes until you approve it with one of your agents." : "Nothing to tidy this week.")} ${escapeHtml(tally)}.</p>${digestRows.length ? `<ul class="today-list">${digestRows.join("")}</ul>${digestPending.length > digestRows.length ? `<p class="today-empty">${escapeHtml(`${digestPending.length - digestRows.length} more in the full digest.`)}</p>` : ""}<button class="today-link" data-digest="all">Go through all of them with an agent</button>` : ""}</section>`;
+
       const meter = (name, caption, value, share) => `<div class="meter"><div class="meter-head"><span class="meter-name">${escapeHtml(name)}</span><span class="meter-caption">${escapeHtml(caption)}</span><span class="meter-value">${escapeHtml(value)}</span></div><span class="meter-track" aria-hidden="true"><span class="meter-fill${share > 0 ? "" : " zero"}" data-progress="${Math.max(0, Math.min(1, share || 0)).toFixed(3)}"></span></span></div>`;
       const confirmed = current.filter(memory => memory.confidence === "confirmed").length;
       const used = activity.available && Number.isFinite(activity.memories_used_7d) ? Math.min(activity.memories_used_7d, current.length) : null;
@@ -826,11 +845,12 @@
 
       const animate = state.lastView !== "today";
       content.className = `today ${animate ? "animate-in" : "still"}`;
-      content.innerHTML = `${hero}${needs}${instruments}${dial}${recalled}${recent}${knows}`;
+      content.innerHTML = `${hero}${needs}${weekly}${instruments}${dial}${recalled}${recent}${knows}`;
       content.querySelectorAll("[data-i]").forEach(element => element.style.setProperty("--i", element.dataset.i));
       const fill = () => content.querySelectorAll(".meter-fill").forEach(element => element.style.setProperty("--p", element.dataset.progress));
       if (animate && !reducedMotion.matches) requestAnimationFrame(() => requestAnimationFrame(fill)); else fill();
       content.querySelectorAll("[data-today-view]").forEach(button => button.addEventListener("click", () => navigateTo(button.dataset.todayView)));
+      content.querySelectorAll("[data-digest]").forEach(button => button.addEventListener("click", () => showDigestRequest(button.dataset.digest)));
       startDial(events, slots);
     }
 
@@ -931,10 +951,23 @@
       content.innerHTML = items.length ? items.map(item => `<article class="review-row"><h2>${escapeHtml(subjectLabel(item.title))}</h2><div class="badges">${item.reasons.map(reason => `<span class="badge">${escapeHtml(label(reason.replaceAll("_", " ")))}</span>`).join("")}</div><div class="owner-actions">${item.kind === "memory" ? `<button class="owner-action" data-memory-id="${escapeHtml(item.citation.memory_id)}">Inspect evidence</button><button class="owner-action" data-handoff="correct" data-target="${escapeHtml(item.citation.memory_id)}">Prepare correction</button>` : `<button class="owner-action" data-handoff="review_resource" data-target="${escapeHtml(item.citation.uri)}">Prepare resource review</button>`}</div></article>`).join("") : emptyState("Nothing in this view needs review. This is not a guarantee that every fact is current.");
     }
 
+    let digestPending = [];
+
+    function showDigestRequest(which) {
+      const item = digestPending[Number(which)];
+      showHandoffText(which === "all" || !item
+        ? "Go through this week's MegaBrain digest with me. Run megabrain digest, show me one suggestion at a time with its evidence, and apply only what I explicitly approve."
+        : item.prompt);
+    }
+
     function showHandoff(action, target) {
+      showHandoffText(`Prepare a MegaBrain owner review with action ${action} and id ${target}. Use megabrain handoff, reread the current evidence, and ask for my confirmation before any change. For forgetting, explain that Git history remains.`);
+    }
+
+    function showHandoffText(text) {
       const panel = document.getElementById("handoff-panel");
       panel.hidden = false;
-      document.getElementById("handoff-text").value = `Prepare a MegaBrain owner review with action ${action} and id ${target}. Use megabrain handoff, reread the current evidence, and ask for my confirmation before any change. For forgetting, explain that Git history remains.`;
+      document.getElementById("handoff-text").value = text;
       document.getElementById("handoff-status").textContent = "Nothing has been changed.";
       document.getElementById("handoff-text").focus();
       panel.scrollIntoView({ block: "nearest", behavior: reducedMotion.matches ? "auto" : "smooth" });

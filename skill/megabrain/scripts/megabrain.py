@@ -2630,6 +2630,7 @@ def _browser_payload(root: Path, sync: dict[str, Any], *, trusted_context: dict[
         "graph_memory_ids": graph_overview_memory_ids(memories, topics),
         "resources": resource_items,
         "review": knowledge.review_items(memories, resource_items),
+        "digest": knowledge.weekly_digest(memories),
         "memories": memories,
         "conflicts": [
             {"subject": subject, "memory_ids": memory_ids}
@@ -2732,6 +2733,23 @@ def command_review(root: Path, payload: dict[str, Any], *, trusted_context: dict
     data = browser_payload(root, sync, trusted_context=trusted_context)
     return {"ok": True, "items": data["review"][:limit], "truncated": len(data["review"]) > limit,
             "snapshot_commit": data["snapshot_commit"], "stale": not sync.get("synced"), "advisory": True}
+
+
+def command_digest(root: Path, payload: dict[str, Any], *, trusted_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    """This week's suggestions for the owner. Read-only: an agent applies one only after the owner approves it."""
+    compatibility = require_compatible_runtime(root, writing=False)
+    if set(payload):
+        raise BrainError("DIGEST_INVALID", "Digest takes no input.")
+    sync = sync_repo(root, allow_push=runtime_can_write(compatibility))
+    if sync.get("reason") == "validation_failed":
+        raise BrainError("BRAIN_INVALID", "The digest is unavailable until validation passes.")
+    data = browser_payload(root, sync, trusted_context=trusted_context)
+    totals = (data.get("activity") or {}).get("totals_7d") or {}
+    return {"ok": True, **data["digest"], "lookups_7d": totals.get("lookups", 0),
+            "nothing_found_7d": totals.get("nothing_found", 0),
+            "how_to_use": "Present one suggestion at a time with its evidence. Apply a suggestion only after the owner "
+                          "explicitly approves it, using correct or forget. Never apply suggestions on your own.",
+            "snapshot_commit": data["snapshot_commit"], "stale": not sync.get("synced")}
 
 
 @operations.locked
@@ -3132,6 +3150,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("status")
     review = subparsers.add_parser("review")
     review.add_argument("--stdin", action="store_true")
+    subparsers.add_parser("digest", help="This week's suggestions for the owner to approve")
     handoff = subparsers.add_parser("handoff")
     handoff.add_argument("--stdin", action="store_true")
     capture = subparsers.add_parser("capture")
@@ -3250,6 +3269,8 @@ def execute_command(args: argparse.Namespace) -> int:
             result = command_status(root, trusted_context=trusted_context)
         elif args.command == "review":
             result = command_review(root, read_input(required=False), trusted_context=trusted_context)
+        elif args.command == "digest":
+            result = command_digest(root, {}, trusted_context=trusted_context)
         elif args.command == "handoff":
             result = command_handoff(root, read_input(), trusted_context=trusted_context)
         elif args.command == "capture":

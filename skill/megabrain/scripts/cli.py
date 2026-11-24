@@ -34,7 +34,7 @@ import operations
 HELPER_COMMANDS = {
     "sync", "context", "search", "remember", "correct", "forget", "ingest", "resources",
     "resource-read", "import-stage", "coverage", "resource-export", "cache-export",
-    "drift", "agents", "browse", "validate", "doctor", "status", "review", "capture", "handoff", "activity",
+    "drift", "agents", "browse", "validate", "doctor", "status", "review", "digest", "capture", "handoff", "activity",
 }
 
 
